@@ -8,7 +8,7 @@ se fait prendre pendant une kill zone, puis le prix se retourne. Toutes les heur
 | Fichier | Rôle |
 |---|---|
 | `pine/AMD-plus-v1.pine` | Première version : sweep du range asiatique puis reclôture dans le range. Tes réglages du 09/11/2026 en valeurs par défaut. |
-| `pine/AMD-plus-v2.pine` | Version 2 : confirmation par changement de structure M5 (CHoCH), poches Asie / veille / Londres / NY matin, 3 kill zones, premium / discount, objectif sur la liquidité opposée, statistiques par séance et par poche. |
+| `pine/AMD-plus-v2.pine` | Version 2 : confirmation par changement de structure M5 (CHoCH), poches Asie / veille / Londres / NY matin, 3 kill zones, premium / discount, objectif sur la liquidité opposée, statistiques par séance et par poche. Affichage épuré par défaut (les trades pris restent visibles avec leur résultat en R), mode complet en option. Risque 2 %, 2 trades et 3 pertes max par jour. |
 | `backtest/` | Simulateur Python qui reproduit les règles du script, bougie par bougie, pour tester des variantes hors de TradingView. |
 
 ## Utiliser un script

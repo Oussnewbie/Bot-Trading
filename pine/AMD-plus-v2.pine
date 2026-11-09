@@ -16,8 +16,14 @@
 //    amélioré le résultat sur la période. Ils restent disponibles pour tes propres tests, figés pour la journée.
 //  • Statistiques par séance et par poche : pour garder ce qui gagne et couper ce qui perd.
 //
-// Gestion : un trade à la fois, chaque poche une seule fois par jour, 3 trades et 2 pertes max par jour.
+// Gestion : risque 2 %, un trade à la fois, chaque poche une seule fois par jour, 2 trades par jour au plus.
 // Tout est fermé à 15:50 NY.
+//
+// Affichage épuré (par défaut) : seules les poches encore intactes sont tracées, avec leur nom au bout de la ligne ;
+// une poche prise s'estompe. Un ordre en attente apparaît en tirets avec son stop et son objectif, un trade ouvert
+// en traits pleins avec son résultat en direct. Un trade terminé reste visible : entrée, stop et objectif coupés
+// à la sortie, avec le résultat en R. Un ordre annulé (jamais exécuté) s'efface. Un seul petit tableau.
+// Le mode complet ajoute les zones, les sweeps, les setups écartés et les statistiques détaillées.
 strategy("AMD+ v2 : liquidité, CHoCH et biais journalier", shorttitle = "AMD+ v2", overlay = true,
      initial_capital = 10000, currency = currency.USD, pyramiding = 1,
      process_orders_on_close = true, margin_long = 0, margin_short = 0, slippage = 2,
@@ -40,12 +46,14 @@ U_WITH    = "Dans le sens du biais"
 U_AGAINST = "Contre le biais"
 N_BOTH    = "Trader les deux côtés"
 N_SKIP    = "Ne pas trader"
+V_LITE    = "Épuré"
+V_FULL    = "Complet"
 
 // ═════════════════════════ Paramètres ═════════════════════════
 GR = "Risque"
-riskPct   = input.float(1.0, "Risque par trade (% du capital)", minval = 0.1, step = 0.1, tooltip = "1 % tant que la v2 n'est pas validée sur ton historique. Une série de 9 pertes coûte environ 9 % du capital à 1 %, 18 % à 2 %.", group = GR)
-maxTrades = input.int(3, "Trades max par jour", minval = 1, maxval = 6, group = GR)
-maxLoss   = input.int(2, "Pertes max par jour", minval = 1, maxval = 6, tooltip = "Après ce nombre de stops dans la journée, plus aucun trade jusqu'au lendemain. C'est la protection principale contre les séries de SL.", group = GR)
+riskPct   = input.float(2.0, "Risque par trade (% du capital)", minval = 0.1, step = 0.1, tooltip = "Une série de 9 pertes coûte environ 18 % du capital à 2 %, 9 % à 1 %.", group = GR)
+maxTrades = input.int(2, "Trades max par jour", minval = 1, maxval = 6, group = GR)
+maxLoss   = input.int(3, "Pertes max par jour", minval = 1, maxval = 6, tooltip = "Après ce nombre de stops dans la journée, plus aucun trade jusqu'au lendemain. Sans effet tant qu'il dépasse le nombre de trades max par jour.", group = GR)
 qtyStepIn = input.float(0, "Pas de taille (0 = auto)", minval = 0, step = 0.01, tooltip = "Taille minimale chez le broker, en unités TradingView. Auto : futures = 1 contrat, forex = 1000 unités (0,01 lot), crypto = 0,0001, actions = 1, CFD = 0,01.", group = GR)
 
 GS = "Sessions (heure de New York)"
@@ -99,15 +107,25 @@ GT = "Telegram"
 tgChat = input.string("-1003571455927", "Chat ID", tooltip = "Rempli : alertes au format de l'API Telegram. URL de webhook : https://api.telegram.org/bot<TOKEN>/sendMessage", group = GT)
 
 GA = "Affichage"
+viewMode   = input.string(V_LITE, "Mode d'affichage", options = [V_LITE, V_FULL], tooltip = "Épuré : poches encore intactes, ordres et trades (les trades terminés restent visibles avec leur résultat en R), un petit tableau. Complet : tout, selon les cases ci-dessous.", group = GA)
 showLv     = input.bool(true, "Poches de liquidité", group = GA)
 showTrades = input.bool(true, "Ordres et trades", group = GA)
-showBox    = input.bool(true, "Boîte du range asiatique", group = GA)
-showSetup  = input.bool(true, "Sweeps confirmés", group = GA)
-showKZ     = input.bool(true, "Fond des kill zones", group = GA)
-showRej    = input.bool(true, "Setups écartés (raison au survol)", group = GA)
 showTable  = input.bool(true, "Tableau de bord", group = GA)
-showDiag   = input.bool(true, "Diagnostic (entonnoir des setups)", group = GA)
-showStats  = input.bool(true, "Statistiques en R", group = GA)
+showBox    = input.bool(true, "Complet : boîte du range asiatique", group = GA)
+showSetup  = input.bool(true, "Complet : sweeps confirmés", group = GA)
+showKZ     = input.bool(true, "Complet : fond des kill zones", group = GA)
+showRej    = input.bool(true, "Complet : setups écartés (raison au survol)", group = GA)
+showDiag   = input.bool(true, "Complet : diagnostic (entonnoir des setups)", group = GA)
+showStats  = input.bool(true, "Complet : statistiques en R par séance et par poche", group = GA)
+
+// Mode épuré : ni zones, ni sweeps, ni setups écartés, ni grands tableaux
+bool lite   = viewMode == V_LITE
+bool vBox   = not lite and showBox
+bool vSweep = not lite and showSetup
+bool vKZ    = not lite and showKZ
+bool vRej   = not lite and showRej
+bool vDiag  = not lite and showDiag
+bool vStats = not lite and showStats
 
 // ═════════════════════════ Réglages fixes ═════════════════════════
 TZ_NY    = "America/New_York"
@@ -251,7 +269,7 @@ tgPayload(string msg) =>
     tgChat == "" ? msg : "{\"chat_id\": \"" + tgChat + "\", \"text\": \"" + t + "\"}"
 
 markReject(int dir, string why) =>
-    if showRej
+    if vRej
         label.new(time, dir == 1 ? low : high, dir == 1 ? "△" : "▽", xloc = xloc.bar_time, color = color(na),
              style = dir == 1 ? label.style_label_up : label.style_label_down,
              textcolor = color.new(dir == 1 ? C_UP : C_DN, 45), size = size.small,
@@ -305,9 +323,28 @@ addPool(array<Pool> arr, string name, int kind, int dir, float lvl, float plvl, 
         if showLv
             color c = kindColor(kind)
             p.ln := line.new(t0, lvl, time, lvl, xloc = xloc.bar_time, color = c, style = line.style_dotted, width = 1)
-            p.lb := label.new(t0, lvl, name + " · " + fmt(lvl), xloc = xloc.bar_time, color = color(na),
-                 style = dir == -1 ? label.style_label_lower_left : label.style_label_upper_left, textcolor = c, size = size.small)
+            if lite
+                p.lb := label.new(time, lvl, name + " · " + fmt(lvl), xloc = xloc.bar_time, color = color(na),
+                     style = label.style_label_left, textcolor = c, size = size.small)
+            else
+                p.lb := label.new(t0, lvl, name + " · " + fmt(lvl), xloc = xloc.bar_time, color = color(na),
+                     style = dir == -1 ? label.style_label_lower_left : label.style_label_upper_left, textcolor = c, size = size.small)
         arr.push(p)
+    true
+
+// Mode épuré : une poche prise s'estompe et perd son nom ; en fin de journée, les poches jamais prises
+// s'effacent (seules restent celles qui expliquent un trade, pour garder de la place aux trades passés)
+retirePool(Pool p, bool dayEnd) =>
+    if lite
+        if not na(p.lb)
+            label.delete(p.lb)
+        p.lb := na
+        if not na(p.ln)
+            if dayEnd and not p.used
+                line.delete(p.ln)
+                p.ln := na
+            else
+                p.ln.set_color(color.new(kindColor(p.kind), 80))
     true
 
 // ═════════════════════════ Sessions ═════════════════════════
@@ -321,7 +358,7 @@ bool inKZ   = inLon or inNY or inPM
 bool inFlat = not na(time(timeframe.period, flatS, TZ_NY))
 int  sessNow = inLon ? 0 : inNY ? 1 : 2
 
-bgcolor(showKZ and inLon ? color.new(C_LON, 94) : showKZ and (inNY or inPM) ? color.new(C_NY, 94) : na, title = "Kill zones")
+bgcolor(vKZ and inLon ? color.new(C_LON, 94) : vKZ and (inNY or inPM) ? color.new(C_NY, 94) : na, title = "Kill zones")
 
 // ═════════════════════════ État ═════════════════════════
 var Rng day  = Rng.new()
@@ -417,6 +454,9 @@ if newDay
     asia.begin()
     lon  := Rng.new()
     nyam := Rng.new()
+    if pools.size() > 0
+        for i = 0 to pools.size() - 1
+            retirePool(pools.get(i), true)
     pools.clear()
     stOn.set(0, false)
     stOn.set(1, false)
@@ -435,7 +475,7 @@ int biasNow = biasSrc == B_D1 ? dBias : biasSrc == B_H4 ? h4Day : biasSrc == B_B
 
 // Fin de l'Asie : high / low de l'Asie
 if not inAsia and inAsia[1] and not na(asia.hi)
-    if showBox
+    if vBox
         box.new(asia.t0, asia.hi, time, asia.lo, xloc = xloc.bar_time, bgcolor = color.new(C_ASIA, 92), border_width = 0)
     if poolAsia
         addPool(pools, "Asie H", 0, -1, asia.hi, asia.phi, asia.t0)
@@ -543,16 +583,28 @@ drawOpen(Trade t) =>
         int   x2 = time + FUT
         color dc = t.dir == 1 ? C_UP : C_DN
         dropLabels(t)
-        if not na(t.sLn)
-            line.delete(t.sLn)
-        if not na(t.tLn)
-            line.delete(t.tLn)
-        t.sLn := na
-        t.tLn := na
-        t.slB := box.new(t.tFill, math.max(t.entry, t.sl), x2, math.min(t.entry, t.sl), xloc = xloc.bar_time,
-             bgcolor = color.new(C_DN, 78), border_color = color.new(C_DN, 40), border_width = 1)
-        t.tpB := box.new(t.tFill, math.max(t.entry, t.tp), x2, math.min(t.entry, t.tp), xloc = xloc.bar_time,
-             bgcolor = color.new(C_UP, 78), border_color = color.new(C_UP, 40), border_width = 1)
+        if lite
+            if na(t.sLn)
+                t.sLn := line.new(t.tFill, t.sl, x2, t.sl, xloc = xloc.bar_time, color = color.new(C_DN, 20), width = 1)
+            else
+                t.sLn.set_x1(t.tFill)
+                t.sLn.set_style(line.style_solid)
+            if na(t.tLn)
+                t.tLn := line.new(t.tFill, t.tp, x2, t.tp, xloc = xloc.bar_time, color = color.new(C_UP, 20), width = 1)
+            else
+                t.tLn.set_x1(t.tFill)
+                t.tLn.set_style(line.style_solid)
+        else
+            if not na(t.sLn)
+                line.delete(t.sLn)
+            if not na(t.tLn)
+                line.delete(t.tLn)
+            t.sLn := na
+            t.tLn := na
+            t.slB := box.new(t.tFill, math.max(t.entry, t.sl), x2, math.min(t.entry, t.sl), xloc = xloc.bar_time,
+                 bgcolor = color.new(C_DN, 78), border_color = color.new(C_DN, 40), border_width = 1)
+            t.tpB := box.new(t.tFill, math.max(t.entry, t.tp), x2, math.min(t.entry, t.tp), xloc = xloc.bar_time,
+                 bgcolor = color.new(C_UP, 78), border_color = color.new(C_UP, 40), border_width = 1)
         if na(t.eLn)
             t.eLn := line.new(t.tFill, t.entry, x2, t.entry, xloc = xloc.bar_time, color = dc, width = 2)
         else
@@ -577,6 +629,13 @@ updateLive(Trade t) =>
 finish(Trade t, int xe, float px, string why) =>
     dropLabels(t)
     moveRight(t, xe)
+    if lite
+        if not na(t.eLn)
+            t.eLn.set_width(1)
+        if not na(t.sLn)
+            t.sLn.set_color(color.new(C_DN, 55))
+        if not na(t.tLn)
+            t.tLn.set_color(color.new(C_UP, 55))
     if showTrades
         float r = (px - t.entry) * t.dir / t.risk
         label.new(xe, px, why + " " + rTxt(r), xloc = xloc.bar_time, style = label.style_label_left,
@@ -588,13 +647,16 @@ cancelDraw(Trade t, string why) =>
     dropLabels(t)
     moveRight(t, time)
     if not na(t.eLn)
-        t.eLn.set_color(color.new(C_SL, 40))
-        t.eLn.set_width(1)
+        if lite
+            line.delete(t.eLn)
+        else
+            t.eLn.set_color(color.new(C_SL, 40))
+            t.eLn.set_width(1)
     if not na(t.sLn)
         line.delete(t.sLn)
     if not na(t.tLn)
         line.delete(t.tLn)
-    if showTrades
+    if showTrades and not lite
         label.new(time, t.entry, "Annulé", xloc = xloc.bar_time, style = label.style_label_left, color = color(na),
              textcolor = color.new(C_SL, 20), size = size.tiny, tooltip = "Ordre limite annulé : " + why)
     true
@@ -670,6 +732,12 @@ if not na(cur)
             strategy.exit("X " + cur.id, from_entry = cur.id, stop = cur.entry, limit = cur.tp, comment_profit = "TP", comment_loss = "BE")
             if not na(cur.slB)
                 cur.slB.set_bgcolor(color.new(C_SL, 80))
+            if not na(cur.sLn)
+                cur.sLn.set_y1(cur.entry)
+                cur.sLn.set_y2(cur.entry)
+            if not na(cur.sLb)
+                cur.sLb.set_y(cur.entry)
+                cur.sLb.set_text("SL · " + fmt(cur.entry) + " · entrée")
             alert(tgPayload(syminfo.ticker + " · " + cur.id + " : stop déplacé au prix d'entrée (" + fmt(cur.entry) + ")"), alert.freq_once_per_bar_close)
         moveRight(cur, time + FUT)
         updateLive(cur)
@@ -692,6 +760,7 @@ if pools.size() > 0
                 p.used := true
                 if not na(p.ln)
                     p.ln.set_x2(time)
+                retirePool(p, false)
                 int side = p.dir == -1 ? 0 : 1
                 if live
                     cSweep += 1
@@ -714,6 +783,8 @@ if pools.size() > 0
                     cOut += 1
             else if not na(p.ln) and not inFlat
                 p.ln.set_x2(time)
+                if lite and not na(p.lb)
+                    p.lb.set_x(time)
 
 // ═════════════════════════ Confirmation : CHoCH M5 ou reclôture ═════════════════════════
 int    sigDir  = 0
@@ -828,7 +899,7 @@ if sigDir != 0
             cur := Trade.new(id = id, dir = sigDir, entry = ent, sl = slPx, tp = tp, risk = dist, bar0 = bar_index, msg = msg, sess = sessNow, kind = sp.kind, tpTx = tpTx)
             if isLim
                 drawPending(cur)
-            if showSetup
+            if vSweep
                 label.new(time, sigExt, what, xloc = xloc.bar_time, color = color(na),
                      style = sigDir == 1 ? label.style_label_up : label.style_label_down,
                      textcolor = color.new(sigDir == 1 ? C_UP : C_DN, 10), size = size.small,
@@ -843,8 +914,25 @@ cellRow(table t, int r, string k, string v, color c) =>
 biasColor(int b) =>
     b == 1 ? C_UP : b == -1 ? C_DN : chart.fg_color
 
+var table tl = table.new(position.top_right, 2, 4, bgcolor = color.new(color.gray, 90), border_width = 0, frame_width = 0)
+if lite and showTable and barstate.islast
+    color  fg  = chart.fg_color
+    string st0 = not na(cur) and cur.filled ? cur.id + " ouvert" :
+         not na(cur) ? "Ordre limite en attente" :
+         inAsia ? "Asie : range en formation" :
+         stOn.get(0) or stOn.get(1) ? "Sweep → attente de la confirmation" :
+         nToday >= maxTrades or lossToday >= maxLoss ? "Limite du jour atteinte" :
+         not inKZ ? "Hors kill zone" : "Attente d'un sweep"
+    float  lr0 = not na(cur) and cur.filled ? liveR(cur) : na
+    cellRow(tl, 0, "État", st0, fg)
+    cellRow(tl, 1, "Position", na(cur) ? "Aucune" : cur.filled ? cur.id + " · " + rTxt(lr0) : (cur.dir == 1 ? "Achat" : "Vente") + " limite à " + fmt(cur.entry),
+         na(cur) ? fg : cur.filled ? (lr0 >= 0 ? C_UP : C_DN) : (cur.dir == 1 ? C_UP : C_DN))
+    cellRow(tl, 2, "Aujourd'hui", str.tostring(nToday) + " / " + str.tostring(maxTrades) + " trades · " + str.tostring(lossToday) + " perte(s)", fg)
+    cellRow(tl, 3, "Historique", nClosed == 0 ? "aucun trade" : str.tostring(nClosed) + " trades · " + str.tostring(100.0 * nPos / nClosed, "0") + " % gagnants · " + rTxt(sumR),
+         nClosed == 0 ? fg : sumR >= 0 ? C_UP : C_DN)
+
 var table tb = table.new(position.top_right, 2, 7, bgcolor = color.new(color.gray, 90), border_width = 0, frame_width = 0)
-if showTable and barstate.islast
+if not lite and showTable and barstate.islast
     color fg = chart.fg_color
     cellRow(tb, 0, "Biais du jour", biasTxt(biasNow) + (biasSrc == B_NONE ? " (pas de filtre)" : " · " + (biasUse == U_WITH ? "dans le sens" : "contre")), biasColor(biasNow))
     cellRow(tb, 1, "Journalier", biasTxt(dBias) + " : " + dWhy, biasColor(dBias))
@@ -871,7 +959,7 @@ if showTable and barstate.islast
     cellRow(tb, 6, "Aujourd'hui", str.tostring(nToday) + " / " + str.tostring(maxTrades) + " trades · " + str.tostring(lossToday) + " / " + str.tostring(maxLoss) + " perte(s)", fg)
 
 var table dg = table.new(position.bottom_right, 2, 12, bgcolor = color.new(color.gray, 90), border_width = 0, frame_width = 0)
-if showDiag and barstate.islast
+if vDiag and barstate.islast
     color fg  = chart.fg_color
     color bad = color.new(C_DN, 20)
     cellRow(dg, 0, "Poches prises en kill zone", str.tostring(cSweep), fg)
@@ -888,7 +976,7 @@ if showDiag and barstate.islast
     cellRow(dg, 11, "Exécutés · gagnants", str.tostring(nFilled) + " · " + str.tostring(nPos), C_UP)
 
 var table stt = table.new(position.bottom_left, 2, 16, bgcolor = color.new(color.gray, 90), border_width = 0, frame_width = 0)
-if showStats and barstate.islast
+if vStats and barstate.islast
     color  fg    = chart.fg_color
     float  wr    = nClosed > 0 ? 100.0 * nPos / nClosed : na
     float  exR   = nClosed > 0 ? sumR / nClosed : na
