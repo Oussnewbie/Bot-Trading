@@ -7,13 +7,12 @@ se fait prendre pendant une kill zone, puis le prix se retourne. Toutes les heur
 
 | Fichier | Rôle |
 |---|---|
-| `pine/AMD-plus-v1.pine` | Première version : sweep du range asiatique puis reclôture dans le range. Tes réglages du 09/11/2026 en valeurs par défaut. |
-| `pine/AMD-plus-v2.pine` | Version 2 : confirmation par changement de structure M5 (CHoCH), poches Asie / veille / Londres / NY matin, 3 kill zones, premium / discount, objectif sur la liquidité opposée, statistiques par séance et par poche. Affichage épuré par défaut (les trades pris restent visibles avec leur résultat en R), mode complet en option. Risque 2 %, 2 trades et 3 pertes max par jour. |
-| `backtest/` | Simulateur Python qui reproduit les règles du script, bougie par bougie, pour tester des variantes hors de TradingView. |
+| `pine/AMD-plus-v2.pine` | La stratégie : confirmation par changement de structure M5 (CHoCH), poches Asie / veille / Londres / NY matin, 3 kill zones, premium / discount, objectif sur la liquidité opposée, statistiques par séance et par poche. Affichage épuré par défaut (les trades pris restent visibles avec leur résultat en R), mode complet en option. Risque 2 %, 2 trades et 3 pertes max par jour. |
+| `backtest/` | Simulateur Python qui reproduit les règles du script, bougie par bougie, pour tester des variantes hors de TradingView. Il garde aussi les règles de l'ancienne v1 (retirée du dépôt) pour comparaison. |
 
-## Utiliser un script
+## Utiliser le script
 
-1. Dans TradingView, ouvre l'éditeur Pine, crée un nouveau script, colle le contenu du fichier `.pine` et enregistre.
+1. Dans TradingView, ouvre l'éditeur Pine, crée un nouveau script, colle le contenu de `pine/AMD-plus-v2.pine` et enregistre.
 2. Ajoute-le sur un graphique **M5**.
 3. Après chaque changement de réglage, supprime et recrée les alertes Telegram : une alerte garde les réglages du moment où elle a été créée.
 
@@ -21,7 +20,7 @@ se fait prendre pendant une kill zone, puis le prix se retourne. Toutes les heur
 
 | | Trades | Gagnants | Espérance | Total | Pire série |
 |---|---|---|---|---|---|
-| v1 (tes réglages) | 254 | 33 % | -0,01R | -2R | 9 pertes |
+| ancienne v1 (simple reclôture) | 254 | 33 % | -0,01R | -2R | 9 pertes |
 | v2 (réglages par défaut) | 110 | 42 % | +0,43R | +48R | 8 pertes |
 
 - v2 positive sur les 6 marchés et sur chacun des 3 mois. Nasdaq seul : v1 -3R en 42 trades, v2 +5R en 19 trades.
