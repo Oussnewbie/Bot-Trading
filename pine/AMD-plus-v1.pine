@@ -1,0 +1,708 @@
+//@version=6
+// AMD multi-marchés — Accumulation (Asie) → Manipulation (sweep du range Asie à Londres) → Distribution
+// Graphique M5, tout marché : indices (NQ, ES, YM, NAS100, US500…), forex, or, crypto. Toutes les heures sont en heure de New York.
+// Version généralisée du script Nasdaq : mêmes règles, taille de position convertie en USD, actif corrélé de la SMT
+// choisi automatiquement, et tableau de statistiques en R pour comparer les marchés entre eux.
+//
+// Règles (valeurs par défaut) :
+//  1. Accumulation : le range de la session asiatique (19:00-02:00 NY, soit 01:00-08:00 Paris) fixe deux poches
+//                    de liquidité, le high et le low de l'Asie.
+//  2. Manipulation : pendant la kill zone de Londres (02:00-05:00 NY), et aussi celle de New York (08:30-11:00 NY),
+//                    le prix prend un côté du range (sweep).
+//  3. Confirmation : une bougie M5 reclôture dans le range dans les 6 bougies. Sinon c'est une vraie cassure :
+//                    ce côté est abandonné pour la journée.
+//  4. Entrée       : ordre limite au milieu de la bougie de reclôture (jamais au marché en haut de la bougie).
+//                    Annulé après 20 bougies, à la fin de la kill zone, ou si l'objectif est atteint avant.
+//  5. Stop         : au-delà de la mèche du sweep (+ 0,1 ATR M5), au moins 1 ATR M5.
+//  6. Objectif     : 2R (distribution).
+//     Marge        : le stop peut être éloigné d'un écart fixe selon le marché (Nasdaq 0 point, forex 40 pips),
+//                    puis l'objectif est placé à 2R du stop final. La taille est calculée sur le stop final.
+//  7. Gestion      : risque 2 % par trade, un trade à la fois, chaque côté du range une seule fois par jour,
+//                    2 trades max par jour. Tout est fermé à 15:50 NY.
+//  Filtres optionnels : divergence SMT avec l'actif corrélé, biais H1.
+strategy("AMD Asie / Londres multi-marchés (marge SL)", shorttitle = "AMD+", overlay = true,
+     initial_capital = 10000, currency = currency.USD, pyramiding = 1,
+     process_orders_on_close = true, margin_long = 0, margin_short = 0, slippage = 2,
+     max_lines_count = 500, max_boxes_count = 500, max_labels_count = 500)
+
+// ═════════════════════════ Paramètres ═════════════════════════
+GR = "Risque"
+riskPct   = input.float(2.0, "Risque par trade (% du capital)", minval = 0.1, step = 0.1, tooltip = "Sur le backtest NQ de juin à novembre 2026, la pire série de pertes a coûté environ 9R : 9 % du capital à 1 %, 18 % à 2 %, plus de 30 % à 4 %.", group = GR)
+maxTrades = input.int(2, "Trades max par jour", minval = 1, maxval = 2, group = GR)
+maxLoss   = input.int(3, "Pertes max par jour", minval = 1, group = GR)
+qtyStepIn = input.float(0, "Pas de taille (0 = auto)", minval = 0, step = 0.01, tooltip = "Taille minimale chez le broker, en unités TradingView. Auto : futures = 1 contrat, forex = 1000 unités (0,01 lot), crypto = 0,0001, actions = 1, CFD = 0,01. Toujours 1 contrat sur les futures.", group = GR)
+
+GS = "Sessions (heure de New York)"
+asiaS     = input.session("1900-0200", "Asie : accumulation", tooltip = "01:00-08:00 à Paris la plupart de l'année.", group = GS)
+lonS      = input.session("0200-0500", "Kill zone Londres : manipulation", tooltip = "08:00-11:00 à Paris la plupart de l'année.", group = GS)
+useNY     = input.bool(true, "Trader aussi la kill zone New York", inline = "ny", group = GS)
+nyS       = input.session("0830-1100", "", inline = "ny", tooltip = "Sweep du range Asie encore intact pendant New York. Sur le backtest NQ, les sweeps de New York prolongent plus souvent le mouvement qu'ils ne se retournent (négatif sur la période testée).", group = GS)
+flatS     = input.session("1550-1800", "Fermeture de fin de journée", tooltip = "Toutes les positions sont fermées dans cette fenêtre. 15:50 NY convient aux indices US ; sur le forex ou la crypto, tu peux la décaler (ex. 1645-1700).", group = GS)
+
+GP = "Setup"
+reclaimMax = input.int(6, "Reclôture dans le range sous (bougies)", minval = 0, maxval = 12, tooltip = "Nombre de bougies après la première clôture hors du range pour revenir à l'intérieur. 0 = la bougie du sweep doit reclôturer dans le range.", group = GP)
+entryMode  = input.string("Milieu de la bougie de reclôture", "Entrée", options = ["Milieu de la bougie de reclôture", "Clôture de la bougie de reclôture"], group = GP)
+rrT        = input.float(2.0, "Objectif (R)", minval = 0.5, step = 0.25, group = GP)
+slBuf      = input.float(0.1, "Marge du stop au-delà de la mèche (ATR M5)", minval = 0.0, step = 0.05, group = GP)
+minStop    = input.float(1.0, "Stop minimum (ATR M5)", minval = 0.1, step = 0.1, group = GP)
+limitBars  = input.int(20, "Durée de l'ordre limite (bougies M5)", minval = 1, maxval = 60, group = GP)
+
+GM = "Marge de sécurité sur le SL"
+padNas   = input.float(0.0, "Nasdaq : écart ajouté au SL (points)", minval = 0, step = 1, tooltip = "NQ, MNQ, NAS100, US100, USTEC, NDX. Le stop est éloigné de cet écart, puis l'objectif est placé à 2R du stop final. La taille est calculée sur le stop final : le risque reste le même. 0 = pas de marge.", group = GM)
+padFx    = input.float(40.0, "Forex : écart ajouté au SL (pips)", minval = 0, step = 1, tooltip = "EURUSD et les autres paires. Même principe : objectif à 2R du stop final.", group = GM)
+padOther = input.float(0.0, "Autres marchés : écart ajouté au SL (prix)", minval = 0, tooltip = "Or, ES, crypto… En unités de prix (ex. 2.0 sur l'or = 2 $).", group = GM)
+
+GF = "Filtres"
+useSMT    = input.bool(false, "Divergence SMT avec l'actif corrélé", tooltip = "Le setup n'est pris que si l'actif corrélé n'a PAS dépassé son propre range asiatique du même côté : la liquidité n'a été prise que sur le marché tradé. Sur le backtest NQ (avec l'ES), environ 2 fois moins de trades, mais nettement meilleurs.", group = GF)
+smtSymIn  = input.string("", "Actif corrélé (vide = auto)", tooltip = "Vide : choisi selon le marché (NQ ↔ ES, YM / RTY → ES, EURUSD ↔ GBPUSD, AUDUSD ↔ NZDUSD, or ↔ argent, BTC ↔ ETH). Sinon, un symbole complet, ex. PEPPERSTONE:US500 : sur un CFD, prends celui du même broker. Les futures CME sont en différé sans abonnement aux données CME.", group = GF)
+smtInv    = input.bool(false, "Corrélation inverse", tooltip = "À cocher si l'actif corrélé évolue à l'inverse (ex. EURUSD contre DXY) : un sweep du high doit alors correspondre à un low de l'actif corrélé qui tient.", group = GF)
+biasMode  = input.string("Aucun", "Filtre de biais H1", options = ["Aucun", "Dans le sens du biais H1", "Contre le biais H1"], tooltip = "Biais = structure H1 (cassure en clôture du dernier swing). Sur le backtest NQ, les trades contre le biais H1 ont été bien meilleurs que ceux dans le sens du biais : la manipulation de Londres prolonge souvent la dérive de l'Asie avant de se retourner.", group = GF)
+
+GT = "Telegram"
+tgChat    = input.string("-1003571455927", "Chat ID", tooltip = "Rempli : alertes au format de l'API Telegram. URL de webhook : https://api.telegram.org/bot<TOKEN>/sendMessage", group = GT)
+
+GA = "Affichage"
+viewMode  = input.string("Complet", "Mode d'affichage", options = ["Exécution (épuré)", "Complet"],
+     tooltip = "Exécution : seulement les niveaux de liquidité (high / low de l'Asie), les ordres placés (entrée, stop, objectif avec leurs prix) et les flèches d'entrée. Complet : tout, selon les cases ci-dessous.", group = GA)
+showLv    = input.bool(true, "Niveaux de liquidité (high / low de l'Asie)", group = GA)
+showTrades = input.bool(true, "Ordres et trades", group = GA)
+showBox   = input.bool(true, "Complet : boîte du range asiatique", group = GA)
+showSetup = input.bool(true, "Complet : sweeps", group = GA)
+showKZ    = input.bool(true, "Complet : fond des kill zones", group = GA)
+showRej   = input.bool(true, "Complet : setups écartés (raison au survol)", group = GA)
+showTable = input.bool(true, "Complet : tableau de bord", group = GA)
+showDiag  = input.bool(true, "Complet : diagnostic (entonnoir des setups)", group = GA)
+showStats = input.bool(true, "Statistiques en R (dans les deux modes)", tooltip = "Résultats exprimés en R : comparables d'un marché à l'autre, quels que soient le capital, la taille du contrat ou la devise.", group = GA)
+
+// Mode exécution : tout ce qui n'est ni un niveau de liquidité ni un ordre est masqué
+bool lite   = viewMode == "Exécution (épuré)"
+bool vBox   = not lite and showBox
+bool vSweep = not lite and showSetup
+bool vKZ    = not lite and showKZ
+bool vRej   = not lite and showRej
+bool vTable = not lite and showTable
+bool vDiag  = not lite and showDiag
+
+// ═════════════════════════ Réglages fixes ═════════════════════════
+TZ_NY     = "America/New_York"
+TZ_PARIS  = "Europe/Paris"
+H1_LEN    = 2
+FUT       = 10 * 300000   // les niveaux d'un trade vivant sont projetés 10 bougies à droite
+
+C_LON  = #4FC3F7
+C_NY   = #FFB74D
+
+C_ASIA = #BA68C8
+C_UP   = #26A69A
+C_DN   = #EF5350
+C_SL   = #787B86
+C_TP   = #2962FF
+
+if timeframe.in_seconds() != 300
+    runtime.error("Ce script se trade sur un graphique M5.")
+
+string tk      = str.upper(syminfo.ticker)
+bool   isFut   = syminfo.type == "futures"
+bool   isFx    = syminfo.type == "forex"
+bool   isNasS  = str.contains(tk, "NQ") or str.contains(tk, "NAS") or str.contains(tk, "NDX") or str.contains(tk, "US100") or str.contains(tk, "USTEC") or str.contains(tk, "TECH100")
+// Taille d'un pip : 10 ticks sur une cotation à 5 ou 3 décimales (EURUSD 1.08123, USDJPY 151.234), sinon 1 tick
+int    pxDig   = int(math.round(math.log10(1 / syminfo.mintick)))
+float  pipSz   = pxDig % 2 == 1 ? syminfo.mintick * 10 : syminfo.mintick
+// Marge ajoutée au stop, en prix
+float  padPx   = isFx ? padFx * pipSz : isNasS ? padNas : padOther
+float  qtyStep = isFut ? 1.0 : qtyStepIn > 0 ? qtyStepIn : isFx ? 1000.0 : syminfo.type == "crypto" ? 0.0001 : syminfo.type == "stock" ? 1.0 : 0.01
+
+// Actif corrélé de la SMT, choisi d'après le marché affiché (vide = pas de correspondance connue)
+autoPeer() =>
+    string s = ""
+    if str.contains(tk, "NQ") or str.contains(tk, "NAS") or str.contains(tk, "NDX") or str.contains(tk, "US100") or str.contains(tk, "USTEC") or str.contains(tk, "TECH100")
+        s := "CME_MINI:ES1!"
+    else if (isFut and (str.startswith(tk, "ES") or str.startswith(tk, "MES"))) or str.contains(tk, "SPX") or str.contains(tk, "US500") or str.contains(tk, "SP500")
+        s := "CME_MINI:NQ1!"
+    else if (isFut and (str.startswith(tk, "YM") or str.startswith(tk, "MYM") or str.startswith(tk, "RTY") or str.startswith(tk, "M2K"))) or str.contains(tk, "US30") or str.contains(tk, "WS30") or str.contains(tk, "DJI") or str.contains(tk, "US2000")
+        s := "CME_MINI:ES1!"
+    else if str.startswith(tk, "EURUSD")
+        s := "FX:GBPUSD"
+    else if str.startswith(tk, "GBPUSD")
+        s := "FX:EURUSD"
+    else if str.startswith(tk, "AUDUSD")
+        s := "FX:NZDUSD"
+    else if str.startswith(tk, "NZDUSD")
+        s := "FX:AUDUSD"
+    else if str.contains(tk, "XAU") or str.contains(tk, "GOLD") or (isFut and (str.startswith(tk, "GC") or str.startswith(tk, "MGC")))
+        s := isFut ? "COMEX:SI1!" : "OANDA:XAGUSD"
+    else if str.contains(tk, "XAG") or str.contains(tk, "SILVER") or (isFut and str.startswith(tk, "SI"))
+        s := isFut ? "COMEX:GC1!" : "OANDA:XAUUSD"
+    else if str.contains(tk, "BTC")
+        s := "BINANCE:ETHUSDT"
+    else if str.contains(tk, "ETH")
+        s := "BINANCE:BTCUSDT"
+    s
+
+string peerSym  = smtSymIn != "" ? smtSymIn : autoPeer()
+bool   smtAvail = peerSym != ""
+
+// ═════════════════════════ Données externes ═════════════════════════
+// Biais H1 : dernière cassure en clôture d'un swing H1, lue sur la bougie H1 déjà clôturée
+h1Trend(int len) =>
+    float ph = ta.pivothigh(high, len, len)
+    float pl = ta.pivotlow(low, len, len)
+    var float sh     = na
+    var float sl     = na
+    var bool  shDone = false
+    var bool  slDone = false
+    var int   trend  = 0
+    if not na(ph)
+        sh     := ph
+        shDone := false
+    if not na(pl)
+        sl     := pl
+        slDone := false
+    if not na(sh) and not shDone and close > sh
+        shDone := true
+        trend  := 1
+    if not na(sl) and not slDone and close < sl
+        slDone := true
+        trend  := -1
+    trend[1]
+
+int bias = nz(request.security(syminfo.tickerid, "60", h1Trend(H1_LEN), lookahead = barmerge.lookahead_on))
+[esH0, esL0] = request.security(smtAvail ? peerSym : syminfo.tickerid, timeframe.period, [high, low])
+// Corrélation inverse : les prix de l'actif corrélé sont inversés, son high joue le rôle de son low
+float esH = smtInv ? -esL0 : esH0
+float esL = smtInv ? -esH0 : esL0
+// Conversion de la devise de cotation en USD (USDJPY, DAX en EUR…) pour la taille de position
+float fx = nz(request.currency_rate(syminfo.currency, "USD", ignore_invalid_currency = true), 1.0)
+float atr5 = ta.atr(14)
+
+// ═════════════════════════ Outils ═════════════════════════
+fmt(float x) =>
+    str.tostring(x, format.mintick)
+
+// Distance de prix lisible : en pips sur le forex, en points ailleurs
+distTxt(float d) =>
+    isFx ? str.tostring(d / pipSz, "0.0") + " pips" : fmt(d) + " pts"
+
+tgPayload(string msg) =>
+    string t = str.replace_all(str.replace_all(msg, "\\", "\\\\"), "\"", "\\\"")
+    t := str.replace_all(t, "\n", "\\n")
+    tgChat == "" ? msg : "{\"chat_id\": \"" + tgChat + "\", \"text\": \"" + t + "\"}"
+
+markReject(int dir, string why) =>
+    if vRej
+        label.new(time, dir == 1 ? low : high, dir == 1 ? "△" : "▽", xloc = xloc.bar_time, color = color(na),
+             style = dir == 1 ? label.style_label_up : label.style_label_down,
+             textcolor = color.new(dir == 1 ? C_UP : C_DN, 45), size = size.small,
+             tooltip = (dir == 1 ? "Achat écarté" : "Vente écartée") + " · " + str.format_time(time, "dd/MM HH:mm", TZ_PARIS) + " (Paris)\n" + why)
+    true
+
+// ═════════════════════════ Sessions ═════════════════════════
+bool inAsia = not na(time(timeframe.period, asiaS, TZ_NY))
+bool inLon  = not na(time(timeframe.period, lonS, TZ_NY))
+bool inNYk  = useNY and not na(time(timeframe.period, nyS, TZ_NY))
+bool inKZ   = inLon or inNYk
+bool inFlat = not na(time(timeframe.period, flatS, TZ_NY))
+
+bgcolor(vKZ and inLon ? color.new(C_LON, 94) : vKZ and inNYk ? color.new(C_NY, 94) : na, title = "Kill zones")
+
+var float aHi   = na
+var float aLo   = na
+var int   aT0   = 0
+var float eAH   = na      // range asiatique de l'actif corrélé
+var float eAL   = na
+var float ePH   = na      // extrêmes de l'actif corrélé depuis la fin de l'Asie
+var float ePL   = na
+var float rH    = na      // range asiatique figé, liquidité du jour
+var float rL    = na
+var box   aBox  = na
+var line  lnH   = na
+var line  lnL   = na
+var bool  usedH = false
+var bool  usedL = false
+var int   stDir = 0       // sweep en cours : -1 = high pris (vente), 1 = low pris (achat)
+var float stExt = na
+var int   stBar = 0
+var int   nToday    = 0
+var int   lossToday = 0
+
+// Diagnostic
+var int cSweep = 0
+var int cNoRec = 0
+var int cSig   = 0
+var int cSmt   = 0
+var int cBias  = 0
+var int cBusy  = 0
+var int cOrder = 0
+var int cMiss  = 0
+var int cExp   = 0
+var int nWin   = 0
+
+// Statistiques en R
+var float sumR    = 0.0
+var float winR    = 0.0
+var float lossR   = 0.0
+var float peakR   = 0.0
+var float ddR     = 0.0
+var int   nClosed = 0
+var int   nPos    = 0
+var int   streak  = 0
+var int   worstSt = 0
+var int   firstTr = 0
+var int   lastTr  = 0
+
+// Nouvelle journée au début de la session asiatique
+if inAsia and not inAsia[1]
+    aHi       := high
+    aLo       := low
+    aT0       := time
+    eAH       := esH
+    eAL       := esL
+    rH        := na
+    rL        := na
+    usedH     := false
+    usedL     := false
+    stDir     := 0
+    nToday    := 0
+    lossToday := 0
+    aBox := vBox ? box.new(time, high, time, low, xloc = xloc.bar_time, bgcolor = color.new(C_ASIA, 92), border_width = 0) : na
+else if inAsia
+    aHi := math.max(aHi, high)
+    aLo := math.min(aLo, low)
+    if not na(esH)
+        eAH := na(eAH) ? esH : math.max(eAH, esH)
+    if not na(esL)
+        eAL := na(eAL) ? esL : math.min(eAL, esL)
+    if not na(aBox)
+        aBox.set_top(aHi)
+        aBox.set_bottom(aLo)
+        aBox.set_right(time)
+
+// Fin de l'Asie : le range devient la liquidité du jour
+if not inAsia and inAsia[1] and not na(aHi)
+    rH  := aHi
+    rL  := aLo
+    ePH := na
+    ePL := na
+    if showLv
+        lnH := line.new(aT0, rH, time, rH, xloc = xloc.bar_time, color = C_ASIA, style = line.style_dotted, width = 1)
+        lnL := line.new(aT0, rL, time, rL, xloc = xloc.bar_time, color = C_ASIA, style = line.style_dotted, width = 1)
+        label.new(aT0, rH, "Asie H · " + fmt(rH), xloc = xloc.bar_time, color = color(na), style = label.style_label_lower_left, textcolor = C_ASIA, size = size.small)
+        label.new(aT0, rL, "Asie L · " + fmt(rL), xloc = xloc.bar_time, color = color(na), style = label.style_label_upper_left, textcolor = C_ASIA, size = size.small)
+
+bool dayLive = not inAsia and not na(rH)
+if dayLive
+    if not na(esH)
+        ePH := na(ePH) ? esH : math.max(ePH, esH)
+    if not na(esL)
+        ePL := na(ePL) ? esL : math.min(ePL, esL)
+    if not na(lnH) and not inFlat
+        lnH.set_x2(time)
+        lnL.set_x2(time)
+
+// ═════════════════════════ Trade en cours ═════════════════════════
+type Trade
+    string id
+    int    dir
+    float  entry
+    float  sl
+    float  tp
+    int    bar0
+    string msg
+    bool   filled = false
+    int    tFill  = 0
+    line   eLn    = na    // entrée
+    line   sLn    = na    // stop (ordre en attente)
+    line   tLn    = na    // objectif (ordre en attente)
+    box    slB    = na    // zone de risque (trade ouvert)
+    box    tpB    = na    // zone de gain (trade ouvert)
+    label  eLb    = na
+    label  sLb    = na
+    label  tLb    = na
+
+var Trade cur     = na
+var int   seen    = 0
+var int   nFilled = 0
+var int   firstT  = time
+var int   tradeN  = 0
+
+rTxt(float r) =>
+    (r >= 0 ? "+" : "") + str.tostring(r, "0.0") + "R"
+
+liveR(Trade t) =>
+    (close - t.entry) * t.dir / math.abs(t.entry - t.sl)
+
+// Libellés de prix posés à droite des niveaux
+sideLabel(int x, float y, string txt, color bg, string tip) =>
+    label.new(x, y, txt, xloc = xloc.bar_time, style = label.style_label_left, color = bg,
+         textcolor = color.white, size = size.small, tooltip = tip)
+
+dropLabels(Trade t) =>
+    if not na(t.eLb)
+        label.delete(t.eLb)
+    if not na(t.sLb)
+        label.delete(t.sLb)
+    if not na(t.tLb)
+        label.delete(t.tLb)
+    t.eLb := na
+    t.sLb := na
+    t.tLb := na
+    true
+
+// Déplace le bord droit de tous les dessins du trade (projetés dans le futur tant que le trade vit)
+moveRight(Trade t, int x2) =>
+    if not na(t.eLn)
+        t.eLn.set_x2(x2)
+    if not na(t.sLn)
+        t.sLn.set_x2(x2)
+    if not na(t.tLn)
+        t.tLn.set_x2(x2)
+    if not na(t.slB)
+        t.slB.set_right(x2)
+    if not na(t.tpB)
+        t.tpB.set_right(x2)
+    if not na(t.eLb)
+        t.eLb.set_x(x2)
+    if not na(t.sLb)
+        t.sLb.set_x(x2)
+    if not na(t.tLb)
+        t.tLb.set_x(x2)
+    true
+
+// Ordre limite en attente : entrée en tirets, stop et objectif en pointillés, prix à droite
+drawPending(Trade t) =>
+    if showTrades
+        int   x2 = time + FUT
+        color dc = t.dir == 1 ? C_UP : C_DN
+        t.eLn := line.new(time, t.entry, x2, t.entry, xloc = xloc.bar_time, color = dc, style = line.style_dashed, width = 2)
+        t.sLn := line.new(time, t.sl, x2, t.sl, xloc = xloc.bar_time, color = color.new(C_DN, 20), style = line.style_dotted, width = 1)
+        t.tLn := line.new(time, t.tp, x2, t.tp, xloc = xloc.bar_time, color = color.new(C_UP, 20), style = line.style_dotted, width = 1)
+        t.eLb := sideLabel(x2, t.entry, (t.dir == 1 ? "Achat" : "Vente") + " limite · " + fmt(t.entry), color.new(dc, 10), t.msg)
+        t.sLb := sideLabel(x2, t.sl, "SL · " + fmt(t.sl), color.new(C_DN, 35), "Stop : au-delà de la mèche du sweep")
+        t.tLb := sideLabel(x2, t.tp, "TP · " + fmt(t.tp) + " · " + str.tostring(rrT, "0.0#") + "R", color.new(C_UP, 35), "Objectif")
+    true
+
+// Trade exécuté. Mode exécution : entrée, stop et objectif restent des lignes en trait plein.
+// Mode complet : zones de risque et de gain pleines.
+drawOpen(Trade t) =>
+    if showTrades
+        int   x2 = time + FUT
+        color dc = t.dir == 1 ? C_UP : C_DN
+        dropLabels(t)
+        if lite
+            if na(t.sLn)
+                t.sLn := line.new(t.tFill, t.sl, x2, t.sl, xloc = xloc.bar_time, color = color.new(C_DN, 20), width = 1)
+            else
+                t.sLn.set_x1(t.tFill)
+                t.sLn.set_style(line.style_solid)
+            if na(t.tLn)
+                t.tLn := line.new(t.tFill, t.tp, x2, t.tp, xloc = xloc.bar_time, color = color.new(C_UP, 20), width = 1)
+            else
+                t.tLn.set_x1(t.tFill)
+                t.tLn.set_style(line.style_solid)
+        else
+            if not na(t.sLn)
+                line.delete(t.sLn)
+            if not na(t.tLn)
+                line.delete(t.tLn)
+            t.sLn := na
+            t.tLn := na
+            t.slB := box.new(t.tFill, math.max(t.entry, t.sl), x2, math.min(t.entry, t.sl), xloc = xloc.bar_time,
+                 bgcolor = color.new(C_DN, 78), border_color = color.new(C_DN, 40), border_width = 1)
+            t.tpB := box.new(t.tFill, math.max(t.entry, t.tp), x2, math.min(t.entry, t.tp), xloc = xloc.bar_time,
+                 bgcolor = color.new(C_UP, 78), border_color = color.new(C_UP, 40), border_width = 1)
+        if na(t.eLn)
+            t.eLn := line.new(t.tFill, t.entry, x2, t.entry, xloc = xloc.bar_time, color = dc, width = 2)
+        else
+            t.eLn.set_xy1(t.tFill, t.entry)
+            t.eLn.set_y2(t.entry)
+            t.eLn.set_style(line.style_solid)
+        label.new(t.tFill, t.entry, t.dir == 1 ? "▲" : "▼", xloc = xloc.bar_time, color = color(na),
+             style = t.dir == 1 ? label.style_label_up : label.style_label_down,
+             textcolor = dc, size = size.normal, tooltip = t.msg)
+        t.eLb := sideLabel(x2, t.entry, t.id + " · " + fmt(t.entry), color.new(dc, 10), t.msg)
+        t.sLb := sideLabel(x2, t.sl, "SL · " + fmt(t.sl) + " · -1R", color.new(C_DN, 35), "Stop")
+        t.tLb := sideLabel(x2, t.tp, "TP · " + fmt(t.tp) + " · +" + str.tostring(rrT, "0.0#") + "R", color.new(C_UP, 35), "Objectif")
+    true
+
+// Trade ouvert : résultat latent mis à jour à chaque bougie
+updateLive(Trade t) =>
+    if not na(t.eLb) and not lite
+        float r = liveR(t)
+        t.eLb.set_text(t.id + " · " + fmt(t.entry) + " · " + rTxt(r))
+        t.eLb.set_color(color.new(r >= 0 ? C_UP : C_DN, 10))
+    true
+
+// Trade clôturé : les zones s'arrêtent à la sortie, résultat affiché au point de sortie
+finish(Trade t, int xe, float px, string why) =>
+    dropLabels(t)
+    moveRight(t, xe)
+    if lite
+        // Mode exécution : il ne reste que la flèche d'entrée
+        if not na(t.eLn)
+            line.delete(t.eLn)
+        if not na(t.sLn)
+            line.delete(t.sLn)
+        if not na(t.tLn)
+            line.delete(t.tLn)
+    else if showTrades
+        float r = (px - t.entry) * t.dir / math.abs(t.entry - t.sl)
+        label.new(xe, px, why + " " + rTxt(r), xloc = xloc.bar_time, style = label.style_label_left,
+             color = color.new(r >= 0 ? C_UP : C_DN, 15), textcolor = color.white, size = size.small,
+             tooltip = t.id + " · entrée " + fmt(t.entry) + " · sortie " + fmt(px))
+    true
+
+// Ordre annulé : les niveaux s'arrêtent et passent en gris
+cancelDraw(Trade t, string why) =>
+    dropLabels(t)
+    moveRight(t, time)
+    if not na(t.eLn)
+        t.eLn.set_color(color.new(C_SL, 40))
+        t.eLn.set_width(1)
+    if not na(t.sLn)
+        line.delete(t.sLn)
+    if not na(t.tLn)
+        line.delete(t.tLn)
+    if lite and not na(t.eLn)
+        line.delete(t.eLn)
+    if showTrades and not lite
+        label.new(time, t.entry, "Annulé", xloc = xloc.bar_time, style = label.style_label_left, color = color(na),
+             textcolor = color.new(C_SL, 20), size = size.tiny, tooltip = "Ordre limite annulé : " + why)
+    true
+
+if not na(cur)
+    if strategy.closedtrades > seen
+        // Trade clôturé (éventuellement exécuté et clôturé sur la même bougie)
+        int k = strategy.closedtrades - 1
+        if not cur.filled
+            cur.filled := true
+            nFilled    += 1
+            cur.tFill  := strategy.closedtrades.entry_time(k)
+            cur.entry  := strategy.closedtrades.entry_price(k)
+            drawOpen(cur)
+        float px = strategy.closedtrades.exit_price(k)
+        float rr = (px - cur.entry) * cur.dir / math.abs(cur.entry - cur.sl)
+        nClosed += 1
+        sumR    += rr
+        if rr > 0
+            winR   += rr
+            nPos   += 1
+            streak := 0
+        else if rr < 0
+            lossR  -= rr
+            streak += 1
+        worstSt := math.max(worstSt, streak)
+        peakR   := math.max(peakR, sumR)
+        ddR     := math.max(ddR, peakR - sumR)
+        if firstTr == 0
+            firstTr := strategy.closedtrades.entry_time(k)
+        lastTr := strategy.closedtrades.exit_time(k)
+        finish(cur, strategy.closedtrades.exit_time(k), px, strategy.closedtrades.exit_comment(k))
+        if strategy.closedtrades.profit(k) < 0
+            lossToday += 1
+        else
+            nWin += 1
+        alert(tgPayload(syminfo.ticker + " · " + cur.id + " clôturé (" + strategy.closedtrades.exit_comment(k) + ") : " +
+             (rr >= 0 ? "+" : "") + str.tostring(rr, "0.0") + "R à " + fmt(px)), alert.freq_once_per_bar_close)
+        cur := na
+    else if not cur.filled and strategy.position_size != 0
+        cur.filled := true
+        nFilled    += 1
+        cur.tFill  := strategy.opentrades.entry_time(0)
+        cur.entry  := strategy.opentrades.entry_price(0)
+        drawOpen(cur)
+        updateLive(cur)
+        alert(tgPayload(syminfo.ticker + " · " + cur.id + " exécuté à " + fmt(cur.entry)), alert.freq_once_per_bar_close)
+    else if not cur.filled
+        if bar_index > cur.bar0
+            bool missed  = cur.dir == 1 ? high >= cur.tp : low <= cur.tp
+            bool expired = bar_index - cur.bar0 >= limitBars or not inKZ or inFlat
+            if missed or expired
+                if missed
+                    cMiss += 1
+                else
+                    cExp += 1
+                strategy.cancel(cur.id)
+                strategy.cancel("X " + cur.id)
+                string why = missed ? "objectif atteint sans exécution" : not inKZ ? "fin de la kill zone" : "délai dépassé"
+                cancelDraw(cur, why)
+                alert(tgPayload(syminfo.ticker + " · " + cur.id + " : ordre limite annulé (" + why + ")"), alert.freq_once_per_bar_close)
+                cur := na
+            else
+                moveRight(cur, time + FUT)
+    else
+        moveRight(cur, time + FUT)
+        updateLive(cur)
+seen := strategy.closedtrades
+
+// Fermeture de fin de journée
+if inFlat and strategy.position_size != 0
+    strategy.close_all(comment = "Fin de journée")
+
+// ═════════════════════════ Sweep du range asiatique → reclôture ═════════════════════════
+int   sigDir = 0
+float sigExt = na
+
+if dayLive and inKZ and not inFlat
+    for k = 0 to 1
+        int   d    = k == 0 ? -1 : 1
+        float lvl  = d == -1 ? rH : rL
+        bool  used = d == -1 ? usedH : usedL
+        if not used and sigDir == 0
+            if stDir == d
+                stExt := d == -1 ? math.max(stExt, high) : math.min(stExt, low)
+                if d == -1 ? close < lvl : close > lvl
+                    sigDir := d
+                    sigExt := stExt
+                    stDir  := 0
+                    if d == -1
+                        usedH := true
+                    else
+                        usedL := true
+                else if bar_index - stBar > reclaimMax
+                    // Pas de reclôture : vraie cassure, ce côté est abandonné pour la journée
+                    cNoRec += 1
+                    stDir  := 0
+                    if d == -1
+                        usedH := true
+                    else
+                        usedL := true
+                    markReject(d, "Pas de reclôture dans le range en " + str.tostring(reclaimMax) + " bougies : vraie cassure")
+            else if stDir == 0 and (d == -1 ? high > lvl : low < lvl)
+                cSweep += 1
+                if d == -1 ? close < lvl : close > lvl
+                    // Sweep et reclôture sur la même bougie
+                    sigDir := d
+                    sigExt := d == -1 ? high : low
+                    if d == -1
+                        usedH := true
+                    else
+                        usedL := true
+                else
+                    stDir := d
+                    stExt := d == -1 ? high : low
+                    stBar := bar_index
+else if stDir != 0 and not inKZ
+    stDir := 0
+
+// ═════════════════════════ Filtres, stop, objectif, ordre ═════════════════════════
+if sigDir != 0
+    cSig += 1
+    bool   smtOk  = not useSMT or not smtAvail or (sigDir == -1 ? (not na(ePH) and not na(eAH) and ePH <= eAH) : (not na(ePL) and not na(eAL) and ePL >= eAL))
+    bool   biasOk = biasMode == "Aucun" or (biasMode == "Dans le sens du biais H1" ? bias == sigDir : bias == -sigDir)
+    bool   free   = na(cur) and strategy.position_size == 0 and nToday < maxTrades and lossToday < maxLoss
+    string sideTx = sigDir == -1 ? "Asie H" : "Asie L"
+    if not smtOk
+        cSmt += 1
+        markReject(sigDir, "Sweep " + sideTx + " sans divergence SMT : l'actif corrélé (" + peerSym + ") a aussi pris son range asiatique")
+    else if not biasOk
+        cBias += 1
+        markReject(sigDir, "Sweep " + sideTx + " écarté par le filtre de biais H1 (" + (bias == 1 ? "haussier" : bias == -1 ? "baissier" : "neutre") + ")")
+    else if not free
+        cBusy += 1
+        markReject(sigDir, "Sweep " + sideTx + " : trade en cours ou limite du jour atteinte")
+    else
+        bool  atMid = entryMode == "Milieu de la bougie de reclôture"
+        float ent   = atMid ? (open + close) / 2 : close
+        float slPx  = sigExt - sigDir * slBuf * atr5
+        float dist  = math.abs(ent - slPx)
+        if dist < minStop * atr5
+            slPx := ent - sigDir * minStop * atr5
+            dist := minStop * atr5
+        // Marge de sécurité : stop éloigné d'un écart fixe, puis objectif à rrT fois le stop final
+        slPx := slPx - sigDir * padPx
+        dist := dist + padPx
+        float tp  = ent + sigDir * rrT * dist
+        float qty = math.floor((strategy.initial_capital + strategy.netprofit) * riskPct / 100 / (dist * syminfo.pointvalue * fx) / qtyStep) * qtyStep
+        if na(qty) or qty <= 0
+            markReject(sigDir, isFut ? "Moins d'un contrat : passer sur le micro (MNQ, MES, MGC…) ou augmenter le risque" : "Quantité nulle : réduire le pas de taille ou augmenter le risque")
+        else
+            cOrder += 1
+            nToday += 1
+            tradeN += 1
+            string id = (sigDir == 1 ? "Achat #" : "Vente #") + str.tostring(tradeN)
+            if atMid
+                strategy.entry(id, sigDir == 1 ? strategy.long : strategy.short, qty = qty, limit = ent, comment = "Sweep " + sideTx)
+            else
+                strategy.entry(id, sigDir == 1 ? strategy.long : strategy.short, qty = qty, comment = "Sweep " + sideTx)
+            strategy.exit("X " + id, from_entry = id, stop = slPx, limit = tp, comment_profit = "TP", comment_loss = "SL")
+            string msg = syminfo.ticker + " · " + (sigDir == 1 ? "ACHAT" : "VENTE") + (atMid ? " (ordre limite)" : " (au marché)") +
+                 "\n" + str.format_time(time, "dd/MM HH:mm", TZ_PARIS) + " (Paris)" +
+                 "\nSetup : sweep " + sideTx + " (" + fmt(sigDir == -1 ? rH : rL) + ") puis reclôture dans le range" + (useSMT ? " + SMT" : "") +
+                 "\nEntrée : " + fmt(ent) +
+                 "\nStop : " + fmt(slPx) + " (" + distTxt(dist) + " = 1R" + (padPx > 0 ? ", dont " + distTxt(padPx) + " de marge" : "") + ")" +
+                 "\nObjectif : " + fmt(tp) + " (" + str.tostring(rrT, "0.0#") + "R)" +
+                 "\nRisque : " + str.tostring(riskPct) + " % · " + str.tostring(qty) + (isFut ? " contrat(s)" : "") +
+                 " · " + str.tostring(qty * dist * syminfo.pointvalue * fx, "0.##") + " $ risqués" +
+                 (atMid ? "\nValable " + str.tostring(limitBars * 5) + " min, jusqu'à la fin de la kill zone au plus tard" : "")
+            cur := Trade.new(id, sigDir, ent, slPx, tp, bar_index, msg)
+            if atMid
+                drawPending(cur)
+            if vSweep
+                label.new(time, sigExt, "Sweep " + sideTx, xloc = xloc.bar_time, color = color(na),
+                     style = sigDir == 1 ? label.style_label_up : label.style_label_down,
+                     textcolor = color.new(sigDir == 1 ? C_UP : C_DN, 10), size = size.small,
+                     tooltip = "Liquidité " + sideTx + " (" + fmt(sigDir == -1 ? rH : rL) + ") prise puis reclôture dans le range")
+            alert(tgPayload(msg), alert.freq_once_per_bar_close)
+
+// ═════════════════════════ Tableaux ═════════════════════════
+cellRow(table t, int r, string k, string v, color c) =>
+    table.cell(t, 0, r, k, text_color = color.new(chart.fg_color, 40), text_size = size.small, text_halign = text.align_left)
+    table.cell(t, 1, r, v, text_color = c, text_size = size.small, text_halign = text.align_right)
+
+var table tb = table.new(position.top_right, 2, 7, bgcolor = color.new(color.gray, 90), border_width = 0, frame_width = 0)
+if vTable and barstate.islast
+    color fg = chart.fg_color
+    cellRow(tb, 0, "Range Asie", na(rH) ? (inAsia ? "en formation" : "—") : fmt(rL) + " – " + fmt(rH) + " (" + distTxt(rH - rL) + ")", C_ASIA)
+    cellRow(tb, 1, "Biais H1", (bias == 1 ? "Haussier ▲" : bias == -1 ? "Baissier ▼" : "Neutre") + (biasMode == "Aucun" ? " (info)" : " · filtre actif"), bias == 1 ? C_UP : bias == -1 ? C_DN : fg)
+    string st = not na(cur) and cur.filled ? cur.id + " ouvert" :
+         not na(cur) ? "Ordre limite en attente" :
+         inAsia ? "Accumulation : range asiatique en cours" :
+         stDir != 0 ? "Sweep " + (stDir == -1 ? "Asie H" : "Asie L") + " → attente de la reclôture" :
+         nToday >= maxTrades or lossToday >= maxLoss ? "Limite du jour atteinte" :
+         usedH and usedL ? "Les deux côtés du range sont joués" :
+         not inKZ ? "Hors kill zone" : "Attente d'un sweep du range asiatique"
+    cellRow(tb, 2, "État", st, fg)
+    // Position en cours : sens, résultat latent, niveaux
+    float  lr    = not na(cur) and cur.filled ? liveR(cur) : na
+    string posTx = na(cur) ? "Aucune" :
+         cur.filled ? cur.id + " · " + rTxt(lr) :
+         (cur.dir == 1 ? "Achat" : "Vente") + " limite en attente"
+    color  posC  = na(cur) ? fg : cur.filled ? (lr >= 0 ? C_UP : C_DN) : (cur.dir == 1 ? C_UP : C_DN)
+    cellRow(tb, 3, "Position", posTx, posC)
+    cellRow(tb, 4, "Niveaux", na(cur) ? "—" : "E " + fmt(cur.entry) + " · SL " + fmt(cur.sl) + " · TP " + fmt(cur.tp), fg)
+    cellRow(tb, 5, "Aujourd'hui", str.tostring(nToday) + " / " + str.tostring(maxTrades) + " trades · " + str.tostring(lossToday) + " perte(s)", fg)
+    float  months = (time - firstT) / 2629800000.0
+    string fTxt   = str.tostring(nFilled) + " trades" + (months >= 1 ? " · " + str.tostring(nFilled / months, "0.0") + " / mois" : " · < 1 mois d'historique")
+    cellRow(tb, 6, "Exécutés", fTxt, fg)
+
+var table dg = table.new(position.bottom_right, 2, 9, bgcolor = color.new(color.gray, 90), border_width = 0, frame_width = 0)
+if vDiag and barstate.islast
+    color fg  = chart.fg_color
+    color bad = color.new(C_DN, 20)
+    cellRow(dg, 0, "Sweeps du range Asie", str.tostring(cSweep), fg)
+    cellRow(dg, 1, "✗ Pas de reclôture (vraie cassure)", str.tostring(cNoRec), bad)
+    cellRow(dg, 2, "Reclôtures (signaux)", str.tostring(cSig), fg)
+    cellRow(dg, 3, "✗ Écartés : pas de SMT", str.tostring(cSmt), bad)
+    cellRow(dg, 4, "✗ Écartés : biais H1", str.tostring(cBias), bad)
+    cellRow(dg, 5, "✗ Écartés : trade en cours / limite", str.tostring(cBusy), bad)
+    cellRow(dg, 6, "Ordres placés", str.tostring(cOrder), fg)
+    cellRow(dg, 7, "✗ Annulés : cible / délai", str.tostring(cMiss) + " / " + str.tostring(cExp), bad)
+    cellRow(dg, 8, "Exécutés · gagnants", str.tostring(nFilled) + " · " + str.tostring(nWin), C_UP)
+
+// Statistiques en R : comparables d'un marché à l'autre, quels que soient le capital, le contrat ou la devise
+var table stt = table.new(position.bottom_left, 2, 8, bgcolor = color.new(color.gray, 90), border_width = 0, frame_width = 0)
+if showStats and barstate.islast
+    color  fg    = chart.fg_color
+    float  wr    = nClosed > 0 ? 100.0 * nPos / nClosed : na
+    float  exR   = nClosed > 0 ? sumR / nClosed : na
+    float  pf    = lossR > 0 ? winR / lossR : na
+    bool   few   = nClosed < 30
+    string smtTx = useSMT ? (smtAvail ? " · SMT " + peerSym : " · SMT indisponible") : ""
+    cellRow(stt, 0, "Marché", syminfo.ticker + " (" + syminfo.type + ")" + smtTx + (padPx > 0 ? " · marge SL " + distTxt(padPx) : ""), C_ASIA)
+    cellRow(stt, 1, "Période", nClosed == 0 ? "—" : str.format_time(firstTr, "dd/MM/yy", TZ_PARIS) + " → " + str.format_time(lastTr, "dd/MM/yy", TZ_PARIS), fg)
+    cellRow(stt, 2, "Trades · gagnants", str.tostring(nClosed) + " · " + (na(wr) ? "—" : str.tostring(wr, "0") + " %"), fg)
+    cellRow(stt, 3, "Espérance", na(exR) ? "—" : (exR >= 0 ? "+" : "") + str.tostring(exR, "0.00") + "R / trade", na(exR) ? fg : exR >= 0 ? C_UP : C_DN)
+    cellRow(stt, 4, "Profit factor", na(pf) ? (winR > 0 ? "∞" : "—") : str.tostring(pf, "0.00"), na(pf) ? fg : pf >= 1 ? C_UP : C_DN)
+    cellRow(stt, 5, "Total", rTxt(sumR), sumR >= 0 ? C_UP : C_DN)
+    cellRow(stt, 6, "Max drawdown · pire série", "-" + str.tostring(ddR, "0.0") + "R · " + str.tostring(worstSt) + " perte(s)", C_DN)
+    cellRow(stt, 7, "Fiabilité", nClosed == 0 ? "Aucun trade" : few ? "Échantillon faible (< 30 trades)" : nClosed < 100 ? "Indicatif (30 à 100 trades)" : "Correct (100 trades et plus)", few ? C_DN : fg)

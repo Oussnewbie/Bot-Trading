@@ -1,0 +1,4 @@
+backtest/data/
+backtest/grid.json
+__pycache__/
+*.pyc
