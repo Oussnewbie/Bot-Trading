@@ -268,7 +268,7 @@ def head(pers=("train",)):
 if __name__ == "__main__":
     prep()
     print(D.per.value_counts().to_dict())
-    # contrôle : le laboratoire reproduit la v3 et la v4 sur 2018-2026 (orb_v4.py : 2091 trades +0,113R ; 1369 trades +0,193R)
+    # contrôle : sans pyramide, sur 2018-2026, on retrouve les anciens tests (sans filtre : 2 091 trades, +0,113R ; avec : 1 369 trades, +0,193R)
     for lab, f in (("v3", f_all), ("v4", f_v4)):
         X = run({}, f); X = X[X.per != "B"]
         print(lab, len(X), round(X.r.mean(), 3), round(X.r.sum()))

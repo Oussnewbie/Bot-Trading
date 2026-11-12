@@ -1,4 +1,4 @@
-"""ORB v5 = v4 (filtres RSI14 M5 + élan 9:00-9:30) + une pyramide : quand une bougie M5 clôture à +2R ou plus,
+"""ORB v5 = filtres RSI14 M5 + élan 9:00-9:30, et une pyramide : quand une bougie M5 clôture à +2R ou plus,
 ajout d'une unité au marché et stop de l'ensemble à +1R. Même logique que pine/ORB-v5.pine et mt5/ORB-v5.mq5.
 
 Réglages choisis sur mai 2018 -> août 2022 seulement (v5_exp1.py à v5_exp6.py), puis vérifiés sur septembre 2022 ->
@@ -19,7 +19,9 @@ def capital(X, risk):
 
 if __name__ == "__main__":
     L.prep()
+    # deux points de comparaison : "v3" = sans filtre ni pyramide, "v4" = les filtres de la v5 sans la pyramide
     R = {"v3": run({}, f_all), "v4": run({}, f_v4), "v5": run(V5, f_v4)}
+    print('Légende : v3 = sans filtre ni pyramide ; v4 = filtres RSI + élan, sans pyramide ; v5 = filtres + pyramide')
     for per, lab in PERS + [(["B", "train", "A"], "TOUT : 2015-01 → 2026-10")]:
         print(f"\n### {lab}")
         print("| | Trades | Stops pleins | Gagnants | Par trade | Total | Pire baisse / série | t | Années + |"); print("|---|---|---|---|---|---|---|---|---|")
