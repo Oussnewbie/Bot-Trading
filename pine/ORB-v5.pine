@@ -1,0 +1,554 @@
+//@version=6
+// ORB v5 — Cassure du range d'ouverture de New York (5 minutes), dans le sens de l'élan de l'ouverture,
+//          avec une pyramide sur les journées de tendance
+// Graphique M5. Toutes les heures sont en heure de New York (9:30 NY = 15:30 à Paris la plupart de l'année).
+//
+// Règles (1 à 5 : identiques à la v4) :
+//  1. Range    : high et low de la première bougie M5 de la séance (9:30-9:35).
+//  2. Filtres  : achat permis seulement si le RSI14 M5 de la bougie de 9:30 est au-dessus de 50 et si son high dépasse
+//                le plus haut de 9:00-9:30. Vente : RSI sous 50 et low sous le plus bas de 9:00-9:30.
+//  3. Ordres   : à 9:35, achat stop sur le high et/ou vente stop sur le low, selon les côtés permis, valables
+//                2 bougies (jusqu'à 9:45). Le premier exécuté annule l'autre. Si un seul côté est permis et que
+//                l'autre côté du range est touché d'abord, l'ordre est annulé.
+//  4. Stop     : de l'autre côté du range. 1R = la somme perdue si le stop est touché (taille de départ × range).
+//  5. Gestion  : stop au prix d'entrée dès +1,5R. Sortie à la clôture de la bougie de 15:45 (15:50).
+//  6. PYRAMIDE : quand une bougie clôture à +2R ou plus, on ajoute une unité au marché et le stop de l'ensemble
+//                monte à +1R. Après l'ajout, le pire cas est donc zéro (+1R sur la première unité, -1R sur l'ajout).
+//                Un seul ajout par trade. Les journées de tendance, qui font tout le gain de l'ORB, rapportent plus.
+//  7. Un seul trade par jour. Le R affiché = résultat net de tout le trade (ajout compris) ÷ somme risquée au départ.
+//
+// Test sur NAS100 CFD (Dukascopy, bid et ask, spread compté), 1 915 trades (163 par an) :
+//   2015-01 → 2018-04 (jamais regardée avant de figer la v5) : -0,03R par trade, -19R  (v4 : -52R). L'ORB perd
+//                                                               sur 2015, 2016 et 2017 : pire baisse -76R.
+//   2018-05 → 2022-08 (période où la v5 a été choisie)        : +0,37R par trade, +267R (v4 : +152R)
+//   2022-09 → 2026-10 (vérification)                          : +0,20R par trade, +128R (v4 : +111R)
+//   Tout                                                      : +0,20R par trade, +376R (v4 : +211R), 9 années sur 12.
+// Compte plutôt sur +0,15 à +0,20R par trade, avec des années perdantes possibles. Le testeur de TradingView ne
+// compte pas le spread d'un CFD : ajoute une commission dans « Propriétés » pour un résultat réaliste.
+strategy("ORB New York 5 min (v5)", shorttitle = "ORB v5", overlay = true,
+     initial_capital = 10000, currency = currency.USD, pyramiding = 2,
+     process_orders_on_close = true, margin_long = 0, margin_short = 0, slippage = 2,
+     max_lines_count = 500, max_boxes_count = 500, max_labels_count = 500)
+
+// ═════════════════════════ Paramètres ═════════════════════════
+GR = "Risque"
+riskPct   = input.float(0.5, "Risque par trade (% du capital)", minval = 0.1, step = 0.1, tooltip = "0,5 % au plus : sur 2015-2026 la pire baisse du test est de 76R (environ -33 % du capital à 0,5 %, -18 % à 0,25 %) ; sur 2018-2026 seulement, 34R (-16 % à 0,5 %).", group = GR)
+qtyStepIn = input.float(0, "Pas de taille (0 = auto)", minval = 0, step = 0.01, tooltip = "Taille minimale chez le broker, en unités TradingView. Auto : futures = 1 contrat, forex = 1000 unités, crypto = 0,0001, actions = 1, CFD = 0,01.", group = GR)
+
+GS = "Horaires (heure de New York)"
+orS       = input.session("0930-0935", "Bougie du range", tooltip = "La première bougie M5 de la séance de New York.", group = GS)
+preS      = input.session("0900-0930", "Fenêtre de l'élan", tooltip = "Le range de 9:30 doit dépasser le plus haut (achat) ou le plus bas (vente) de cette fenêtre.", group = GS)
+liveBars  = input.int(2, "Ordres valables (bougies après le range)", minval = 1, maxval = 24, tooltip = "2 = jusqu'à 9:45. Dans le test, les cassures plus tardives ne rapportaient rien.", group = GS)
+flatS     = input.session("1545-1600", "Fermeture de fin de journée", tooltip = "La position est fermée à la clôture de la bougie de 15:45, soit 15:50.", group = GS)
+
+GF = "Filtres"
+useRSI    = input.bool(true, "Filtre RSI14 M5", tooltip = "Achat seulement si le RSI de la bougie de 9:30 est au-dessus de 50, vente seulement en dessous.", group = GF)
+rsiLen    = input.int(14, "Longueur du RSI", minval = 2, group = GF)
+useExt    = input.bool(true, "Filtre d'élan 9:00-9:30", tooltip = "Achat seulement si le high de la bougie de 9:30 dépasse le plus haut de 9:00-9:30, vente seulement si son low passe sous le plus bas. Il faut les bougies hors séance sur le graphique.", group = GF)
+
+GP = "Gestion du trade"
+beR       = input.float(1.5, "Stop au prix d'entrée à partir de (R)", minval = 0, step = 0.25, tooltip = "0 = désactivé. 1,5 : même gain que sans, mais des baisses plus courtes dans le test. À +1R, il coûte du gain.", group = GP)
+tgtR      = input.float(0, "Objectif (R)", minval = 0, step = 0.5, tooltip = "0 = pas d'objectif, sortie en fin de journée (le mieux dans le test). Mesuré depuis le prix d'exécution réel.", group = GP)
+
+GY = "Pyramide"
+usePyr    = input.bool(true, "Pyramide sur gain", tooltip = "Quand une bougie clôture au seuil ou au-delà, une unité est ajoutée au marché et le stop de l'ensemble monte. Dans le test, la pyramide ajoute du gain sur les trois périodes (2015-18, 2018-22, 2022-26).", group = GY)
+pyrR      = input.float(2.0, "Ajout quand une bougie clôture à (R)", minval = 0.5, step = 0.25, group = GY)
+pyrSize   = input.float(1.0, "Taille de l'ajout (× la position de départ)", minval = 0.1, step = 0.1, tooltip = "1 = le pire cas après l'ajout est zéro. 2 = plus de gain, mais un trade arrivé à +2R peut finir à -1R.", group = GY)
+pyrLock   = input.float(1.0, "Stop de l'ensemble après l'ajout (R)", step = 0.25, tooltip = "Doit être plus bas que le seuil d'ajout.", group = GY)
+
+GT = "Telegram"
+tgChat    = input.string("-1003571455927", "Chat ID", tooltip = "Rempli : alertes au format de l'API Telegram. URL de webhook : https://api.telegram.org/bot<TOKEN>/sendMessage", group = GT)
+
+GA = "Affichage"
+showOrders  = input.bool(true, "Ordres et trades", group = GA)
+showZones   = input.bool(true, "Zones de risque et de gain", tooltip = "Rouge : de l'entrée au stop. Vert : de l'entrée au meilleur prix atteint.", group = GA)
+showPre     = input.bool(true, "Fenêtre de l'élan (9:00-9:30)", group = GA)
+showBlocked = input.bool(true, "Côté bloqué par les filtres", group = GA)
+keepEmpty   = input.bool(false, "Garder les jours sans trade", tooltip = "Décoché : un jour sans trade ne laisse rien sur le graphique.", group = GA)
+showTable   = input.bool(true, "Tableau", group = GA)
+tblPosIn    = input.string("En haut à droite", "Position du tableau", options = ["En haut à droite", "En bas à droite", "En haut à gauche", "En bas à gauche"], group = GA)
+
+// ═════════════════════════ Réglages fixes ═════════════════════════
+TZ_NY    = "America/New_York"
+TZ_PARIS = "Europe/Paris"
+BAR      = 300000          // une bougie M5 en millisecondes
+FUT      = 3 * BAR         // les niveaux vivants sont projetés 3 bougies à droite
+
+C_UP  = #26A69A
+C_DN  = #EF5350
+C_GR  = #787B86
+C_BOX = #9598A1
+C_PRE = #5B9CF6
+
+if timeframe.in_seconds() != 300
+    runtime.error("Ce script se trade sur un graphique M5.")
+if usePyr and pyrLock >= pyrR
+    runtime.error("Pyramide : le stop de l'ensemble doit être plus bas que le seuil d'ajout.")
+
+bool  isFut   = syminfo.type == "futures"
+bool  isFx    = syminfo.type == "forex"
+int   pxDig   = int(math.round(math.log10(1 / syminfo.mintick)))
+float pipSz   = pxDig % 2 == 1 ? syminfo.mintick * 10 : syminfo.mintick
+float qtyStep = isFut ? 1.0 : qtyStepIn > 0 ? qtyStepIn : isFx ? 1000.0 : syminfo.type == "crypto" ? 0.0001 : syminfo.type == "stock" ? 1.0 : 0.01
+float fx      = nz(request.currency_rate(syminfo.currency, "USD", ignore_invalid_currency = true), 1.0)
+float rsiV    = ta.rsi(close, rsiLen)
+
+// ═════════════════════════ Outils ═════════════════════════
+fmt(float x) =>
+    str.tostring(x, format.mintick)
+
+distTxt(float d) =>
+    isFx ? str.tostring(d / pipSz, "0.0") + " pips" : fmt(d) + " pts"
+
+rTxt(float r) =>
+    (r >= 0 ? "+" : "") + str.tostring(r, "0.0") + "R"
+
+hhmm(int t) =>
+    str.format_time(t, "HH:mm", TZ_NY)
+
+tgPayload(string msg) =>
+    string t = str.replace_all(str.replace_all(msg, "\\", "\\\\"), "\"", "\\\"")
+    t := str.replace_all(t, "\n", "\\n")
+    tgChat == "" ? msg : "{\"chat_id\": \"" + tgChat + "\", \"text\": \"" + t + "\"}"
+
+notify(string msg) =>
+    alert(tgPayload(syminfo.ticker + " · " + msg), alert.freq_once_per_bar_close)
+    true
+
+sideLabel(int x, float y, string txt, color c, string tip) =>
+    label.new(x, y, txt, xloc = xloc.bar_time, style = label.style_label_left, color = color.new(c, 15),
+         textcolor = color.white, size = size.small, tooltip = tip)
+
+// ═════════════════════════ Séance ═════════════════════════
+bool isOR   = not na(time(timeframe.period, orS, TZ_NY))
+bool inPre  = not na(time(timeframe.period, preS, TZ_NY))
+bool inFlat = not na(time(timeframe.period, flatS, TZ_NY))
+int  nyDate = year(time, TZ_NY) * 10000 + month(time, TZ_NY) * 100 + dayofmonth(time, TZ_NY)
+
+// Plus haut et plus bas de la fenêtre de l'élan (9:00-9:30), remis à zéro chaque jour
+var float preH   = na
+var float preL   = na
+var int   preDay = 0
+var int   preT0  = 0
+if inPre
+    if preDay != nyDate
+        preH   := high
+        preL   := low
+        preDay := nyDate
+        preT0  := time
+    else
+        preH := math.max(preH, high)
+        preL := math.min(preL, low)
+
+// ═════════════════════════ État ═════════════════════════
+type Trade
+    string id
+    string xid
+    int    dir
+    float  entry
+    float  sl
+    float  tp
+    float  risk
+    float  usd
+    int    fillBar
+    int    tFill
+    int    day
+    float  best
+    float  qty
+    float  pnl = 0.0     // gains et pertes encaissés (unité de départ et ajout)
+    bool   pyr = false   // l'ajout a été fait
+    bool   be  = false
+    line   pLn = na
+    line   eLn = na
+    line   sLn = na
+    line   tLn = na
+    line   bLn = na
+    box    rBx = na
+    box    gBx = na
+    label  eLb = na
+    label  sLb = na
+    label  tLb = na
+
+// Dessins du jour qui ne font pas partie du trade (pour pouvoir les effacer un jour sans trade)
+type Day
+    box   orBx  = na
+    box   preBx = na
+    line  blkLn = na
+    label blkLb = na
+
+// Statistiques en R et textes du tableau (dans un objet : les fonctions peuvent modifier ses champs)
+type Stats
+    int    nClosed = 0
+    int    nPos    = 0
+    float  sumR    = 0.0
+    float  peakR   = 0.0
+    float  ddR     = 0.0
+    int    streak  = 0
+    int    worstSt = 0
+    string dayTxt  = "En attente de 9:35 NY"
+    string filtTxt = "—"
+
+var float orH    = na
+var float orL    = na
+var bool  pend   = false     // ordres stop en attente
+var int   pBar   = 0
+var int   pDir   = 0         // 0 = les deux côtés, 1 = achat seulement, -1 = vente seulement, 2 = aucun
+var float pUSD   = na        // montant risqué du jour (taille × range), en USD
+var float pQty   = na        // taille de départ du jour
+var int   tradeN = 0
+var line  lnH    = na
+var line  lnL    = na
+var label lbH    = na
+var label lbL    = na
+var Trade cur    = na
+var Day   today  = Day.new()
+var int   seen   = 0
+var Stats S      = Stats.new()
+
+idL() => "Achat #" + str.tostring(tradeN)
+idS() => "Vente #" + str.tostring(tradeN)
+
+// Ordres en attente et côté bloqué : effacés dès qu'un ordre est exécuté ou annulé
+dropPending() =>
+    for ln in array.from(lnH, lnL, today.blkLn)
+        if not na(ln)
+            line.delete(ln)
+    for lb in array.from(lbH, lbL, today.blkLb)
+        if not na(lb)
+            label.delete(lb)
+    true
+
+// Jour sans trade : tout est effacé (ou estompé si on garde les jours sans trade)
+clearDay(Day d, string why) =>
+    if keepEmpty
+        if not na(d.orBx)
+            d.orBx.set_bgcolor(color.new(C_BOX, 94))
+            d.orBx.set_text("9:30 · " + why)
+    else
+        for b in array.from(d.orBx, d.preBx)
+            if not na(b)
+                box.delete(b)
+    true
+
+// Ordre exécuté : le côté exécuté devient l'entrée, l'autre côté le stop
+openDraw(Trade t) =>
+    dropPending()
+    int   x2 = time + FUT
+    color dc = t.dir == 1 ? C_UP : C_DN
+    if showZones
+        t.rBx := box.new(t.tFill, math.max(t.entry, t.sl), x2, math.min(t.entry, t.sl), xloc = xloc.bar_time,
+             bgcolor = color.new(C_DN, 88), border_color = color.new(C_DN, 100))
+        t.gBx := box.new(t.tFill, math.max(t.entry, t.best), x2, math.min(t.entry, t.best), xloc = xloc.bar_time,
+             bgcolor = color.new(C_UP, 85), border_color = color.new(C_UP, 100))
+    if showOrders
+        t.eLn := line.new(t.tFill, t.entry, x2, t.entry, xloc = xloc.bar_time, color = dc, width = 2)
+        t.sLn := line.new(t.tFill, t.sl, x2, t.sl, xloc = xloc.bar_time, color = color.new(C_DN, 25), width = 1)
+        if beR > 0
+            float lv = t.entry + t.dir * beR * t.risk
+            t.bLn := line.new(t.tFill, lv, x2, lv, xloc = xloc.bar_time, color = color.new(C_GR, 30), style = line.style_dotted, width = 1)
+        if not na(t.tp)
+            t.tLn := line.new(t.tFill, t.tp, x2, t.tp, xloc = xloc.bar_time, color = color.new(C_UP, 25), width = 1)
+            t.tLb := sideLabel(x2, t.tp, "TP · " + fmt(t.tp), C_UP, "Objectif à +" + str.tostring(tgtR) + "R depuis l'entrée")
+        t.eLb := sideLabel(x2, t.entry, t.id + " · " + fmt(t.entry), dc, "Entrée")
+        t.sLb := sideLabel(x2, t.sl, "SL · " + fmt(t.sl), C_DN, "Stop : de l'autre côté du range" + (beR > 0 ? ". Ligne pointillée : à ce prix (+" + str.tostring(beR) + "R), le stop passe au prix d'entrée" : ""))
+        label.new(t.tFill, t.entry, t.dir == 1 ? "▲" : "▼", xloc = xloc.bar_time, color = color(na),
+             style = t.dir == 1 ? label.style_label_up : label.style_label_down, textcolor = dc, size = size.small,
+             tooltip = t.id + " · entrée " + fmt(t.entry) + " · stop " + fmt(t.sl))
+    true
+
+// Les niveaux vivants suivent le prix ; la zone de risque s'arrête quand le stop passe au prix d'entrée
+moveRight(Trade t, int x2) =>
+    for ln in array.from(t.eLn, t.sLn, t.tLn, t.bLn, t.pLn)
+        if not na(ln)
+            ln.set_x2(x2)
+    for lb in array.from(t.eLb, t.sLb, t.tLb)
+        if not na(lb)
+            lb.set_x(x2)
+    if not na(t.rBx) and not t.be
+        t.rBx.set_right(x2)
+    if not na(t.gBx)
+        t.gBx.set_right(x2)
+    true
+
+// R en direct : résultat latent de toute la position (ajout compris) ÷ montant risqué au départ
+liveR(Trade t) =>
+    strategy.opentrades > 0 ? (t.pnl + strategy.openprofit) / t.usd : (close - t.entry) * t.dir / t.risk
+
+// Trade terminé : les niveaux s'arrêtent à la sortie et s'estompent, le résultat reste affiché
+closeDraw(Trade t, int xe, float px, float r, string why) =>
+    moveRight(t, xe)
+    for lb in array.from(t.eLb, t.sLb, t.tLb)
+        if not na(lb)
+            label.delete(lb)
+    if not na(t.bLn)
+        line.delete(t.bLn)
+    if not na(t.eLn)
+        t.eLn.set_width(1)
+    if not na(t.sLn)
+        t.sLn.set_color(color.new(t.pyr ? C_UP : t.be ? C_GR : C_DN, 60))
+    if not na(t.tLn)
+        t.tLn.set_color(color.new(C_UP, 60))
+    if not na(t.rBx)
+        t.rBx.set_bgcolor(color.new(C_DN, 93))
+    if not na(t.gBx)
+        t.gBx.set_bgcolor(color.new(C_UP, 91))
+    if showOrders
+        label.new(xe, px, rTxt(r), xloc = xloc.bar_time, style = label.style_label_left,
+             color = color.new(r > 0.05 ? C_UP : r < -0.05 ? C_DN : C_GR, 20), textcolor = color.white, size = size.small,
+             tooltip = t.id + " · " + why + " · entrée " + fmt(t.entry) + " · sortie " + fmt(px))
+    true
+
+newTrade(int d, float entry, int tFill, int fBar) =>
+    float sl = d == 1 ? orL : orH
+    float rk = math.abs(entry - sl)
+    Trade.new(id = d == 1 ? idL() : idS(), xid = d == 1 ? "X" + idL() : "X" + idS(), dir = d, entry = entry, sl = sl,
+         tp = tgtR > 0 ? entry + d * tgtR * rk : na, risk = rk, usd = pUSD, fillBar = fBar, tFill = tFill, day = nyDate,
+         best = d == 1 ? math.max(entry, high) : math.min(entry, low), qty = pQty)
+
+recordClose(Trade t, int k) =>
+    float  px  = strategy.closedtrades.exit_price(k)
+    float  r   = t.pnl / t.usd
+    string why = strategy.closedtrades.exit_comment(k)
+    S.nClosed += 1
+    S.sumR    += r
+    if r > 0.05
+        S.nPos += 1
+    // Série de pertes, comme dans le test : une sortie au prix d'entrée (même un peu négative à cause des frais) l'interrompt
+    S.streak  := why != "Stop à l'entrée" and r < -0.05 ? S.streak + 1 : 0
+    S.worstSt := math.max(S.worstSt, S.streak)
+    S.peakR   := math.max(S.peakR, S.sumR)
+    S.ddR     := math.max(S.ddR, S.peakR - S.sumR)
+    closeDraw(t, strategy.closedtrades.exit_time(k), px, r, why)
+    notify(t.id + " clôturé (" + why + ") : " + rTxt(r) + " à " + fmt(px))
+    S.dayTxt := t.id + " terminé (" + why + ") : " + rTxt(r)
+    true
+
+// Pyramide : la bougie clôture au seuil ou au-delà → ajout au marché (exécuté à cette clôture), stop de l'ensemble remonté
+tryPyramid(Trade t) =>
+    bool done = false
+    if usePyr and not t.pyr and not inFlat and (close - t.entry) * t.dir >= pyrR * t.risk
+        float q = math.floor(t.qty * pyrSize / qtyStep) * qtyStep
+        if q > 0
+            float  lockPx = t.entry + t.dir * pyrLock * t.risk
+            string pid    = "Pyramide #" + str.tostring(tradeN)
+            string cmt    = "Stop à " + rTxt(pyrLock)
+            strategy.entry(pid, t.dir == 1 ? strategy.long : strategy.short, qty = q, comment = "Pyramide")
+            strategy.exit("X" + pid, from_entry = pid, stop = lockPx, limit = t.tp, comment_loss = cmt, comment_profit = "Objectif")
+            strategy.exit(t.xid, from_entry = t.id, stop = lockPx, limit = t.tp, comment_loss = cmt, comment_profit = "Objectif")
+            t.pyr := true
+            t.be  := true
+            done  := true
+            if not na(t.rBx)
+                t.rBx.set_right(time)
+            if not na(t.bLn)
+                line.delete(t.bLn)
+            if not na(t.sLn)
+                t.sLn.set_y1(lockPx)
+                t.sLn.set_y2(lockPx)
+                t.sLn.set_color(color.new(C_UP, 20))
+            if not na(t.sLb)
+                t.sLb.set_y(lockPx)
+                t.sLb.set_text("SL · " + rTxt(pyrLock) + " · " + fmt(lockPx))
+                t.sLb.set_color(color.new(C_UP, 15))
+            if showOrders
+                color dc = t.dir == 1 ? C_UP : C_DN
+                t.pLn := line.new(time, close, time + FUT, close, xloc = xloc.bar_time, color = color.new(dc, 20), style = line.style_dashed, width = 1)
+                label.new(time, close, "+", xloc = xloc.bar_time, color = color.new(dc, 20), textcolor = color.white, size = size.tiny,
+                     style = t.dir == 1 ? label.style_label_up : label.style_label_down,
+                     tooltip = "Pyramide : +" + str.tostring(q) + " à " + fmt(close) + " · stop de l'ensemble à " + fmt(lockPx))
+            notify(t.id + " : PYRAMIDE, clôture à " + rTxt((close - t.entry) * t.dir / t.risk) + "\nAjout de " + str.tostring(q) + " à " + fmt(close) +
+                 "\nStop de l'ensemble : " + fmt(lockPx) + " (" + rTxt(pyrLock) + ")")
+    done
+
+// ═════════════════════════ Exécutions et sorties ═════════════════════════
+if pend and na(cur) and (strategy.position_size != 0 or strategy.closedtrades > seen)
+    // Un des ordres stop vient d'être exécuté (éventuellement stoppé sur la même bougie)
+    pend := false
+    if strategy.position_size != 0
+        int d = strategy.position_size > 0 ? 1 : -1
+        cur := newTrade(d, strategy.opentrades.entry_price(0), strategy.opentrades.entry_time(0), strategy.opentrades.entry_bar_index(0))
+        // Objectif posé maintenant, depuis le prix d'exécution réel (comme dans le test : pas d'objectif sur la bougie d'entrée)
+        if not na(cur.tp)
+            strategy.exit(cur.xid, from_entry = cur.id, stop = cur.sl, limit = cur.tp, comment_loss = "Stop", comment_profit = "Objectif")
+        openDraw(cur)
+        notify((d == 1 ? "ACHAT" : "VENTE") + " exécuté : " + cur.id + " à " + fmt(cur.entry) + "\nStop : " + fmt(cur.sl) +
+             (beR > 0 ? "\nStop au prix d'entrée dès " + fmt(cur.entry + d * beR * cur.risk) + " (+" + str.tostring(beR) + "R)" : "") +
+             (usePyr ? "\nPyramide : ajout si une bougie clôture à " + fmt(cur.entry + d * pyrR * cur.risk) + " (" + rTxt(pyrR) + "), stop de l'ensemble à " + rTxt(pyrLock) : "") +
+             (not na(cur.tp) ? "\nObjectif : " + fmt(cur.tp) : "\nSortie à 15:45 NY si ni stop ni objectif"))
+        S.dayTxt := cur.id + " en cours"
+        tryPyramid(cur)
+    else
+        int k = strategy.closedtrades - 1
+        int d = strategy.closedtrades.size(k) > 0 ? 1 : -1
+        Trade t = newTrade(d, strategy.closedtrades.entry_price(k), strategy.closedtrades.entry_time(k), strategy.closedtrades.entry_bar_index(k))
+        t.pnl := strategy.closedtrades.profit(k)
+        openDraw(t)
+        recordClose(t, k)
+else if not na(cur) and strategy.closedtrades > seen
+    // Sortie de l'unité de départ et de l'ajout : le résultat du trade est leur somme
+    for k = seen to strategy.closedtrades - 1
+        cur.pnl += strategy.closedtrades.profit(k)
+    if strategy.position_size == 0
+        recordClose(cur, strategy.closedtrades - 1)
+        cur := na
+else if not na(cur)
+    // Trade ouvert : meilleur prix atteint (zone verte)
+    cur.best := cur.dir == 1 ? math.max(cur.best, high) : math.min(cur.best, low)
+    if not na(cur.gBx)
+        cur.gBx.set_top(math.max(cur.entry, cur.best))
+        cur.gBx.set_bottom(math.min(cur.entry, cur.best))
+    bool pyrNow = tryPyramid(cur)
+    // Stop au prix d'entrée une fois le seuil atteint (à partir de la bougie suivant l'entrée)
+    if not pyrNow and beR > 0 and not cur.be and bar_index > cur.fillBar and (cur.dir == 1 ? high >= cur.entry + beR * cur.risk : low <= cur.entry - beR * cur.risk)
+        cur.be := true
+        strategy.exit(cur.xid, from_entry = cur.id, stop = cur.entry, limit = cur.tp, comment_loss = "Stop à l'entrée",
+             comment_profit = not na(cur.tp) ? "Objectif" : "Stop à l'entrée")
+        if not na(cur.rBx)
+            cur.rBx.set_right(time)
+        if not na(cur.bLn)
+            line.delete(cur.bLn)
+        if not na(cur.sLn)
+            cur.sLn.set_y1(cur.entry)
+            cur.sLn.set_y2(cur.entry)
+            cur.sLn.set_color(color.new(C_GR, 20))
+        if not na(cur.sLb)
+            cur.sLb.set_y(cur.entry)
+            cur.sLb.set_text("SL · entrée")
+            cur.sLb.set_color(color.new(C_GR, 15))
+        notify(cur.id + " : +" + str.tostring(beR) + "R atteint, stop déplacé au prix d'entrée (" + fmt(cur.entry) + ")")
+    moveRight(cur, time + FUT)
+    if not na(cur.eLb)
+        float r = liveR(cur)
+        cur.eLb.set_text(cur.id + " · " + fmt(cur.entry) + " · " + rTxt(r))
+        cur.eLb.set_color(color.new(r >= 0 ? C_UP : C_DN, 15))
+seen := strategy.closedtrades
+
+// Fin de journée (et sécurité : une position ne passe jamais la nuit, même un jour de fermeture anticipée)
+if strategy.position_size != 0 and (inFlat or (not na(cur) and nyDate != cur.day))
+    strategy.close_all(comment = "Fin de journée")
+
+// ═════════════════════════ Ordres en attente : annulation ═════════════════════════
+if pend and strategy.position_size == 0 and bar_index > pBar
+    bool late     = bar_index - pBar >= liveBars
+    bool oppFirst = pDir == 1 ? low <= orL : pDir == -1 ? high >= orH : false
+    if late or oppFirst
+        strategy.cancel(idL())
+        strategy.cancel(idS())
+        pend := false
+        dropPending()
+        string why = oppFirst ? "l'autre côté du range a été touché d'abord" : "pas de cassure avant " + hhmm(time_close) + " NY"
+        clearDay(today, oppFirst ? "côté bloqué touché d'abord" : "pas de cassure")
+        S.dayTxt := "Pas de trade : " + why
+        notify("ordres annulés : " + why)
+    else
+        int x2 = time + FUT
+        for ln in array.from(lnH, lnL, today.blkLn)
+            if not na(ln)
+                ln.set_x2(x2)
+        for lb in array.from(lbH, lbL, today.blkLb)
+            if not na(lb)
+                lb.set_x(x2)
+
+// ═════════════════════════ 9:35 NY : range, filtres et ordres ═════════════════════════
+if isOR and strategy.position_size == 0 and not pend and na(cur)
+    orH   := high
+    orL   := low
+    today := Day.new()
+    lnH   := na
+    lnL   := na
+    lbH   := na
+    lbL   := na
+    float  dist  = orH - orL
+    string endT  = hhmm(time_close + liveBars * BAR)
+    // Filtres
+    bool   preOk = preDay == nyDate and not na(preH)
+    bool   rsiL  = not useRSI or rsiV > 50
+    bool   rsiS  = not useRSI or rsiV < 50
+    bool   extL  = not useExt or (preOk and orH >= preH)
+    bool   extS  = not useExt or (preOk and orL <= preL)
+    bool   okL   = rsiL and extL
+    bool   okS   = rsiS and extS
+    string whyL  = not rsiL ? "RSI" : not extL ? (preOk ? "élan" : "pas de bougies 9:00-9:30") : ""
+    string whyS  = not rsiS ? "RSI" : not extS ? (preOk ? "élan" : "pas de bougies 9:00-9:30") : ""
+    pDir := okL and okS ? 0 : okL ? 1 : okS ? -1 : 2
+    S.filtTxt := "Achat " + (okL ? "✓" : "✕ " + whyL) + " · Vente " + (okS ? "✓" : "✕ " + whyS) + (useRSI ? " · RSI " + str.tostring(rsiV, "0") : "")
+    float qty = dist > 0 ? math.floor((strategy.initial_capital + strategy.netprofit) * riskPct / 100 / (dist * syminfo.pointvalue * fx) / qtyStep) * qtyStep : na
+    bool  go  = pDir != 2 and not na(qty) and qty > 0
+    if go or keepEmpty
+        int xEnd = time + (liveBars + 1) * BAR
+        if showPre and useExt and preOk
+            today.preBx := box.new(preT0, preH, xEnd, preL, xloc = xloc.bar_time, bgcolor = color.new(C_PRE, 95),
+                 border_color = color.new(C_PRE, 55), border_style = line.style_dotted, border_width = 1,
+                 text = "9:00-9:30", text_size = size.tiny, text_color = color.new(C_PRE, 35), text_halign = text.align_left, text_valign = text.align_top)
+        today.orBx := box.new(time, orH, xEnd, orL, xloc = xloc.bar_time,
+             bgcolor = color.new(C_BOX, go ? 86 : 94), border_color = color.new(C_BOX, 55), border_width = 1,
+             text = "9:30 · " + distTxt(dist), text_size = size.tiny, text_color = color.new(C_BOX, 25), text_halign = text.align_left, text_valign = text.align_top)
+    if not go
+        string why = pDir == 2 ? "achat bloqué (" + whyL + "), vente bloquée (" + whyS + ")" : "taille nulle (réduire le pas de taille ou augmenter le risque)"
+        if keepEmpty and not na(today.orBx)
+            today.orBx.set_text("9:30 · pas de trade")
+        S.dayTxt := "Pas de trade : " + why
+        notify("pas de trade aujourd'hui : " + why)
+    else
+        tradeN += 1
+        pend   := true
+        pBar   := bar_index
+        pUSD   := qty * dist * syminfo.pointvalue * fx
+        pQty   := qty
+        // L'objectif éventuel est ajouté à l'exécution, depuis le prix réel d'entrée
+        if pDir != -1
+            strategy.entry(idL(), strategy.long, qty = qty, stop = orH, oca_name = "ORB" + str.tostring(tradeN), oca_type = strategy.oca.cancel, comment = "Cassure du high")
+            strategy.exit("X" + idL(), from_entry = idL(), stop = orL, comment_loss = "Stop", comment_profit = "Objectif")
+        if pDir != 1
+            strategy.entry(idS(), strategy.short, qty = qty, stop = orL, oca_name = "ORB" + str.tostring(tradeN), oca_type = strategy.oca.cancel, comment = "Cassure du low")
+            strategy.exit("X" + idS(), from_entry = idS(), stop = orH, comment_loss = "Stop", comment_profit = "Objectif")
+        if showOrders
+            int x2 = time + FUT
+            if pDir != -1
+                lnH := line.new(time, orH, x2, orH, xloc = xloc.bar_time, color = color.new(C_UP, 10), style = line.style_dashed, width = 1)
+                lbH := sideLabel(x2, orH, "Achat stop · " + fmt(orH), C_UP, "Stop : " + fmt(orL) + " · valable jusqu'à " + endT + " NY")
+            if pDir != 1
+                lnL := line.new(time, orL, x2, orL, xloc = xloc.bar_time, color = color.new(C_DN, 10), style = line.style_dashed, width = 1)
+                lbL := sideLabel(x2, orL, "Vente stop · " + fmt(orL), C_DN, "Stop : " + fmt(orH) + " · valable jusqu'à " + endT + " NY")
+            if showBlocked and pDir != 0
+                float  yb = pDir == 1 ? orL : orH
+                string tBlk = pDir == 1 ? "Vente bloquée · " + whyS : "Achat bloqué · " + whyL
+                today.blkLn := line.new(time, yb, x2, yb, xloc = xloc.bar_time, color = color.new(C_GR, 45), style = line.style_dotted, width = 1)
+                today.blkLb := label.new(x2, yb, tBlk, xloc = xloc.bar_time, style = label.style_label_left, color = color.new(C_GR, 70),
+                     textcolor = color.new(chart.fg_color, 20), size = size.small, tooltip = "Si ce côté est touché avant la cassure permise, l'ordre du jour est annulé.")
+        S.dayTxt := (pDir == 1 ? "Achat stop " + fmt(orH) : pDir == -1 ? "Vente stop " + fmt(orL) : "Achat " + fmt(orH) + " · Vente " + fmt(orL)) + " · jusqu'à " + endT
+        notify("ORDRES ORB placés · " + hhmm(time_close) + " NY (" + str.format_time(time_close, "HH:mm", TZ_PARIS) + " Paris)" +
+             "\nRange 9:30 : " + fmt(orL) + " – " + fmt(orH) + " (" + distTxt(dist) + " = 1R)" +
+             (pDir != -1 ? "\nAchat stop : " + fmt(orH) + " · stop " + fmt(orL) : "\nAchat bloqué (" + whyL + ")") +
+             (pDir != 1 ? "\nVente stop : " + fmt(orL) + " · stop " + fmt(orH) : "\nVente bloquée (" + whyS + ")") +
+             (tgtR > 0 ? "\nObjectif : +" + str.tostring(tgtR) + "R depuis le prix d'exécution" : "") +
+             "\nTaille : " + str.tostring(qty) + (isFut ? " contrat(s)" : "") + " · " + str.tostring(pUSD, "0.##") + " $ risqués (" + str.tostring(riskPct) + " %)" +
+             "\nValables jusqu'à " + endT + " NY." + (pDir == 0 ? " Le premier exécuté annule l'autre." : " Annulé si le côté bloqué est touché d'abord.") +
+             (beR > 0 ? "\nStop au prix d'entrée à +" + str.tostring(beR) + "R" : "") + (tgtR > 0 ? "" : " · sortie à 15:45 NY") +
+             (usePyr ? "\nPyramide : +" + str.tostring(pyrSize) + " unité si une bougie clôture à " + rTxt(pyrR) + ", stop de l'ensemble à " + rTxt(pyrLock) : ""))
+
+// ═════════════════════════ Tableau ═════════════════════════
+tblPos = switch tblPosIn
+    "En bas à droite"  => position.bottom_right
+    "En haut à gauche" => position.top_left
+    "En bas à gauche"  => position.bottom_left
+    => position.top_right
+
+cellRow(table t, int r, string k, string v, color c) =>
+    table.cell(t, 0, r, k, text_color = color.new(chart.fg_color, 45), text_size = size.small, text_halign = text.align_left)
+    table.cell(t, 1, r, v, text_color = c, text_size = size.small, text_halign = text.align_right)
+
+var table tb = table.new(tblPos, 2, 6, bgcolor = color.new(color.gray, 90), frame_color = color.new(color.gray, 75), frame_width = 1,
+     border_color = color.new(color.gray, 85), border_width = 1)
+if showTable and barstate.islast
+    color fg = chart.fg_color
+    table.cell(tb, 0, 0, "ORB v5", text_color = fg, text_size = size.normal, text_halign = text.align_left)
+    table.cell(tb, 1, 0, "NY 9:30 · M5 · " + str.tostring(riskPct) + " % par trade", text_color = color.new(fg, 45), text_size = size.small, text_halign = text.align_right)
+    cellRow(tb, 1, "Range 9:30", na(orH) ? "—" : fmt(orL) + " – " + fmt(orH) + " (" + distTxt(orH - orL) + ")", fg)
+    cellRow(tb, 2, "Filtres", (useRSI or useExt) ? S.filtTxt : "désactivés", fg)
+    float lr = not na(cur) ? liveR(cur) : na
+    cellRow(tb, 3, "Aujourd'hui", not na(cur) ? cur.id + " · " + rTxt(lr) + (cur.pyr ? " · pyramide, stop à " + rTxt(pyrLock) : cur.be ? " · stop à l'entrée" : "") : S.dayTxt,
+         not na(cur) ? (lr >= 0 ? C_UP : C_DN) : fg)
+    cellRow(tb, 4, "Historique", S.nClosed == 0 ? "aucun trade" : str.tostring(S.nClosed) + " trades · " + str.tostring(100.0 * S.nPos / S.nClosed, "0") + " % gagnants · " + rTxt(S.sumR),
+         S.nClosed == 0 ? fg : S.sumR >= 0 ? C_UP : C_DN)
+    cellRow(tb, 5, "Par trade", S.nClosed == 0 ? "—" : (S.sumR >= 0 ? "+" : "") + str.tostring(S.sumR / S.nClosed, "0.00") + "R · pire baisse -" + str.tostring(S.ddR, "0.0") + "R · " + str.tostring(S.worstSt) + " pertes de suite", fg)

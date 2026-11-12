@@ -4,3 +4,4 @@ donnees/Data Bid and Ask 10y/
 __MACOSX/
 *.pkl
 famgrid.json
+*.npz
