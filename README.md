@@ -25,32 +25,32 @@ janvier 2015 → avril 2018, une période que personne n'avait regardée avant d
 | Période | | Trades | Par trade | Total | Pire baisse |
 |---|---|---|---|---|---|
 | 2015-01 → 2018-04 (jamais vue) | sans pyramide | 545 | -0,10R | -52R | -76R |
-| | **v5** | 545 | -0,03R | **-19R** | -76R |
+| | **v5** | 545 | -0,06R | **-31R** | -69R |
 | 2018-05 → 2022-08 (période de choix) | sans pyramide | 724 | +0,21R | +152R | -23R |
-| | **v5** | 724 | +0,37R | **+267R** | -24R |
+| | **v5** | 724 | +0,34R | **+249R** | -22R |
 | 2022-09 → 2026-10 (vérification) | sans pyramide | 646 | +0,17R | +111R | -27R |
-| | **v5** | 646 | +0,20R | **+128R** | -34R |
+| | **v5** | 646 | +0,24R | **+155R** | -25R |
 | **Tout : 2015 → 2026** (11,8 ans) | sans pyramide | 1 915 | +0,11R | +211R | -76R |
-| | **v5** | 1 915 | **+0,20R** | **+376R** | -76R |
+| | **v5** | 1 915 | **+0,20R** | **+373R** | -69R |
 
 - **L'ORB a perdu trois années de suite, 2015, 2016 et 2017.** Le spread coûtait alors 10 à 13 % du risque à chaque
   trade (range de 9 points pour 1 point de spread ; 1 à 3 % depuis 2020), mais ce n'est pas tout : même sans spread,
   l'avantage de ces années n'est que de +0,04R par trade.
-- **La pyramide ajoute du gain sur les trois périodes** (+33R, +115R, +17R), avec et sans les filtres, et pour presque
+- **La pyramide ajoute du gain sur les trois périodes** (+21R, +97R, +44R), avec et sans les filtres, et pour presque
   tous les réglages voisins. Elle ne réduit pas les pertes : les stops de départ sont les mêmes.
-- R par année : 2015 -15, 2016 -10, 2017 -20, 2018 +113, 2019 +38, 2020 +46, 2021 +43, 2022 +52, 2023 +56,
-  2024 +22, 2025 +30, 2026 +21. 163 trades par an, soit environ un jour de bourse sur 1,6.
+- R par année : 2015 -43, 2016 -4, 2017 -7, 2018 +93, 2019 +36, 2020 +45, 2021 +49, 2022 +51, 2023 +62,
+  2024 +24, 2025 +42, 2026 +26. 163 trades par an, soit environ un jour de bourse sur 1,6. Pire série : 13 pertes.
 - Capital, intérêts composés :
 
   | Risque par trade | 2015 → 2026 | Pire baisse | 2018 → 2026 seulement | Pire baisse |
   |---|---|---|---|---|
-  | 0,25 % | +8 % par an | -18 % | +12 % par an | -8 % |
-  | 0,5 % | +16 % par an | -33 % | +24 % par an | -16 % |
-  | 1 % | +30 % par an | -56 % | +50 % par an | -30 % |
+  | 0,25 % | +8 % par an | -16 % | +12 % par an | -6 % |
+  | 0,5 % | +16 % par an | -31 % | +25 % par an | -12 % |
+  | 1 % | +31 % par an | -54 % | +52 % par an | -23 % |
 
-- **Attends-toi à +0,15 à +0,20R par trade en moyenne, avec des années perdantes possibles et une baisse de 76R
-  (trois ans sans nouveau sommet, d'août 2015 à août 2018) déjà vue dans l'historique.** Fais tourner la v5 en démo
-  avant le réel, et choisis le risque par trade en regardant la colonne « pire baisse », pas le retour.
+- **Attends-toi à +0,15 à +0,20R par trade en moyenne, avec des années perdantes possibles et une baisse de 69R
+  (trois ans et demi sans nouveau sommet, de janvier 2015 à juillet 2018) déjà vue dans l'historique.** Fais tourner
+  la v5 en démo avant le réel, et choisis le risque par trade en regardant la colonne « pire baisse », pas le retour.
 
 ## Les règles de la v5
 
@@ -68,9 +68,10 @@ janvier 2015 → avril 2018, une période que personne n'avait regardée avant d
 6. **Sortie** à 15:50 (clôture de la bougie de 15:45). Pas d'objectif. Un seul trade par jour.
 7. **Pyramide** : quand une bougie M5 clôture à +2R ou plus (bougie d'entrée comprise, sauf la dernière de la
    journée), on ajoute une unité au marché, de la même taille que la position de départ, et le stop de l'ensemble
-   monte à +1R. Un seul ajout par trade. Après l'ajout, le pire cas est zéro : +1R sur la première unité, -1R sur
-   l'ajout. La pyramide se déclenche sur 24 % des trades ; 44 % de ces trades finissent à zéro ou un peu en dessous,
-   les autres font les grosses journées (meilleur trade +23R, contre +13R sans pyramide).
+   monte à 1R sous le prix de l'ajout (donc au moins à +1R). Un seul ajout par trade. Après l'ajout, le pire cas est
+   zéro : l'ajout perd 1R, la première unité gagne au moins 1R. La pyramide se déclenche sur 24 % des trades ; la
+   moitié sont ensuite stoppés au stop remonté et finissent un peu au-dessus de zéro (+0,4R en moyenne), les autres font les
+   grosses journées (meilleur trade +23R, contre +13R sans pyramide).
 
 Le **R** affiché = résultat net de tout le trade (ajout et commission compris) ÷ somme risquée au départ : le même
 chiffre que le testeur. Une sortie au prix d'entrée compte comme neutre dans la série de pertes.
@@ -91,7 +92,7 @@ Ce que tu vois sur le graphique :
 - à l'exécution : l'entrée (trait épais), le stop (rouge), le niveau de +1,5R (pointillés gris), une zone rouge
   de l'entrée au stop et une zone verte jusqu'au meilleur prix atteint, avec le résultat en R en direct ;
   à +1,5R, le stop devient gris au prix d'entrée et la zone rouge s'arrête ;
-- à la pyramide : un « + » sur la bougie, une ligne en tirets au prix de l'ajout, et le stop passe en vert à +1R ;
+- à la pyramide : un « + » sur la bougie, une ligne en tirets au prix de l'ajout, et le stop passe en vert, 1R sous l'ajout ;
 - à la sortie, tout s'arrête et s'estompe, le résultat en R reste affiché ; un jour sans trade ne laisse rien ;
 - en haut à droite, un tableau : range du jour, côtés permis par les filtres, état du jour, historique et pire baisse.
 
@@ -140,7 +141,9 @@ Tout a été exploré sur mai 2018 → août 2022 seulement (`v5_exp1.py` à `v5
 - **Contexte du jour** (gap, veille, NR7, force du RSI, largeur de 9:00-9:30, range contre ATR, coût, jour de la
   semaine… 78 tranches) : une seule dépasse le seuil du hasard, quand on en attend 4 par hasard. Aucun filtre ajouté.
 - **Pyramide** : le seul vrai levier. Plateau large (ajout entre +1,5R et +2,5R, stop commun entre +0,5R et +1R).
-  Une deuxième pyramide n'apporte rien.
+  Une deuxième pyramide n'apporte rien. Avec un stop fixe à +1R, une pyramide stoppée finissait à -0,35R en moyenne
+  (l'ajout se fait à la clôture, souvent au-dessus de +2R) ; avec le stop à 1R sous le prix de l'ajout, elle ne perd
+  plus jamais, pour le même total sur 12 ans (`v5_exp10.py`).
 - **Entrée en deux temps** (petite taille, complément dès +0,25R) : très bon avec des hypothèses dans la bougie,
   presque nul une fois simulé sans hypothèse (ajout à la clôture). Écarté : c'était un artefact des bougies M5.
 
@@ -163,6 +166,15 @@ Autopsie des trades (scripts des versions précédentes, dans l'historique git) 
 - Ce qui aide un peu : trader dans le sens de l'élan de l'ouverture (les deux filtres). Le taux de stops ne baisse
   presque pas ; ce sont les trades à petits gains qui disparaissent.
 
+### Les trades d'octobre et novembre 2026
+
+`v5_recent.py` rejoue la v5 sur les dernières semaines avec les contrats à terme NQ de Yahoo Finance et donne, jour
+par jour, le range, le RSI, les côtés permis et le résultat. Sur le 19 octobre → 12 novembre 2026 il retrouve les
+11 trades de TradingView (BlackBull) : 6 stops de suite du 20 octobre au 2 novembre, puis deux journées de tendance
+(+6,8R et +5,5R). Tous respectaient les deux filtres. Les perdants avaient souvent un RSI proche de 50, mais sur
+12 ans un RSI plus marqué n'aide pas de façon stable (`v5_exp9.py`) : sur 2022-2026 les trades à RSI proche de 50
+font même mieux que la moyenne. Six stops de suite sont dans la norme d'une stratégie à 57 % de stops.
+
 ## Refaire les tests
 
 Python 3 avec `pandas` et `numpy`. Décompresse d'abord le zip de `donnees/` dans ce même dossier, puis :
@@ -178,6 +190,9 @@ python v5_exp5.py    # ajouts décidés à la clôture (sans hypothèse)
 python v5_exp6.py    # la pyramide avec les autres réglages
 python v5_exp7.py    # pourquoi 2015-2017 perd : coût du spread, volatilité
 python v5_exp8.py    # robustesse : pyramide et filtres période par période
+python v5_exp9.py    # un RSI plus marqué aide-t-il ? (idée venue des trades d'octobre-novembre 2026)
+python v5_exp10.py   # stop de la pyramide : fixe à +1R ou 1R sous le prix de l'ajout
+python v5_recent.py  # les dernières semaines jour par jour (pip install yfinance)
 ```
 
 Dans les sorties des scripts, « v3 » désigne la stratégie sans filtre ni pyramide et « v4 » les filtres sans pyramide.

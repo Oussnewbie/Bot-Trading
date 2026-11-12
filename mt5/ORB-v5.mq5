@@ -15,13 +15,14 @@
 //  5. Gestion  : à la clôture d'une bougie (après celle de l'entrée) qui a atteint +1,5R, stop au prix d'entrée.
 //                Sortie au marché à 15:50 NY (clôture de la bougie de 15:45).
 //  6. PYRAMIDE : quand une bougie M5 clôture à +2R ou plus, l'EA ajoute une unité au marché et met le stop de
-//                l'ensemble à +1R. Après l'ajout, le pire cas est zéro (+1R sur la première unité, -1R sur l'ajout).
+//                l'ensemble à 1R sous le prix de l'ajout (donc au moins à +1R). Après l'ajout, le pire cas est zéro :
+//                l'ajout perd 1R, la première unité gagne au moins 1R.
 //  7. R affiché = résultat net de tout le trade (ajout, commission et swap compris) ÷ somme risquée au départ.
 //
 // Test de référence (NAS100 CFD Dukascopy, spread réel), 1 915 trades :
-//   2015-01 → 2018-04 (jamais regardée avant de figer la v5) : -0,03R par trade, -19R (l'ORB perd sur 2015-2017)
-//   2018-05 → 2022-08 (période de choix) : +0,37R par trade, +267R ; 2022-09 → 2026-10 (vérification) : +0,20R, +128R
-//   Tout : +0,20R par trade, +376R, pire baisse -76R. Les données et le spread de ton broker donneront un résultat
+//   2015-01 → 2018-04 (jamais regardée avant de figer la v5) : -0,06R par trade, -31R (l'ORB perd sur 2015-2017)
+//   2018-05 → 2022-08 (période de choix) : +0,34R par trade, +249R ; 2022-09 → 2026-10 (vérification) : +0,24R, +155R
+//   Tout : +0,20R par trade, +373R, pire baisse -69R. Les données et le spread de ton broker donneront un résultat
 //   un peu différent : vérifie dans le testeur de stratégie (« Chaque tick basé sur des ticks réels »).
 //
 // Réglages à vérifier : décalage horaire du serveur (le panneau affiche l'heure de New York calculée : elle doit être
@@ -63,7 +64,7 @@ input group "Pyramide — valeurs du test"
 input bool         InpUsePyr    = true;         // Pyramide sur gain
 input double       InpPyrR      = 2.0;          // Ajout quand une bougie M5 clôture à (R)
 input double       InpPyrSize   = 1.0;          // Taille de l'ajout (× la position de départ)
-input double       InpPyrLock   = 1.0;          // Stop de l'ensemble après l'ajout (R)
+input double       InpPyrGap    = 1.0;          // Stop de l'ensemble : distance sous le prix de l'ajout (R)
 
 input group "Exécution"
 input ulong        InpMagic     = 50930;        // Numéro magique
@@ -475,8 +476,7 @@ bool RecordClose(bool force)   // false = un deal de sortie n'est pas encore dan
          return false;
      }
    double r   = gRiskMoney > 0 ? net / gRiskMoney : 0;
-   string lockTxt = "Stop à " + RTxt(InpPyrLock);
-   string why = reason == DEAL_REASON_SL ? (gPyr ? lockTxt : gBE ? "Stop à l'entrée" : "Stop") : reason == DEAL_REASON_TP ? "Objectif" : gCloseWhy != "" ? gCloseWhy : "Fermeture manuelle";
+   string why = reason == DEAL_REASON_SL ? (gPyr ? "Stop remonté" : gBE ? "Stop à l'entrée" : "Stop") : reason == DEAL_REASON_TP ? "Objectif" : gCloseWhy != "" ? gCloseWhy : "Fermeture manuelle";
    gN++;
    gSumR += r;
    if(r > 0.05)
@@ -524,7 +524,7 @@ void SyncPosition()
       string id = gDir == 1 ? "ACHAT" : "VENTE";
       Notify(id + " exécuté à " + Px(gEntry) + "\nStop : " + Px(gSL) +
              (InpBeR > 0 ? "\nStop au prix d'entrée dès " + Px(gEntry + gDir * InpBeR * gRisk) + " (+" + DoubleToString(InpBeR, 1) + "R)" : "") +
-             (InpUsePyr ? "\nPyramide : ajout si une bougie clôture à " + Px(gEntry + gDir * InpPyrR * gRisk) + " (" + RTxt(InpPyrR) + "), stop de l'ensemble à " + RTxt(InpPyrLock) : "") +
+             (InpUsePyr ? "\nPyramide : ajout si une bougie clôture à " + Px(gEntry + gDir * InpPyrR * gRisk) + " (" + RTxt(InpPyrR) + "), stop de l'ensemble " + DoubleToString(InpPyrGap, 1) + "R sous l'ajout" : "") +
              (InpTgtR > 0 ? "\nObjectif : " + Px(gEntry + gDir * InpTgtR * gRisk) : "\nSortie à " + InpFlat + " NY"));
       gDayTxt = (gDir == 1 ? "Achat" : "Vente") + " en cours";
       SaveState();
@@ -723,10 +723,13 @@ void DoPyramid(double curR)
    double step = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_STEP);
    double vmin = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MIN);
    int    vd   = (int)MathMax(0, MathRound(-MathLog10(step)));
-   double lots = NormalizeDouble(MathFloor(gLots * InpPyrSize / step) * step, vd);
+   double lots = NormalizeDouble(MathFloor(gLots * InpPyrSize / step + 0.000001) * step, vd);
    gPyr = true;   // une seule tentative par trade
    gBE  = true;
-   double lock = NormalizeDouble(gEntry + gDir * InpPyrLock * gRisk, _Digits);
+   // stop de l'ensemble : InpPyrGap R sous le prix de l'ajout (ask pour un achat, bid pour une vente)
+   double mkt  = gDir == 1 ? SymbolInfoDouble(_Symbol, SYMBOL_ASK) : SymbolInfoDouble(_Symbol, SYMBOL_BID);
+   double lock = NormalizeDouble(mkt - gDir * InpPyrGap * gRisk, _Digits);
+   double lockR = (lock - gEntry) * gDir / gRisk;
    if(lots < vmin)
      {
       // ajout trop petit pour le broker : le trade continue comme sans pyramide
@@ -762,9 +765,9 @@ void DoPyramid(double curR)
       if(id != gPosId)
          gPosId2 = id;
      }
-   RaiseStop(lock, "Stop à " + RTxt(InpPyrLock));
+   RaiseStop(lock, "Stop remonté");
    Notify("PYRAMIDE : clôture à " + RTxt(curR) + "\nAjout de " + DoubleToString(lots, vd) + " lot" + (apx > 0 ? " à " + Px(apx) : "") +
-          "\nStop de l'ensemble : " + Px(lock) + " (" + RTxt(InpPyrLock) + ")");
+          "\nStop de l'ensemble : " + Px(lock) + " (" + RTxt(lockR) + ")");
    SaveState();
   }
 
@@ -840,7 +843,7 @@ void Panel()
    datetime ny = ToNY(TimeCurrent());
    string live = "";
    if(gIn && gRiskMoney > 0)
-      live = (gDir == 1 ? "Achat" : "Vente") + " en cours · " + RTxt(OpenProfit() / gRiskMoney) + (gPyr ? " · pyramide, stop à " + RTxt(InpPyrLock) : gBE ? " · stop à l'entrée" : "");
+      live = (gDir == 1 ? "Achat" : "Vente") + " en cours · " + RTxt(OpenProfit() / gRiskMoney) + (gPyr ? " · pyramide, stop à " + Px(gVStop) : gBE ? " · stop à l'entrée" : "");
    string s = "ORB v5 · " + _Symbol + " · " + DoubleToString(InpRiskPct, 1) + " % par trade\n" +
               "Heure NY : " + TimeToString(ny, TIME_DATE | TIME_MINUTES) + " (serveur " + TimeToString(TimeCurrent(), TIME_MINUTES) + ") — à vérifier\n" +
               "Range 9:30 : " + (gOrH > 0 ? Px(gOrL) + " – " + Px(gOrH) + " (" + Pts(gOrH - gOrL) + ")" : "—") + "\n" +
@@ -862,9 +865,9 @@ int OnInit()
       Alert("ORB v5 : heures invalides (format HH:MM, début de l'élan < range < sortie).");
       return INIT_PARAMETERS_INCORRECT;
      }
-   if(InpUsePyr && (InpPyrLock >= InpPyrR || InpPyrSize <= 0))
+   if(InpUsePyr && (InpPyrGap <= 0 || InpPyrGap > InpPyrR || InpPyrSize <= 0))
      {
-      Alert("ORB v5 : pyramide invalide (le stop de l'ensemble doit être plus bas que le seuil d'ajout).");
+      Alert("ORB v5 : pyramide invalide (la distance du stop doit être positive et ne pas dépasser le seuil d'ajout).");
       return INIT_PARAMETERS_INCORRECT;
      }
    trade.SetExpertMagicNumber(InpMagic);
@@ -924,7 +927,7 @@ void OnTick()
       double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
       double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
       if(gVStop > 0 && ((gDir == 1 && bid <= gVStop) || (gDir == -1 && ask >= gVStop)))
-         ClosePos(gPyr ? "Stop à " + RTxt(InpPyrLock) : "Stop à l'entrée");
+         ClosePos(gPyr ? "Stop remonté" : "Stop à l'entrée");
       datetime ny = ToNY(TimeCurrent());
       if(gIn && (NYMin(ny) >= mFlat || NYDate(ny) != gPosDay))
          ClosePos("Fin de journée");

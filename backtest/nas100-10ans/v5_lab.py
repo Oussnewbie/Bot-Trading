@@ -25,14 +25,16 @@ def rsi(c, n=14):
     return (100 - 100 / (1 + up / dn.replace(0, np.nan))).fillna(50).values
 
 
-def prep():
-    """Charge les données et construit la table des jours (tout ce qui est connu à 9:35)."""
+def prep(data=None):
+    """Charge les données et construit la table des jours (tout ce qui est connu à 9:35).
+    data = (bid, ask) : deux tableaux o, h, l, c indexés en heure de New York, pour rejouer d'autres données."""
     global D
-    if os.path.exists("v5_days.pkl") and os.path.exists("v5_bars.npz"):
+    cache = data is None
+    if cache and os.path.exists("v5_days.pkl") and os.path.exists("v5_bars.npz"):
         z = np.load("v5_bars.npz", allow_pickle=True)
         G.update({k: z[k] for k in z.files}); G["t"] = pd.DatetimeIndex(pd.to_datetime(G["tn"], utc=True)).tz_convert("America/New_York")
         D = pd.read_pickle("v5_days.pkl"); return D
-    b, a = load10()
+    b, a = load10() if cache else data
     t = b.index
     g = dict(BO=b.o.values, BH=b.h.values, BL=b.l.values, BC=b.c.values, AO=a.o.values, AH=a.h.values, AL=a.l.values, AC=a.c.values)
     mins = (t.hour * 60 + t.minute).values
@@ -75,8 +77,9 @@ def prep():
     D["or_med"] = D.orw / D.orw.rolling(20, min_periods=10).median().shift(1)   # range de 9:30 vs médiane des 20 jours précédents
     D["per"] = np.where(D.day < T0, "B", np.where(D.day < T1, "train", "A"))
     D["dow"] = pd.DatetimeIndex(D.day).dayofweek
-    D.to_pickle("v5_days.pkl")
-    np.savez("v5_bars.npz", **g)
+    if cache:
+        D.to_pickle("v5_days.pkl")
+        np.savez("v5_bars.npz", **g)
     G.update(g); G["t"] = t
     return D
 
@@ -117,7 +120,12 @@ def path(k, d, ent, sl, last_i, P, fill="stop"):
         cur = ((BC[j] - ent) if d == 1 else (ent - AC[j])) / risk
         while cadd and cur >= cadd[0][0]:
             trig, sz, lock = cadd.pop(0)
-            adds.append(((AC[j] + SLIP) if d == 1 else (BC[j] - SLIP), sz))
+            if isinstance(lock, tuple) and lock[0] == "max" and cur > lock[1]: continue     # ("max", m, stop) : pas d'ajout si la clôture dépasse m R
+            apx = (AC[j] + SLIP) if d == 1 else (BC[j] - SLIP)
+            adds.append((apx, sz))
+            if isinstance(lock, tuple):
+                if lock[0] == "rel": lock = max(lock[2], (apx - ent) * d / risk - lock[1])  # ("rel", x, plancher) : stop à x R sous le prix de l'ajout
+                else: lock = lock[2]
             lv = ent + d * lock * risk
             stop = max(stop, lv) if d == 1 else min(stop, lv)
         return stop

@@ -1,5 +1,5 @@
 """ORB v5 = filtres RSI14 M5 + élan 9:00-9:30, et une pyramide : quand une bougie M5 clôture à +2R ou plus,
-ajout d'une unité au marché et stop de l'ensemble à +1R. Même logique que pine/ORB-v5.pine et mt5/ORB-v5.mq5.
+ajout d'une unité au marché et stop de l'ensemble à 1R sous le prix de l'ajout (donc au moins à +1R). Même logique que pine/ORB-v5.pine et mt5/ORB-v5.mq5.
 
 Réglages choisis sur mai 2018 -> août 2022 seulement (v5_exp1.py à v5_exp6.py), puis vérifiés sur septembre 2022 ->
 octobre 2026, puis sur janvier 2015 -> avril 2018, période jamais regardée avant que la v5 soit figée."""
@@ -7,7 +7,7 @@ import numpy as np, pandas as pd
 import v5_lab as L
 from v5_lab import run, stats, f_v4, f_all
 
-V5 = dict(cadd=[(2.0, 1.0, 1.0)])
+V5 = dict(cadd=[(2.0, 1.0, ("rel", 1.0, 1.0))])   # clôture ≥ +2R : +1 unité, stop de l'ensemble à 1R sous le prix de l'ajout
 PERS = [("B", "2015-01 → 2018-04 (jamais vue)"), ("train", "2018-05 → 2022-08 (choix)"), ("A", "2022-09 → 2026-10 (vérif.)")]
 
 def capital(X, risk):
