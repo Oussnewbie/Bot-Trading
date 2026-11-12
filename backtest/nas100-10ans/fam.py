@@ -8,7 +8,22 @@ import sys
 sys.path.insert(0, ".")
 import numpy as np, pandas as pd
 from load10 import load10
-from sim import pivots
+
+def pivots(h, l, n):
+    """Pivot value known at bar i (pivot at i-n confirmed with n bars on each side)."""
+    N = len(h)
+    ph = np.full(N, np.nan)
+    pl = np.full(N, np.nan)
+    for i in range(2 * n, N):
+        j = i - n
+        win_h = h[j - n:j + n + 1]
+        win_l = l[j - n:j + n + 1]
+        if h[j] == win_h.max() and (win_h == h[j]).sum() == 1:
+            ph[i] = h[j]
+        if l[j] == win_l.min() and (win_l == l[j]).sum() == 1:
+            pl[i] = l[j]
+    return ph, pl
+
 
 SLIP = 0.1
 SPLIT = pd.Timestamp("2022-09-01", tz="America/New_York")

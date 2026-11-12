@@ -1,5 +1,3 @@
-backtest/data/
-backtest/grid.json
 __pycache__/
 *.pyc
 donnees/Data Bid and Ask 10y/
