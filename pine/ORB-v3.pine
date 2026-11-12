@@ -6,7 +6,10 @@
 //  1. Range    : high et low de la première bougie M5 de la séance (9:30-9:35).
 //  2. Ordres   : à 9:35, un achat stop sur le high et une vente stop sur le low (le premier exécuté annule l'autre).
 //                Ils restent valables 2 bougies (jusqu'à 9:45), puis ils sont annulés : pas de trade ce jour-là.
-//  3. Stop     : de l'autre côté du range. 1R = la taille du range.
+//  3. Stop     : de l'autre côté du range. 1R = la somme perdue si le stop est touché (taille × range).
+//                Le résultat en R affiché = gain ou perte nets du trade (commission comprise) ÷ ce montant,
+//                donc le même chiffre que dans le testeur de stratégie.
+//                Le seuil du stop à l'entrée et l'objectif se mesurent depuis le prix d'exécution réel.
 //  4. Gestion  : stop remonté au prix d'entrée dès +1,5R. Pas d'objectif par défaut : sortie à 15:45 (clôture à 15:50).
 //  5. Un seul trade par jour. Risque conseillé : 0,5 % par trade.
 //  Option : filtre RSI14 M5 (achat seulement si le RSI de 9:30 est au-dessus de 50, vente seulement en dessous ;
@@ -104,6 +107,7 @@ type Trade
     float  sl
     float  tp
     float  risk
+    float  usd
     int    fillBar
     int    tFill
     int    day
@@ -122,6 +126,7 @@ var box   orBox   = na
 var bool  pend    = false     // ordres stop en attente
 var int   pBar    = 0
 var int   pDir    = 0         // 0 = les deux côtés, 1 = achat seulement, -1 = vente seulement
+var float pUSD    = na        // montant risqué du jour (taille × range), en USD
 var int   tradeN  = 0
 var line  lnH     = na
 var line  lnL     = na
@@ -190,11 +195,12 @@ moveRight(Trade t, int x2) =>
         t.tLb.set_x(x2)
     true
 
+// R en direct : résultat latent du testeur (commission comprise) ÷ montant risqué
 liveR(Trade t) =>
-    (close - t.entry) * t.dir / t.risk
+    strategy.opentrades > 0 ? strategy.opentrades.profit(0) / t.usd : (close - t.entry) * t.dir / t.risk
 
 // Trade terminé : les lignes s'arrêtent à la sortie et s'estompent, le résultat reste affiché
-closeDraw(Trade t, int xe, float px, string why) =>
+closeDraw(Trade t, int xe, float px, float r, string why) =>
     moveRight(t, xe)
     for lb in array.from(t.eLb, t.sLb, t.tLb)
         if not na(lb)
@@ -206,7 +212,6 @@ closeDraw(Trade t, int xe, float px, string why) =>
     if not na(t.tLn)
         t.tLn.set_color(color.new(C_UP, 60))
     if showOrders
-        float r = (px - t.entry) * t.dir / t.risk
         label.new(xe, px, rTxt(r), xloc = xloc.bar_time, style = label.style_label_left,
              color = color.new(r >= 0 ? C_UP : C_DN, 20), textcolor = color.white, size = size.small,
              tooltip = t.id + " · " + why + " · entrée " + fmt(t.entry) + " · sortie " + fmt(px))
@@ -216,23 +221,22 @@ newTrade(int d, float entry, int tFill, int fBar) =>
     float sl = d == 1 ? orL : orH
     float rk = math.abs(entry - sl)
     float tp = tgtR > 0 ? entry + d * tgtR * rk : na
-    Trade.new(d == 1 ? idL() : idS(), d == 1 ? "X" + idL() : "X" + idS(), d, entry, sl, tp, rk, fBar, tFill, nyDate)
+    Trade.new(d == 1 ? idL() : idS(), d == 1 ? "X" + idL() : "X" + idS(), d, entry, sl, tp, rk, pUSD, fBar, tFill, nyDate)
 
 recordClose(Trade t, int k) =>
     float px = strategy.closedtrades.exit_price(k)
-    float r  = (px - t.entry) * t.dir / t.risk
+    float r  = strategy.closedtrades.profit(k) / t.usd
     S.nClosed += 1
     S.sumR    += r
     if r > 0.05
-        S.nPos   += 1
-        S.streak := 0
-    else if r < -0.05
-        S.streak += 1
+        S.nPos += 1
+    // série de pertes : comme dans le test, un trade à ~0R (stop à l'entrée) interrompt la série
+    S.streak := r < -0.05 ? S.streak + 1 : 0
     S.worstSt := math.max(S.worstSt, S.streak)
     S.peakR   := math.max(S.peakR, S.sumR)
     S.ddR     := math.max(S.ddR, S.peakR - S.sumR)
     string why = strategy.closedtrades.exit_comment(k)
-    closeDraw(t, strategy.closedtrades.exit_time(k), px, why)
+    closeDraw(t, strategy.closedtrades.exit_time(k), px, r, why)
     notify(t.id + " clôturé (" + why + ") : " + rTxt(r) + " à " + fmt(px))
     S.dayTxt := t.id + " terminé : " + rTxt(r)
     true
@@ -244,6 +248,9 @@ if pend and na(cur) and (strategy.position_size != 0 or strategy.closedtrades > 
     if strategy.position_size != 0
         int d = strategy.position_size > 0 ? 1 : -1
         cur := newTrade(d, strategy.opentrades.entry_price(0), strategy.opentrades.entry_time(0), strategy.opentrades.entry_bar_index(0))
+        // Objectif posé maintenant, depuis le prix d'exécution réel (comme dans le test : pas d'objectif sur la bougie d'entrée)
+        if not na(cur.tp)
+            strategy.exit(cur.xid, from_entry = cur.id, stop = cur.sl, limit = cur.tp, comment_loss = "Stop", comment_profit = "Objectif")
         openDraw(cur)
         notify((d == 1 ? "ACHAT" : "VENTE") + " exécuté : " + cur.id + " à " + fmt(cur.entry) + "\nStop : " + fmt(cur.sl) +
              (beR > 0 ? "\nStop au prix d'entrée dès " + fmt(cur.entry + d * beR * cur.risk) + " (+" + str.tostring(beR) + "R)" : "") +
@@ -326,14 +333,14 @@ if isOR and strategy.position_size == 0 and not pend and na(cur)
         tradeN += 1
         pend   := true
         pBar   := bar_index
-        float tpL = tgtR > 0 ? orH + tgtR * dist : na
-        float tpS = tgtR > 0 ? orL - tgtR * dist : na
+        pUSD   := qty * dist * syminfo.pointvalue * fx
+        // L'objectif éventuel est ajouté à l'exécution, depuis le prix réel d'entrée
         if pDir != -1
             strategy.entry(idL(), strategy.long, qty = qty, stop = orH, oca_name = "ORB" + str.tostring(tradeN), oca_type = strategy.oca.cancel, comment = "Cassure du high")
-            strategy.exit("X" + idL(), from_entry = idL(), stop = orL, limit = tpL, comment_loss = "Stop", comment_profit = "Objectif")
+            strategy.exit("X" + idL(), from_entry = idL(), stop = orL, comment_loss = "Stop")
         if pDir != 1
             strategy.entry(idS(), strategy.short, qty = qty, stop = orL, oca_name = "ORB" + str.tostring(tradeN), oca_type = strategy.oca.cancel, comment = "Cassure du low")
-            strategy.exit("X" + idS(), from_entry = idS(), stop = orH, limit = tpS, comment_loss = "Stop", comment_profit = "Objectif")
+            strategy.exit("X" + idS(), from_entry = idS(), stop = orH, comment_loss = "Stop")
         if showOrders
             int x2 = time + FUT
             if pDir != -1
@@ -342,13 +349,13 @@ if isOR and strategy.position_size == 0 and not pend and na(cur)
             if pDir != 1
                 lnL := line.new(time, orL, x2, orL, xloc = xloc.bar_time, color = color.new(C_DN, 10), style = line.style_dashed, width = 1)
                 lbL := sideLabel(x2, orL, "Vente stop · " + fmt(orL), C_DN, "Stop : " + fmt(orH))
-        float usd = qty * dist * syminfo.pointvalue * fx
         S.dayTxt := (pDir == 1 ? "Achat stop " + fmt(orH) : pDir == -1 ? "Vente stop " + fmt(orL) : "Achat " + fmt(orH) + " · Vente " + fmt(orL)) + " · jusqu'à 9:45"
         notify("ORDRES ORB placés · " + str.format_time(time_close, "HH:mm", TZ_NY) + " NY (" + str.format_time(time_close, "HH:mm", TZ_PARIS) + " Paris)" +
              "\nRange 9:30 : " + fmt(orL) + " – " + fmt(orH) + " (" + distTxt(dist) + " = 1R)" +
-             (pDir != -1 ? "\nAchat stop : " + fmt(orH) + " · stop " + fmt(orL) + (tgtR > 0 ? " · objectif " + fmt(tpL) : "") : "") +
-             (pDir != 1 ? "\nVente stop : " + fmt(orL) + " · stop " + fmt(orH) + (tgtR > 0 ? " · objectif " + fmt(tpS) : "") : "") +
-             "\nTaille : " + str.tostring(qty) + (isFut ? " contrat(s)" : "") + " · " + str.tostring(usd, "0.##") + " $ risqués (" + str.tostring(riskPct) + " %)" +
+             (pDir != -1 ? "\nAchat stop : " + fmt(orH) + " · stop " + fmt(orL) : "") +
+             (pDir != 1 ? "\nVente stop : " + fmt(orL) + " · stop " + fmt(orH) : "") +
+             (tgtR > 0 ? "\nObjectif : +" + str.tostring(tgtR) + "R depuis le prix d'exécution" : "") +
+             "\nTaille : " + str.tostring(qty) + (isFut ? " contrat(s)" : "") + " · " + str.tostring(pUSD, "0.##") + " $ risqués (" + str.tostring(riskPct) + " %)" +
              "\nValables " + str.tostring(liveBars * 5) + " min. Le premier exécuté annule l'autre." +
              (beR > 0 ? "\nStop au prix d'entrée à +" + str.tostring(beR) + "R" : "") + (tgtR > 0 ? "" : " · sortie à 15:45 NY"))
 
