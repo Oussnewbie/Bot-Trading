@@ -9,6 +9,7 @@ Toutes les heures sont en heure de New York (9:30 NY = 15:30 à Paris la plupart
 | Fichier | Rôle |
 |---|---|
 | `pine/ORB-v4.pine` | **La stratégie.** Range de la bougie de 9:30, ordres stop sur le high et/ou le low selon les filtres, valables jusqu'à 9:45, stop de l'autre côté du range, stop remonté au prix d'entrée dès +1,5R, sortie à 15:45. Alertes Telegram. |
+| `mt5/ORB-v4.mq5` | **La même stratégie en Expert Advisor MetaTrader 5**, mêmes règles et mêmes paramètres. Notifications push MT5, WhatsApp et Telegram. |
 | `backtest/nas100-10ans/` | Recherche sur 8 ans et demi de NAS100 (bid et ask, spread compté). `orb_v4.py` reproduit la v4. |
 | `donnees/` | Données Dukascopy NAS100 CFD M5, bid et ask, 2015 → 2026 (zip). |
 
@@ -50,6 +51,39 @@ Ce que tu vois sur le graphique :
 
 Le **R** affiché = résultat net du trade (commission comprise) ÷ somme risquée : le même chiffre que le testeur.
 Une sortie au prix d'entrée compte comme neutre dans la série de pertes, même si les frais la rendent un peu négative.
+
+## Utiliser l'EA MetaTrader 5
+
+1. Dans MT5 : Fichier > Ouvrir le dossier des données > `MQL5/Experts`, copie `mt5/ORB-v4.mq5`, ouvre-le dans
+   MetaEditor et compile (F7).
+2. Glisse l'EA sur un graphique du NAS100 de ton broker (n'importe quel horizon : il lit toujours les bougies M5),
+   coche « Autoriser le trading algorithmique ».
+3. **Heure du serveur** : la plupart des brokers sont à GMT+2 en hiver avec l'heure d'été américaine (réglages par
+   défaut). Le panneau en haut à gauche affiche l'heure de New York calculée : elle doit être juste. Au lancement en
+   réel, l'EA compare aussi avec l'heure réelle du serveur et prévient si le réglage est faux.
+4. Compte en mode **hedging** conseillé. MT5 doit tourner pendant la séance de New York (VPS conseillé) : l'EA gère
+   lui-même l'entrée au niveau du range et la sortie de 15:50 ; le stop est posé chez le broker dès l'entrée.
+5. Pour comparer avec le test : testeur de stratégie, NAS100, période mai 2018 → octobre 2026, modèle « Chaque tick
+   basé sur des ticks réels », dépôt 10 000. Les données et le spread de ton broker ne sont pas ceux de Dukascopy :
+   le résultat sera proche, pas identique.
+
+Différences avec TradingView : l'entrée se fait au tick où l'ask (achat) ou le bid (vente) atteint le niveau, comme
+le test Python ; le stop à l'entrée est décidé à la clôture de la bougie, comme dans le test ; si le broker refuse de
+le poser (trop près du prix), l'EA ferme lui-même la position au prix d'entrée.
+
+### Notifications WhatsApp
+
+MetaTrader n'envoie pas de WhatsApp tout seul ; l'EA passe par CallMeBot, un service gratuit pour usage personnel :
+1. Sur le site de CallMeBot (rubrique WhatsApp API), récupère le numéro du bot et enregistre-le dans tes contacts.
+2. Envoie-lui sur WhatsApp le message indiqué sur le site (« I allow callmebot to send me messages ») : il répond avec
+   ta clé API.
+3. Dans MT5 : Outils > Options > Expert Advisors, coche « Autoriser WebRequest pour les URL listées » et ajoute
+   `https://api.callmebot.com`.
+4. Dans les paramètres de l'EA : « WhatsApp via CallMeBot » = true, ton numéro au format international (+33…) et la clé.
+
+Les messages passent par ce service tiers (non officiel). Autres possibilités : les notifications push de
+l'appli MetaTrader 5 (gratuites, sans service tiers : copie ton MetaQuotes ID de l'appli mobile dans Outils > Options >
+Notifications), ou Telegram (ajoute `https://api.telegram.org` à la même liste, puis le jeton du bot et le chat ID).
 
 ## Résultats (NAS100 CFD Dukascopy, mai 2018 → octobre 2026, spread réel compté)
 
