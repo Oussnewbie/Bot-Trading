@@ -203,6 +203,31 @@ def controle(nom, out):
     return T
 
 
+def couverture(nom, out):
+    """Heures cotées hors séance, par année : de quoi dépendent les niveaux Asie / Londres, le gap et les bougies H4 / D1."""
+    df = C.charger(nom, "M1", finale=True, motif="qualite des donnees")
+    ny = df.index
+    dec = ny.tz_localize(None) + pd.Timedelta(hours=7)                 # la journée de trading commence à 17:00 New York
+    k = pd.DataFrame({"jour": dec.normalize(), "m": dec.hour * 60 + dec.minute})   # m = minutes depuis 17:00
+    fen = {"asie": (60, 600), "londres": (600, 900), "pre": (900, 990), "seance": (990, 1380)}      # 18:00-3:00, 3:00-8:00, 8:00-9:30, 9:30-16:00
+    J = pd.DataFrame({n: k[(k.m >= a) & (k.m < b)].groupby("jour").size() / (b - a) for n, (a, b) in fen.items()}).fillna(0)
+    J["n"] = k.groupby("jour").size()
+    J["premier"] = k.groupby("jour").m.min(); J["dernier"] = k.groupby("jour").m.max()
+    J = J[(J.seance > 0.5) & (J.index.day_of_week < 5)]
+    z = np.load(C.chemin_bougies(nom, "H4"))
+    h4 = C.heure_ny(z["t"]).tz_localize(None) + pd.Timedelta(hours=7)
+    J["h4"] = pd.Series(1, index=h4.normalize()).groupby(level=0).sum().reindex(J.index).fillna(0)
+    hm17 = lambda m: hm((int(m) + 17 * 60) % 1440)
+    out.append("\n## Heures cotées hors séance, par année\n")
+    out.append("Journée de trading de 17:00 à 17:00 New York, jours avec une séance cotée. Asie = 18:00-3:00, Londres = 3:00-8:00, "
+               "avant l'ouverture = 8:00-9:30. Une fenêtre est « cotée » si plus de la moitié de ses minutes le sont.\n")
+    out.append("| Année | Séances | M1 par journée (médiane) | Première cotation (médiane) | Dernière (médiane) | Asie cotée | Londres cotée | 8:00-9:30 cotée | Bougies H4 par journée (médiane, sur 6) | Journées avec 6 H4 |")
+    out.append("|---|---|---|---|---|---|---|---|---|---|")
+    for an, g in J.groupby(J.index.year):
+        out.append(f"| {an} | {len(g)} | {int(g.n.median())} | {hm17(g.premier.median())} | {hm17(g.dernier.median())} | {100 * (g.asie > 0.5).mean():.0f} % | {100 * (g.londres > 0.5).mean():.0f} % "
+                   f"| {100 * (g.pre > 0.5).mean():.0f} % | {int(g.h4.median())} | {100 * (g.h4 >= 6).mean():.0f} % |")
+
+
 def debut_nas(out):
     """Le début de l'historique du Nasdaq, mois par mois : spread nul, heures cotées, mois vides."""
     df = C.charger("nas100", "M1", finale=True, motif="qualite des donnees")
@@ -241,6 +266,7 @@ if __name__ == "__main__":
            "il sert à expliquer les séances manquantes ou courtes, pas à les définir."]
     for nom in C.INSTRUMENTS:
         controle(nom, out)
+        couverture(nom, out)
         if nom == "nas100":
             debut_nas(out)
     with open(os.path.join(C.SORTIES, "etape1_qualite.md"), "w") as f:

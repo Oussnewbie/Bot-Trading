@@ -6,9 +6,9 @@ Pour tout refaire : `./00_telecharger.sh`, puis `01_construire.py`, `02_qualite.
 
 ## Données téléchargées (Dukascopy, M1 bid et ask, aucun échec)
 
-| | Demandé | Première bougie réelle | Utilisable à partir de | Dernière bougie | M1 |
+| | Demandé | Première bougie réelle | Premier jour avec un vrai spread et la fenêtre 9:00-9:30 | Dernière bougie | M1 |
 |---|---|---|---|---|---|
-| Nasdaq CFD (`usatechidxusd`) | 2010-01-01 | 2011-09-19 | **2013-05-22** | 2026-11-13 | 4 252 808 |
+| Nasdaq CFD (`usatechidxusd`) | 2010-01-01 | 2011-09-19 | **2013-05-22** (qualité moyenne jusqu'en mai 2014) | 2026-11-13 | 4 252 808 |
 | Or (`xauusd`) | 2010-01-01 | 2010-01-01 (2009-12-31 19:02 à New York) | **2010-01-01** | 2026-11-13 | 5 997 966 |
 
 Le Nasdaq ne remonte pas à 2010 :
@@ -21,6 +21,11 @@ Le Nasdaq ne remonte pas à 2010 :
   après), et une pause de cotation de 15 minutes revient chaque jour vers 14:15 ou 15:15 de septembre 2013 à mai 2014.
 
 Horizons reconstruits pour les deux instruments : M1, M3, M5, M15, M30, H1, H4, D1 (H4 et D1 alignées sur 17:00 New York).
+
+**La nuit manque sur le Nasdaq de 2015 à mi-2018.** La cotation ne commence qu'à 2:00 New York en 2015 (80 % des jours),
+2016 et 2017, et la séance asiatique n'est complète qu'à partir de 2019 (72 % des jours en 2018). Ces années-là il n'y a
+que 4 bougies H4 par jour au lieu de 6, et la bougie D1 commence à 2:00. Londres (3:00-8:00) et 8:00-9:30 sont cotées à
+99-100 % depuis 2015. L'or est coté 23 heures sur 24 depuis 2010.
 
 ## Qualité à partir de 2015 (Nasdaq) et de 2010 (or)
 
@@ -54,16 +59,21 @@ Horizons reconstruits pour les deux instruments : M1, M3, M5, M15, M30, H1, H4, 
 |---|---|---|---|---|---|
 | 2013-05 → 2014 (jamais simulé jusqu'ici) | 231 | -0,144R | -33,2R | -53,1R | 26 |
 | 2015 → 2017 | 505 | -0,108R | -54,6R | -74,1R | 11 |
-| **Recherche : 2013-05 → 2017** | 736 | -0,119R | -87,8R | -122,8R | 26 |
+| **Recherche (si elle commence au 2013-05-22) → 2017** | 736 | -0,119R | -87,8R | -122,8R | 26 |
 | **Vérification : 2018 → 2022** | 822 | +0,332R | +273,0R | -21,8R | 9 |
 | **Finale : 2023 → 2026-11-13** | 605 | +0,273R | +165,0R | -24,7R | 13 |
 | Tout | 2 163 | +0,162R | +350,2R | -122,8R | 26 |
 
-En 2013-2014 le spread coûte 27 à 32 % du range de 9:30 : la perte de ces deux années vient d'abord du coût.
+- La série de 26 pertes va du 2014-07-09 au 2014-09-11, dans la partie propre des données.
+- Le spread coûte alors 27 à 32 % du range de 9:30 (10 à 12 % en 2015-2017, 1 à 3 % depuis 2021). Rejouée au prix milieu,
+  la v5 de juin-décembre 2014 passe de -45R à -10R, et celle de 2015-2017 de -55R à +32R : le coût explique l'essentiel de
+  la perte, pas toute. Cette comparaison est grossière (les trades ne sont pas exactement les mêmes).
+- Période de recherche selon sa date de départ : depuis 2013-05-22, 736 trades et -88R ; depuis 2014-06-01, 596 trades et
+  -100R ; depuis 2015-01-01, 505 trades et -55R.
 
 ## À savoir avant l'étape 2
 
-1. **La période de recherche est celle où la v5 perd** (-88R), et la v5 a été choisie sur 2018-05 → 2022-08. Un pattern
+1. **La période de recherche est celle où la v5 perd** (-55R à -100R selon son début), et la v5 a été choisie sur 2018-05 → 2022-08. Un pattern
    « dans le même sens sur les trois périodes » devra tenir à la fois quand la stratégie perd et quand elle gagne.
 2. **La période finale 2023-2026 n'est pas vierge.** Le README y a mesuré la v5, et `research/RAPPORT.md` (branche
    `recherche/stops`) y a déjà lu une fois cinq variantes : stop à la clôture M5, filtre de spread, jours fériés, biais
@@ -71,3 +81,7 @@ En 2013-2014 le spread coûte 27 à 32 % du range de 9:30 : la perte de ces deux
 3. **Le volume Dukascopy n'est pas un nombre de ticks.** Pour le « volume en ticks de la bougie de 9:30 », il faut
    télécharger les ticks de l'heure de l'ouverture (disponibles depuis 2013).
 4. **Le texte de la demande est coupé** au milieu de l'étape 3 (« Teste ensuite une seule variante »).
+5. **Variables de contexte limitées par les données** : les niveaux de la séance asiatique, et la tendance ou la MA200 en
+   H4 et D1 sur bougies complètes, ne sont pas mesurables sur le Nasdaq de 2015 à mi-2018.
+6. **Le verrou de la période finale** ne couvre que `commun.charger`. `v5_lab.prep()` sur les fichiers du dépôt lit encore
+   2023+ : à fermer au début de l'étape 2, avant toute courbe contrefactuelle.

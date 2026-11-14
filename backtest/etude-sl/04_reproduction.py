@@ -110,6 +110,41 @@ if __name__ == "__main__":
     jours_an = pd.DatetimeIndex(L.D.day).year
     for an, g in X3.groupby("an"):
         out.append(f"| {an} | {(jours_an == an).sum()} | {len(g)} | {g.r.mean():+.3f}R | {g.r.sum():+.1f}R |")
+    # la plus longue série de pertes
+    perte = (X3.r < -0.05).values
+    fin = debut = longueur = cur = 0
+    for k, p_ in enumerate(perte):
+        cur = cur + 1 if p_ else 0
+        if cur > longueur:
+            longueur, fin, debut = cur, k, k - cur + 1
+    out.append(f"\nPlus longue série de pertes : {longueur} trades, du {X3.t.iloc[debut]:%Y-%m-%d} au {X3.t.iloc[fin]:%Y-%m-%d}.")
+
+    # 5. options pour le début de la période de recherche
+    out.append("\n## 5. Début de la période de recherche : trois options\n")
+    out.append("La qualité des données du Nasdaq est moyenne de mai 2013 à mai 2014 (voir etape1_qualite.md). Trades de la v5 non modifiée "
+               "dans la période de recherche (jusqu'à fin 2017) selon la date de départ :\n")
+    out.append(C.ENTETE_R)
+    for nom, d0 in (("Depuis 2013-05-22 (premier vrai spread)", "2013-05-22"), ("Depuis 2014-06-01 (fin des pauses de cotation)", "2014-06-01"),
+                    ("Depuis 2015-01-01 (début des données du dépôt)", "2015-01-01")):
+        out.append(C.ligne_r(nom, X3.r[(t >= d0) & (t < "2018-01-01")].values))
+
+    # 6. part du spread : la v5 au prix milieu des deux côtés (le glissement de 0,1 point du code reste)
+    mid = pd.DataFrame({"o": (b.o + a.o) / 2, "h": (b.h + a.h) / 2, "l": (b.l + a.l) / 2, "c": (b.c + a.c) / 2, "v": b.v})
+    L.prep(data=(mid, mid))
+    Xm = L.run(orb_v5.V5, L.f_v4)
+    tm = Xm.t.dt.tz_localize(None)
+    out.append("\n## 6. Part du spread : la v5 jouée au prix milieu (spread nul), même glissement de 0,1 point\n")
+    out.append("Le RSI est alors calculé sur le prix milieu : quelques jours changent de côté permis, d'où un nombre de trades un peu différent.\n")
+    out.append("| Période | Spread réel : trades | R par trade | Total | Prix milieu : trades | R par trade | Total | Coût du spread par trade |\n|---|---|---|---|---|---|---|---|")
+    for nom, d0, d1 in (("2013-05 → 2014-05", "2013-01-01", "2014-06-01"), ("2014-06 → 2014-12", "2014-06-01", "2015-01-01"), ("2015 → 2017", "2015-01-01", "2018-01-01"),
+                        ("2018 → 2022", "2018-01-01", "2023-01-01"), ("2023 → 2026-11", "2023-01-01", "2100-01-01")):
+        x = X3.r[(t >= d0) & (t < d1)]; y = Xm.r[(tm >= d0) & (tm < d1)]
+        out.append(f"| {nom} | {len(x)} | {x.mean():+.3f}R | {x.sum():+.1f}R | {len(y)} | {y.mean():+.3f}R | {y.sum():+.1f}R | {y.mean() - x.mean():.3f}R |")
+
+    out.append("\nLecture : cette comparaison est grossière. Les deux colonnes ne jouent pas exactement les mêmes trades (côté permis, minute "
+               "d'entrée), et le total de la v5 tient à quelques grosses journées : sur 2023-2026 le prix milieu fait moins bien que le spread "
+               "réel, ce qui ne peut pas être un coût. Elle montre seulement l'ordre de grandeur avant 2018. La mesure directe du coût est le "
+               "spread rapporté au range de 9:30 (etape1_qualite.md) : 27 à 32 % en 2013-2014, 10 à 12 % en 2015-2017, 1 à 3 % depuis 2021.")
     out.append(f"\n**Verdict de l'étape : {'reproduction réussie' if ok1 and ok2 and ok3 else 'ÉCART À EXPLIQUER'}.**")
     with open(os.path.join(C.SORTIES, "etape1_reproduction.md"), "w") as f:
         f.write("\n".join(out) + "\n")

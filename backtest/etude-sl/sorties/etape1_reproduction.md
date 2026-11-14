@@ -78,4 +78,30 @@ Par année :
 | 2025 | 257 | 151 | +0.281R | +42.5R |
 | 2026 | 225 | 134 | +0.276R | +36.9R |
 
+Plus longue série de pertes : 26 trades, du 2014-07-09 au 2014-09-11.
+
+## 5. Début de la période de recherche : trois options
+
+La qualité des données du Nasdaq est moyenne de mai 2013 à mai 2014 (voir etape1_qualite.md). Trades de la v5 non modifiée dans la période de recherche (jusqu'à fin 2017) selon la date de départ :
+
+| | Trades | R par trade | Total | Pire baisse | Pire série de pertes |
+|---|---|---|---|---|---|
+| Depuis 2013-05-22 (premier vrai spread) | 736 | -0.119R | -87.8R | -122.8R | 26 |
+| Depuis 2014-06-01 (fin des pauses de cotation) | 596 | -0.167R | -99.8R | -115.6R | 26 |
+| Depuis 2015-01-01 (début des données du dépôt) | 505 | -0.108R | -54.6R | -74.1R | 11 |
+
+## 6. Part du spread : la v5 jouée au prix milieu (spread nul), même glissement de 0,1 point
+
+Le RSI est alors calculé sur le prix milieu : quelques jours changent de côté permis, d'où un nombre de trades un peu différent.
+
+| Période | Spread réel : trades | R par trade | Total | Prix milieu : trades | R par trade | Total | Coût du spread par trade |
+|---|---|---|---|---|---|---|---|
+| 2013-05 → 2014-05 | 140 | +0.086R | +12.0R | 130 | +0.273R | +35.5R | 0.187R |
+| 2014-06 → 2014-12 | 91 | -0.497R | -45.2R | 86 | -0.114R | -9.8R | 0.383R |
+| 2015 → 2017 | 505 | -0.108R | -54.6R | 488 | +0.065R | +31.7R | 0.173R |
+| 2018 → 2022 | 822 | +0.332R | +273.0R | 806 | +0.356R | +286.6R | 0.024R |
+| 2023 → 2026-11 | 605 | +0.273R | +165.0R | 599 | +0.206R | +123.3R | -0.067R |
+
+Lecture : cette comparaison est grossière. Les deux colonnes ne jouent pas exactement les mêmes trades (côté permis, minute d'entrée), et le total de la v5 tient à quelques grosses journées : sur 2023-2026 le prix milieu fait moins bien que le spread réel, ce qui ne peut pas être un coût. Elle montre seulement l'ordre de grandeur avant 2018. La mesure directe du coût est le spread rapporté au range de 9:30 (etape1_qualite.md) : 27 à 32 % en 2013-2014, 10 à 12 % en 2015-2017, 1 à 3 % depuis 2021.
+
 **Verdict de l'étape : reproduction réussie.**
