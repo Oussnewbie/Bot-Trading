@@ -1,6 +1,8 @@
 #!/bin/bash
 # Télécharge le M1 bid ET ask de Dukascopy, un fichier par année, pour le Nasdaq CFD et l'or.
-#   ./00_telecharger.sh            tout (2010 -> FIN)
+#   ./00_telecharger.sh            2017 -> FIN. L'étude porte sur 2018-01-01 -> FIN ; 2017 ne sert qu'à amorcer les
+#                                  moyennes longues (MA200 en D1), aucun trade n'y est joué.
+#   DEBUT=2010 ./00_telecharger.sh tout l'historique Dukascopy (pour refaire sorties/historique-2011-2026/)
 # Les fichiers vont dans donnees/brut/<instrument>/ (ignoré par git). Un fichier déjà présent n'est pas retéléchargé.
 # Une année sans aucune donnée chez Dukascopy laisse un fichier <nom>.vide : c'est une information, pas une erreur.
 # Un téléchargement raté laisse une ligne dans donnees/brut/ECHECS.txt et le script sort avec le code 1.
@@ -9,7 +11,7 @@ ICI="$(cd "$(dirname "$0")" && pwd)"
 BRUT="$ICI/donnees/brut"
 CACHE="$ICI/donnees/.cache-dukascopy"
 OUTIL="dukascopy-node@1.51.1"
-DEBUT=2010
+DEBUT=${DEBUT:-2017}
 FIN="2026-11-14"          # exclu : dernière journée demandée = 2026-11-13
 AN_FIN=${FIN:0:4}
 mkdir -p "$BRUT"

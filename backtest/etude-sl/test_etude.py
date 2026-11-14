@@ -59,8 +59,18 @@ def test_la_periode_finale_est_verrouillee(monkeypatch):
 
 
 def test_periode_de():
-    t = pd.DatetimeIndex(["2017-12-29 09:35", "2018-01-02 09:35", "2022-12-30 09:35", "2023-01-03 09:35"]).tz_localize(C.NY)
-    assert list(C.periode_de(t)) == ["recherche", "verification", "verification", "finale"]
+    t = pd.DatetimeIndex(["2017-12-29 09:35", "2018-01-02 09:35", "2020-12-31 09:35", "2021-01-04 09:35", "2022-12-30 09:35", "2023-01-03 09:35"]).tz_localize(C.NY)
+    assert list(C.periode_de(t)) == ["amorcage", "recherche", "recherche", "verification", "verification", "finale"]
+
+
+def test_charger_commence_en_2018_sauf_amorcage(tmp_path, monkeypatch):
+    monkeypatch.setattr(C, "BOUGIES", str(tmp_path))
+    idx = pd.DatetimeIndex(["2016-06-01 09:30", "2017-06-01 09:30", "2018-01-02 09:30", "2022-06-01 09:30", "2023-06-01 09:30"]).tz_localize(C.NY)
+    df = pd.DataFrame({c: np.arange(5.0) for c in C.COLONNES}, index=idx.tz_convert("UTC").as_unit("ms").asi8)
+    C.enregistrer(df, "x", "M5")
+    assert [t.year for t in C.charger("x", "M5").index] == [2018, 2022]
+    assert [t.year for t in C.charger("x", "M5", amorcage=True).index] == [2017, 2018, 2022]
+    assert [t.year for t in C.charger("x", "M5", finale=True, motif="qualite des donnees").index] == [2018, 2022, 2023]
 
 
 def test_resume_r():

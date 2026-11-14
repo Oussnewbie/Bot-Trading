@@ -17,11 +17,12 @@ if __name__ == "__main__":
     total_diff = 0
     for cote, p in (("bid", "b"), ("ask", "a")):
         ref = pd.read_csv(os.path.join(C.M5_DEPOT, f"usatechidxusd-m5-{cote}-2015-01-01-2026-11-01.csv")).set_index("timestamp")
+        ref = ref[ref.index >= moi.index[0]]                      # le M1 de l'étude commence en 2017
         m = moi[(moi.index >= ref.index[0]) & (moi.index <= ref.index[-1])]
         seul_moi, seul_ref = m.index.difference(ref.index), ref.index.difference(m.index)
         c = m.index.intersection(ref.index)
         out.append(f"## {cote}\n")
-        out.append(f"- Dépôt : {len(ref)} bougies du {C.heure_ny([ref.index[0]])[0]:%Y-%m-%d %H:%M} au {C.heure_ny([ref.index[-1]])[0]:%Y-%m-%d %H:%M} (New York).")
+        out.append(f"- Dépôt, sur les dates communes : {len(ref)} bougies du {C.heure_ny([ref.index[0]])[0]:%Y-%m-%d %H:%M} au {C.heure_ny([ref.index[-1]])[0]:%Y-%m-%d %H:%M} (New York).")
         out.append(f"- Reconstruit sur les mêmes dates : {len(m)} bougies. Présentes seulement dans le reconstruit : {len(seul_moi)} ; seulement dans le dépôt : {len(seul_ref)}.")
         lignes = []
         diff_any = np.zeros(len(c), dtype=bool)

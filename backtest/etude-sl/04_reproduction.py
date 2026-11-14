@@ -4,6 +4,7 @@ Le simulateur backtest/nas100-10ans/v5_lab.py est importé tel quel (avec les r�
 redirigé vers un dossier temporaire : aucun fichier existant n'est touché. Écrit sorties/etape1_reproduction.md.
 
 La v5 n'est pas modifiée ici : lire toute la période, 2023-2026 comprise, ne consomme pas la période finale.
+L'étude porte sur 2018-01-01 -> dernière bougie ; la reproduction du README, elle, se fait sur tout 2015-2026.
 """
 import os
 import sys
@@ -76,75 +77,47 @@ if __name__ == "__main__":
     out.append(f"Les {len(perdus)} trades de différence vont du {perdus.t.min():%Y-%m-%d} au {perdus.t.max():%Y-%m-%d} et totalisent {perdus.r.sum():+.2f}R : "
                + ", ".join(f"{t:%m-%d} {r:+.2f}R" for t, r in zip(perdus.t, perdus.r)) + ".\n")
 
-    # 3. M5 reconstruit depuis le M1, mêmes dates
-    m5 = C.charger("nas100", "M5", finale=True, motif=MOTIF)
-    ref_t0, ref_t1 = L.G["t"][0], L.G["t"][-1]
-    b, a = C.cotes(m5[(m5.index >= ref_t0) & (m5.index <= ref_t1)])
+    # 3. M5 reconstruit depuis le M1 (2017 -> ...), comparé trade par trade à partir du 2018-01-01
+    m5 = C.charger("nas100", "M5", finale=True, motif=MOTIF, amorcage=True)
+    ref_t1 = L.G["t"][-1]
+    b, a = C.cotes(m5[m5.index <= ref_t1])
     L.prep(data=(b, a))
-    R2 = {"sans pyramide": L.run({}, L.f_v4), "v5": L.run(orb_v5.V5, L.f_v4)}
-    X2 = R2["v5"]
-    out.append("## 3. Sur le M5 reconstruit à partir du M1 téléchargé, mêmes dates\n")
-    ok3 = tableau(out, R2)
-    M = X.merge(X2, on="t", how="outer", suffixes=("_depot", "_m1"), indicator=True)
+    X2 = L.run(orb_v5.V5, L.f_v4)
+    debut = C.DEBUT_ETUDE
+    Xd, X2d = X[X.t >= debut], X2[X2.t >= debut]
+    out.append("## 3. Sur le M5 reconstruit à partir du M1 téléchargé, de 2018-01-01 à la fin des données du dépôt\n")
+    out.append("Le M1 de l'étude commence en 2017 (amorçage du RSI) ; les trades sont comparés à partir du 2018-01-01.\n")
+    out.append(C.ENTETE_R)
+    out.append(C.ligne_r("Données du dépôt", Xd.r.values))
+    out.append(C.ligne_r("M5 reconstruit depuis le M1", X2d.r.values))
+    M = Xd.merge(X2d, on="t", how="outer", suffixes=("_depot", "_m1"), indicator=True)
     communs = M[M._merge == "both"]
     ecart = (communs.r_depot - communs.r_m1).abs()
-    ok3 &= len(communs) == len(X) == len(X2) and ecart.max() < 1e-9
-    out.append(f"\nTrade par trade : {len(X)} trades dans le dépôt, {len(X2)} dans le reconstruit, {len(communs)} à la même minute ; "
-               f"écart maximal de R sur ces trades : {ecart.max():.2e} ; trades dont le R diffère de plus de 0,000001 : {int((ecart > 1e-6).sum())}.")
+    ok3 = len(communs) == len(Xd) == len(X2d) and ecart.max() < 1e-6
+    out.append(f"\nTrade par trade : {len(Xd)} trades dans le dépôt, {len(X2d)} dans le reconstruit, {len(communs)} à la même minute ; "
+               f"écart maximal de R sur ces trades : {ecart.max():.2e}.")
     out.append(f"\n**{'Mêmes trades, mêmes R.' if ok3 else 'Les trades diffèrent : voir ci-dessus.'}**\n")
 
-    # 4. tout l'historique M1 (référence pour la suite), découpage de l'étude
+    # 4. la v5 non modifiée sur la fenêtre de l'étude (référence pour la suite)
     b, a = C.cotes(m5)
     L.prep(data=(b, a))
     X3 = L.run(orb_v5.V5, L.f_v4)
+    X3 = X3[X3.t >= debut].copy()
     X3["an"] = X3.t.dt.year
-    out.append("## 4. La v5 non modifiée sur tout l'historique téléchargé (M5 reconstruit), découpage de l'étude\n")
-    out.append(f"Du {m5.index[0]:%Y-%m-%d} au {m5.index[-1]:%Y-%m-%d}. Jours où le simulateur a un range de 9:30 et une fenêtre 9:00-9:30 : {len(L.D)}.\n")
+    X3["periode"] = C.periode_de(X3.t)
+    out.append("## 4. La v5 non modifiée sur la fenêtre de l'étude (M5 reconstruit)\n")
+    out.append(f"Du {X3.t.min():%Y-%m-%d} au {m5.index[-1]:%Y-%m-%d}. La coupe recherche / vérification ({C.COUPE_VERIFICATION}) est une proposition.\n")
     out.append(C.ENTETE_R)
-    t = X3.t.dt.tz_localize(None)
-    for nom, d0, d1 in (("Avant 2015 (jamais simulé jusqu'ici)", "2000-01-01", "2015-01-01"), ("2015 → 2017", "2015-01-01", "2018-01-01"),
-                        ("**Recherche : début → 2017**", "2000-01-01", "2018-01-01"), ("**Vérification : 2018 → 2022**", "2018-01-01", "2023-01-01"),
-                        ("**Finale : 2023 → 2026-11**", "2023-01-01", "2100-01-01"), ("Tout", "2000-01-01", "2100-01-01")):
-        out.append(C.ligne_r(nom, X3.r[(t >= d0) & (t < d1)].values))
-    out.append("\nPar année :\n\n| Année | Jours simulables | Trades | R par trade | Total |\n|---|---|---|---|---|")
+    for nom, per in (("**Recherche : 2018 → 2020**", "recherche"), ("**Vérification : 2021 → 2022**", "verification"), ("**Finale : 2023 → 2026-11**", "finale")):
+        out.append(C.ligne_r(nom, X3.r[X3.periode == per].values))
+    out.append(C.ligne_r("Tout : 2018 → 2026-11", X3.r.values))
+    out.append("\nPar année :\n\n| Année | Jours simulables | Trades | R par trade | Total | Pire baisse | Pire série de pertes |\n|---|---|---|---|---|---|---|")
     jours_an = pd.DatetimeIndex(L.D.day).year
     for an, g in X3.groupby("an"):
-        out.append(f"| {an} | {(jours_an == an).sum()} | {len(g)} | {g.r.mean():+.3f}R | {g.r.sum():+.1f}R |")
-    # la plus longue série de pertes
-    perte = (X3.r < -0.05).values
-    fin = debut = longueur = cur = 0
-    for k, p_ in enumerate(perte):
-        cur = cur + 1 if p_ else 0
-        if cur > longueur:
-            longueur, fin, debut = cur, k, k - cur + 1
-    out.append(f"\nPlus longue série de pertes : {longueur} trades, du {X3.t.iloc[debut]:%Y-%m-%d} au {X3.t.iloc[fin]:%Y-%m-%d}.")
-
-    # 5. options pour le début de la période de recherche
-    out.append("\n## 5. Début de la période de recherche : trois options\n")
-    out.append("La qualité des données du Nasdaq est moyenne de mai 2013 à mai 2014 (voir etape1_qualite.md). Trades de la v5 non modifiée "
-               "dans la période de recherche (jusqu'à fin 2017) selon la date de départ :\n")
-    out.append(C.ENTETE_R)
-    for nom, d0 in (("Depuis 2013-05-22 (premier vrai spread)", "2013-05-22"), ("Depuis 2014-06-01 (fin des pauses de cotation)", "2014-06-01"),
-                    ("Depuis 2015-01-01 (début des données du dépôt)", "2015-01-01")):
-        out.append(C.ligne_r(nom, X3.r[(t >= d0) & (t < "2018-01-01")].values))
-
-    # 6. part du spread : la v5 au prix milieu des deux côtés (le glissement de 0,1 point du code reste)
-    mid = pd.DataFrame({"o": (b.o + a.o) / 2, "h": (b.h + a.h) / 2, "l": (b.l + a.l) / 2, "c": (b.c + a.c) / 2, "v": b.v})
-    L.prep(data=(mid, mid))
-    Xm = L.run(orb_v5.V5, L.f_v4)
-    tm = Xm.t.dt.tz_localize(None)
-    out.append("\n## 6. Part du spread : la v5 jouée au prix milieu (spread nul), même glissement de 0,1 point\n")
-    out.append("Le RSI est alors calculé sur le prix milieu : quelques jours changent de côté permis, d'où un nombre de trades un peu différent.\n")
-    out.append("| Période | Spread réel : trades | R par trade | Total | Prix milieu : trades | R par trade | Total | Coût du spread par trade |\n|---|---|---|---|---|---|---|---|")
-    for nom, d0, d1 in (("2013-05 → 2014-05", "2013-01-01", "2014-06-01"), ("2014-06 → 2014-12", "2014-06-01", "2015-01-01"), ("2015 → 2017", "2015-01-01", "2018-01-01"),
-                        ("2018 → 2022", "2018-01-01", "2023-01-01"), ("2023 → 2026-11", "2023-01-01", "2100-01-01")):
-        x = X3.r[(t >= d0) & (t < d1)]; y = Xm.r[(tm >= d0) & (tm < d1)]
-        out.append(f"| {nom} | {len(x)} | {x.mean():+.3f}R | {x.sum():+.1f}R | {len(y)} | {y.mean():+.3f}R | {y.sum():+.1f}R | {y.mean() - x.mean():.3f}R |")
-
-    out.append("\nLecture : cette comparaison est grossière. Les deux colonnes ne jouent pas exactement les mêmes trades (côté permis, minute "
-               "d'entrée), et le total de la v5 tient à quelques grosses journées : sur 2023-2026 le prix milieu fait moins bien que le spread "
-               "réel, ce qui ne peut pas être un coût. Elle montre seulement l'ordre de grandeur avant 2018. La mesure directe du coût est le "
-               "spread rapporté au range de 9:30 (etape1_qualite.md) : 27 à 32 % en 2013-2014, 10 à 12 % en 2015-2017, 1 à 3 % depuis 2021.")
+        r_ = C.resume_r(g.r.values)
+        out.append(f"| {an} | {(jours_an == an).sum()} | {len(g)} | {g.r.mean():+.3f}R | {g.r.sum():+.1f}R | -{r_['baisse']:.1f}R | {r_['serie']} |")
+    out.append("\nRappel : avant 2018 la v5 perd (2015-2017 : -55R, pire baisse -74R ; détail dans `sorties/historique-2011-2026/`). "
+               "La pire baisse lue sur 2018-2026 ne contient pas ce régime.")
     out.append(f"\n**Verdict de l'étape : {'reproduction réussie' if ok1 and ok2 and ok3 else 'ÉCART À EXPLIQUER'}.**")
     with open(os.path.join(C.SORTIES, "etape1_reproduction.md"), "w") as f:
         f.write("\n".join(out) + "\n")

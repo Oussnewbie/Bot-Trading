@@ -27,10 +27,17 @@ INSTRUMENTS = {"nas100": "usatechidxusd", "or": "xauusd"}
 HORIZONS = {"M1": 1, "M3": 3, "M5": 5, "M15": 15, "M30": 30, "H1": 60, "H4": 240, "D1": 1440}
 COLONNES = ["bo", "bh", "bl", "bc", "bv", "ao", "ah", "al", "ac", "av"]
 
-# Découpage anti-bruit (dates en heure de New York, borne de fin exclue)
+# Décision du 2026-11-14 : l'étude porte sur 2018-01-01 -> 2026-11-13. Les bougies de 2017 ne servent qu'à amorcer les
+# indicateurs longs (MA200 en D1, ATR) : aucun trade n'y est joué.
+DEBUT_ETUDE = pd.Timestamp("2018-01-01", tz=NY)
+DEBUT_AMORCAGE = pd.Timestamp("2017-01-01", tz=NY)
+
+# Découpage anti-bruit (dates en heure de New York, borne de fin exclue). La période finale est celle de la demande.
+# La coupe entre recherche et vérification (2021-01-01) est une PROPOSITION, à confirmer avant l'étape 2.
+COUPE_VERIFICATION = "2021-01-01"
 PERIODES = {
-    "recherche": (None, "2018-01-01"),
-    "verification": ("2018-01-01", "2023-01-01"),
+    "recherche": ("2018-01-01", COUPE_VERIFICATION),
+    "verification": (COUPE_VERIFICATION, "2023-01-01"),
     "finale": ("2023-01-01", None),
 }
 DEBUT_FINALE = pd.Timestamp(PERIODES["finale"][0], tz=NY)
@@ -95,11 +102,13 @@ def decouper(df, finale=False, motif=None):
         f"La période finale (2023 -> 2026) est verrouillée. Motifs permis : {MOTIFS_SANS_VERROU}, ou {VERROU_ENV}=ouverte.")
 
 
-def charger(instrument, horizon, finale=False, motif=None):
+def charger(instrument, horizon, finale=False, motif=None, amorcage=False):
     """Bougies bid et ask d'un instrument (« nas100 » ou « or »), indexées en heure de New York.
-    Par défaut la période finale n'est pas rendue (voir decouper)."""
+    Par défaut : à partir du 2018-01-01, sans la période finale (voir decouper).
+    amorcage=True rend aussi 2017, pour calculer des indicateurs longs ; aucun trade ne doit y être joué."""
     z = np.load(chemin_bougies(instrument, horizon))
     df = pd.DataFrame({c: z[c] for c in COLONNES}, index=heure_ny(z["t"]))
+    df = df[df.index >= (DEBUT_AMORCAGE if amorcage else DEBUT_ETUDE)]
     return decouper(df, finale=finale, motif=motif)
 
 
@@ -111,10 +120,11 @@ def cotes(df):
 
 
 def periode_de(t):
-    """Nom de la période (recherche, verification, finale) pour des dates en heure de New York."""
+    """Nom de la période (amorcage, recherche, verification, finale) pour des dates en heure de New York."""
     t = pd.DatetimeIndex(t)
     j = t.tz_localize(None) if t.tz is not None else t
-    return np.where(j < pd.Timestamp("2018-01-01"), "recherche", np.where(j < pd.Timestamp("2023-01-01"), "verification", "finale"))
+    return np.where(j < pd.Timestamp("2018-01-01"), "amorcage", np.where(j < pd.Timestamp(COUPE_VERIFICATION), "recherche",
+                    np.where(j < pd.Timestamp("2023-01-01"), "verification", "finale")))
 
 
 def resume_r(r, neutres=None):

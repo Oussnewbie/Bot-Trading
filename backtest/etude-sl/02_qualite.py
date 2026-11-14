@@ -226,49 +226,23 @@ def couverture(nom, out):
     for an, g in J.groupby(J.index.year):
         out.append(f"| {an} | {len(g)} | {int(g.n.median())} | {hm17(g.premier.median())} | {hm17(g.dernier.median())} | {100 * (g.asie > 0.5).mean():.0f} % | {100 * (g.londres > 0.5).mean():.0f} % "
                    f"| {100 * (g.pre > 0.5).mean():.0f} % | {int(g.h4.median())} | {100 * (g.h4 >= 6).mean():.0f} % |")
-
-
-def debut_nas(out):
-    """Le début de l'historique du Nasdaq, mois par mois : spread nul, heures cotées, mois vides."""
-    df = C.charger("nas100", "M1", finale=True, motif="qualite des donnees")
-    df = df[df.index < "2015-03-01"]
-    ny = df.index
-    df = df.assign(mins=ny.hour * 60 + ny.minute, jour=ny.tz_localize(None).normalize(), sp=df.ac - df.bc)
-    s = df[(df.mins >= SEANCE[0]) & (df.mins < SEANCE[1])]
-    J = s.groupby("jour").agg(n=("mins", "size"), sp=("sp", "median"), nul=("sp", lambda x: (x == 0).mean()))
-    J["pre"] = df[(df.mins >= 540) & (df.mins < 570)].groupby("jour").size().reindex(J.index).fillna(0)
-    J["hors"] = df[(df.mins < 540) | (df.mins >= 960)].groupby("jour").size().reindex(J.index).fillna(0)
-    ouvres = pd.Series(1, index=pd.bdate_range(J.index[0], "2015-02-27"))
-    ouvres = ouvres.groupby(ouvres.index.to_period("M")).sum()
-    M = J.groupby(J.index.to_period("M")).agg(seances=("n", "size"), n=("n", "median"), sp=("sp", "median"), nul=("nul", "mean"),
-                                              pre=("pre", lambda x: (x >= 25).sum()), hors=("hors", "median")).reindex(ouvres.index)
-    trous = s[s.groupby("jour").mins.diff() > 15]
-    reprise = trous.mins.map(hm).value_counts()
-    pause = trous[trous.mins.isin([870, 930])]
-    out.append("\n## Le début de l'historique du Nasdaq, mois par mois (jusqu'à février 2015)\n")
-    out.append(f"- Premier jour avec un vrai spread (médiane de séance > 0) : **{J[J.sp > 0].index[0]:%Y-%m-%d}**. Dernier jour à spread nul : {J[J.sp == 0].index[-1]:%Y-%m-%d}.")
-    out.append(f"- Premier jour avec la fenêtre 9:00-9:30 cotée (au moins 25 minutes sur 30) : **{J[J.pre >= 25].index[0]:%Y-%m-%d}**.")
-    out.append(f"- Trous de plus de 15 minutes en séance avant mars 2015 : {len(trous)}, dont reprise à 14:30 : {int(reprise.get('14:30', 0))}, à 15:30 : {int(reprise.get('15:30', 0))} "
-               f"(une pause de cotation quotidienne de 15 minutes, de {pause.jour.min():%Y-%m} à {pause.jour.max():%Y-%m}).\n")
-    out.append("| Mois | Jours ouvrés | Séances cotées | Minutes par séance (médiane) | Spread médian | Part des minutes à spread nul | Séances avec 9:00-9:30 | Minutes hors séance par jour (médiane) |")
-    out.append("|---|---|---|---|---|---|---|---|")
-    for m, r in M.iterrows():
-        if pd.isna(r.seances):
-            out.append(f"| {m} | {ouvres[m]} | 0 | — | — | — | — | — |")
-        else:
-            out.append(f"| {m} | {ouvres[m]} | {int(r.seances)} | {int(r.n)} | {r.sp:.2f} | {100 * r.nul:.0f} % | {int(r.pre)} | {int(r.hors)} |")
+    sans = J[J.asie <= 0.5]
+    par_mois = (J.asie > 0.5).groupby(J.index.to_period("M")).mean()
+    if len(sans):
+        out.append(f"\nSéances sans séance asiatique cotée : {len(sans)}, dont {int((sans.index >= '2018-01-01').sum())} depuis 2018 ; la dernière série se termine le {sans.index[sans.index < '2019-01-01'].max():%Y-%m-%d}. "
+                   f"Part des séances avec l'Asie cotée, par mois de 2018 : " + ", ".join(f"{m.month:02d} : {100 * v:.0f} %" for m, v in par_mois.items() if m.year == 2018) + ".")
 
 
 if __name__ == "__main__":
     os.makedirs(C.SORTIES, exist_ok=True)
     out = ["# Étape 1 — qualité des données M1 (Dukascopy, bid et ask)",
+           "\nFenêtre de l'étude : 2018-01-01 -> dernière bougie. L'historique complet (2011 -> 2026) et les raisons de ce choix sont dans "
+           "`sorties/historique-2011-2026/`.",
            "\nHeures de New York. Aucun trade n'est joué ici. Le calendrier américain est calculé par règles (NYSE) : "
            "il sert à expliquer les séances manquantes ou courtes, pas à les définir."]
     for nom in C.INSTRUMENTS:
         controle(nom, out)
         couverture(nom, out)
-        if nom == "nas100":
-            debut_nas(out)
     with open(os.path.join(C.SORTIES, "etape1_qualite.md"), "w") as f:
         f.write("\n".join(out) + "\n")
     print("\n".join(out))
