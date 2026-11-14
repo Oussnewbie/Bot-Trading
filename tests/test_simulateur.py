@@ -172,3 +172,13 @@ def test_reference_v5_sur_les_donnees_reelles(donnees_reelles, labo):
     assert par_periode.loc["B", "sum"] == pytest.approx(23.14, abs=0.01)
     assert par_periode.loc["train", "sum"] == pytest.approx(248.81, abs=0.01)
     assert par_periode.loc["A", "sum"] == pytest.approx(166.03, abs=0.01)
+
+
+def test_rien_avant_2018_n_est_lu(tmp_path, monkeypatch):
+    """Un zip d'une année antérieure à 2018 déposé dans le dossier des données est ignoré."""
+    import load10
+    (tmp_path / "nas100").mkdir()
+    for an in (2016, 2017, 2018, 2019):
+        (tmp_path / "nas100" / f"usatechidxusd-m1-{an}.zip").write_bytes(b"")
+    monkeypatch.setattr(load10, "DONNEES", str(tmp_path))
+    assert [os.path.basename(z) for z in load10.zips("nas100")] == ["usatechidxusd-m1-2018.zip", "usatechidxusd-m1-2019.zip"]

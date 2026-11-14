@@ -5,7 +5,8 @@
 #
 #   ./00_telecharger.sh                 les années manquantes, de DEBUT (2018) à FIN
 #   ./00_telecharger.sh 2026            refait l'année 2026 même si son zip existe (pour prolonger les données : change FIN)
-#   DEBUT=2010 ./00_telecharger.sh      tout l'historique Dukascopy (voir sorties/historique-2011-2026/)
+#   DEBUT=2010 ./00_telecharger.sh      tout l'historique Dukascopy, rangé À PART dans donnees/cache/historique/ (hors git,
+#                                       jamais lu par l'étude ni par le simulateur ; voir sorties/historique-2011-2026/)
 #
 # Les données du dépôt vont du 2018-01-01 au 2026-11-13 : ce script ne sert qu'à les refaire ou à les prolonger.
 # Une année sans aucune donnée chez Dukascopy laisse un fichier .vide dans donnees/cache/brut/ : c'est une information.
@@ -19,15 +20,17 @@ DEBUT=${DEBUT:-2018}
 FIN="2026-11-14"          # exclu : dernière journée demandée = 2026-11-13
 AN_FIN=${FIN:0:4}
 REFAIRE="${1:-}"
+SORTIE="$DONNEES"
+[ "$DEBUT" -lt 2018 ] && SORTIE="$DONNEES/cache/historique"     # les années d'avant 2018 ne vont jamais dans donnees/<nom>/
 mkdir -p "$BRUT"
 : > "$BRUT/ECHECS.txt"
 npx --yes "$OUTIL" --help > /dev/null || { echo "npx $OUTIL indisponible"; exit 2; }
 
 serie() {   # serie <nom du dossier> <code Dukascopy>
   local nom=$1 code=$2 an cote de a f zip ok
-  mkdir -p "$DONNEES/$nom" "$BRUT/$code"
+  mkdir -p "$SORTIE/$nom" "$BRUT/$code"
   for an in $(seq "$DEBUT" "$AN_FIN"); do
-    zip="$DONNEES/$nom/$code-m1-$an.zip"
+    zip="$SORTIE/$nom/$code-m1-$an.zip"
     [ "$an" = "$REFAIRE" ] && rm -f "$zip" "$BRUT/$code/$code-m1-"*"-$an."*
     [ -s "$zip" ] || [ -e "$BRUT/$code/$code-m1-$an.vide" ] && continue
     de="$an-01-01"; a="$((an + 1))-01-01"; [ "$an" = "$AN_FIN" ] && a="$FIN"

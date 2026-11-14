@@ -15,10 +15,12 @@ RACINE = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file_
 DONNEES = os.environ.get("ORB_DONNEES", os.path.join(RACINE, "donnees"))
 INSTRUMENTS = {"nas100": "usatechidxusd", "or": "xauusd"}
 DIR = os.environ.get("NAS100_DIR", os.path.join(DONNEES, "cache")) + os.sep     # dossier du M5 reconstruit
+ANNEE_DEBUT = 2018      # décision du 2026-11-14 : rien avant 2018 n'est lu, même si un zip plus ancien traîne dans le dossier
 
 
 def zips(nom):
-    return sorted(glob.glob(os.path.join(DONNEES, nom, f"{INSTRUMENTS[nom]}-m1-*.zip")))
+    tous = sorted(glob.glob(os.path.join(DONNEES, nom, f"{INSTRUMENTS[nom]}-m1-*.zip")))
+    return [z for z in tous if int(os.path.basename(z)[:-4].rsplit("-", 1)[1]) >= ANNEE_DEBUT]
 
 
 def lire_m1(nom):

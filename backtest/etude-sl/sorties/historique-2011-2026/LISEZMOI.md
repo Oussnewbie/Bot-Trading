@@ -3,7 +3,8 @@
 Rapports de l'étape 1 faits le 14 novembre 2026 sur tout ce que Dukascopy fournit (Nasdaq CFD depuis 2011, or depuis
 2010) et sur l'ancien fichier M5 2015-2026 du dépôt, avant que les données soient réduites à 2018-01-01 → 2026-11-13.
 Ils ne sont plus refaits par les scripts actuels : les scripts et les données qui les ont produits sont dans
-l'historique git (commit `25aa321`), et l'historique se retélécharge avec `DEBUT=2010 ../../00_telecharger.sh`.
+l'historique git (commit `25aa321`). Les données se retéléchargent avec `DEBUT=2010 ../../00_telecharger.sh`, qui les range
+à part dans `donnees/cache/historique/` : elles ne sont jamais lues par l'étude ni par le simulateur.
 
 | Rapport | Ce qu'il prouve |
 |---|---|

@@ -66,8 +66,8 @@ def test_periode_de():
 def test_charger_ne_rend_pas_la_periode_finale(tmp_path, monkeypatch):
     monkeypatch.delenv(C.VERROU_ENV, raising=False)
     monkeypatch.setattr(C, "BOUGIES", str(tmp_path))
-    idx = pd.DatetimeIndex(["2018-01-02 09:30", "2022-06-01 09:30", "2023-06-01 09:30"]).tz_localize(C.NY)
-    df = pd.DataFrame({c: np.arange(3.0) for c in C.COLONNES}, index=idx.tz_convert("UTC").as_unit("ms").asi8)
+    idx = pd.DatetimeIndex(["2017-06-01 09:30", "2018-01-02 09:30", "2022-06-01 09:30", "2023-06-01 09:30"]).tz_localize(C.NY)
+    df = pd.DataFrame({c: np.arange(4.0) for c in C.COLONNES}, index=idx.tz_convert("UTC").as_unit("ms").asi8)
     C.enregistrer(df, "x", "M5")
     assert [t.year for t in C.charger("x", "M5").index] == [2018, 2022]
     assert [t.year for t in C.charger("x", "M5", finale=True, motif="qualite des donnees").index] == [2018, 2022, 2023]

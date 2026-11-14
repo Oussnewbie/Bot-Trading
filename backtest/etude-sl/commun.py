@@ -120,6 +120,7 @@ def charger(instrument, horizon, finale=False, motif=None):
     Par défaut la période finale n'est pas rendue (voir decouper)."""
     z = np.load(chemin_bougies(instrument, horizon))
     df = pd.DataFrame({c: z[c] for c in COLONNES}, index=heure_ny(z["t"]))
+    df = df[df.index >= DEBUT_ETUDE]
     return decouper(df, finale=finale, motif=motif)
 
 
