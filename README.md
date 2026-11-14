@@ -218,6 +218,20 @@ python -m venv .venv && .venv/bin/pip install -r requirements.txt
 
 Les tests qui lisent les vraies données dézippent l'archive de `donnees/` au besoin.
 
+## Audit du 14 novembre 2026
+
+Le détail est dans [AUDIT.md](AUDIT.md). L'essentiel :
+
+- Le simulateur applique bien les règles ci-dessus : une réécriture indépendante donne les mêmes 1 925 trades.
+- Deux défauts du simulateur sont corrigés (cache jamais invalidé, 10 trades de janvier 2015 écartés). La pire baisse
+  passe de -69R à -74R.
+- **Le résultat dépend du glissement.** Avec 0,5 point par exécution au lieu de 0,1, le total 2015 → 2026 passe de +372R
+  à +269R ; avec 1 point, à +145R. Les années récentes résistent mieux que 2015-2017.
+- **Jours fériés américains et demi-séances** : l'EA et le script TradingView gardent la position pendant la fermeture
+  du marché. Coupe-les ces jours-là en attendant une correction.
+- Le script TradingView et l'EA n'ont pas été modifiés : ils ne peuvent pas être compilés ici. Leurs défauts et les
+  corrections proposées sont listés dans AUDIT.md.
+
 ## Avertissement
 
 Ce dépôt n'est pas un conseil en investissement. Les performances passées ne préjugent pas des performances futures.
