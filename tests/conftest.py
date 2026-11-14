@@ -1,7 +1,6 @@
 """Outils communs des tests : chemins, données réelles (dézippées au besoin) et marchés fabriqués à la main."""
 import os
 import sys
-import zipfile
 
 import numpy as np
 import pandas as pd
@@ -10,8 +9,6 @@ import pytest
 RACINE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SIMU = os.path.join(RACINE, "backtest", "nas100-10ans")
 DONNEES = os.path.join(RACINE, "donnees")
-ZIP = os.path.join(DONNEES, "NAS100-M5-bid-ask-2015-2026.zip")
-CSV_DIR = os.path.join(DONNEES, "Data Bid and Ask 10y")
 NY = "America/New_York"
 
 for p in (SIMU, os.path.dirname(os.path.abspath(__file__))):
@@ -21,13 +18,10 @@ for p in (SIMU, os.path.dirname(os.path.abspath(__file__))):
 
 @pytest.fixture(scope="session")
 def donnees_reelles():
-    """Les bougies NAS100 du dépôt (bid, ask). Dézippe l'archive si besoin ; saute le test si elle manque."""
+    """Les bougies M5 NAS100 du dépôt (bid, ask), reconstruites à partir des zips M1 ; saute le test s'ils manquent."""
     import load10
-    if not os.path.exists(load10.csv_path("bid")):
-        if not os.path.exists(ZIP):
-            pytest.skip("données absentes : donnees/NAS100-M5-bid-ask-2015-2026.zip")
-        with zipfile.ZipFile(ZIP) as z:
-            z.extractall(DONNEES, [n for n in z.namelist() if n.endswith(".csv") and not n.startswith("__MACOSX")])
+    if not load10.zips("nas100"):
+        pytest.skip("données absentes : donnees/nas100/usatechidxusd-m1-*.zip")
     return load10.load10()
 
 

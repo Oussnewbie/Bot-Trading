@@ -1,14 +1,15 @@
 """ORB v5 = filtres RSI14 M5 + élan 9:00-9:30, et une pyramide : quand une bougie M5 clôture à +2R ou plus,
 ajout d'une unité au marché et stop de l'ensemble à 1R sous le prix de l'ajout (donc au moins à +1R). Même logique que pine/ORB-v5.pine et mt5/ORB-v5.mq5.
 
-Réglages choisis sur mai 2018 -> août 2022 seulement (v5_exp1.py à v5_exp6.py), puis vérifiés sur septembre 2022 ->
-octobre 2026, puis sur janvier 2015 -> avril 2018, période jamais regardée avant que la v5 soit figée."""
+Réglages choisis sur mai 2018 -> août 2022 seulement, puis vérifiés sur septembre 2022 -> octobre 2026, puis sur
+janvier 2015 -> avril 2018, période jamais regardée avant que la v5 soit figée (-31R : voir le README).
+Depuis le 14 novembre 2026 les données du dépôt vont du 2018-01-01 au 2026-11-13 : 2015-2017 ne se rejoue plus ici."""
 import numpy as np, pandas as pd
 import v5_lab as L
 from v5_lab import run, stats, f_v4, f_all
 
 V5 = dict(cadd=[(2.0, 1.0, ("rel", 1.0, 1.0))])   # clôture ≥ +2R : +1 unité, stop de l'ensemble à 1R sous le prix de l'ajout
-PERS = [("B", "2015-01 → 2018-04 (jamais vue)"), ("train", "2018-05 → 2022-08 (choix)"), ("A", "2022-09 → 2026-10 (vérif.)")]
+PERS = [("B", "2018-01 → 2018-04 (avant le choix)"), ("train", "2018-05 → 2022-08 (choix)"), ("A", "2022-09 → 2026-11 (vérif.)")]
 
 def capital(X, risk):
     eq = peak = 1.0; mdd = 0
@@ -22,7 +23,7 @@ if __name__ == "__main__":
     # deux points de comparaison : "v3" = sans filtre ni pyramide, "v4" = les filtres de la v5 sans la pyramide
     R = {"v3": run({}, f_all), "v4": run({}, f_v4), "v5": run(V5, f_v4)}
     print('Légende : v3 = sans filtre ni pyramide ; v4 = filtres RSI + élan, sans pyramide ; v5 = filtres + pyramide')
-    for per, lab in PERS + [(["B", "train", "A"], "TOUT : 2015-01 → 2026-10")]:
+    for per, lab in PERS + [(["B", "train", "A"], "TOUT : 2018-01 → 2026-11")]:
         print(f"\n### {lab}")
         print("| | Trades | Stops pleins | Gagnants | Par trade | Total | Pire baisse / série | t | Années + |"); print("|---|---|---|---|---|---|---|---|---|")
         for nm, X in R.items():
@@ -42,5 +43,5 @@ if __name__ == "__main__":
         Y = R[nm][R[nm].per != "B"]
         for risk in (0.5, 1.0):
             eq, an, mdd, yrs = capital(Y, risk)
-            print(f"{nm} à {risk} % sur 2018-05 → 2026-10 ({yrs:.1f} ans) : x{eq:.1f}, {an:.0f} % par an, pire baisse {mdd:.0f} %")
+            print(f"{nm} à {risk} % sur 2018-05 → 2026-11 ({yrs:.1f} ans) : x{eq:.1f}, {an:.0f} % par an, pire baisse {mdd:.0f} %")
     X.to_pickle("v5_trades.pkl")

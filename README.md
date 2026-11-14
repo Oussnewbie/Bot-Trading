@@ -10,48 +10,63 @@ Toutes les heures sont en heure de New York (9:30 NY = 15:30 à Paris la plupart
 |---|---|
 | `pine/ORB-v5.pine` | **La stratégie** pour TradingView. Alertes Telegram. |
 | `mt5/ORB-v5.mq5` | **La même stratégie en Expert Advisor MetaTrader 5**, mêmes règles et mêmes paramètres. Notifications push MT5, WhatsApp et Telegram. |
-| `backtest/nas100-10ans/` | La recherche de la v5 : `orb_v5.py` reproduit la v5, `v5_lab.py` est le simulateur, `v5_exp1.py` à `v5_exp10.py` les expériences. |
+| `backtest/nas100-10ans/` | Le simulateur Python : `v5_lab.py` (simulateur), `orb_v5.py` (les réglages de la v5 et ses tableaux), `load10.py` (lecture des données). |
+| `backtest/etude-sl/` | L'étude en cours sur les stops (novembre 2026) : scripts numérotés, rapports dans `sorties/`, `refaire.sh` pour tout refaire. |
 | `tests/` | Les tests automatiques du simulateur (`pytest`), dont une réécriture indépendante des règles (`regles_readme.py`). |
-| `donnees/` | Données Dukascopy NAS100 CFD M5, bid et ask, 2015 → 2026 (zip). |
+| `donnees/` | Données Dukascopy **M1, bid et ask, du 2018-01-01 au 2026-11-13** : Nasdaq CFD (`nas100/`) et or (`or/`), un zip par année. Voir [donnees/LISEZMOI.md](donnees/LISEZMOI.md). |
+| `AUDIT.md` | L'audit du 14 novembre 2026, fait sur l'ancien jeu de données 2015-2026. |
 
-Les versions précédentes (AMD+ v1 et v2, ORB v3 et v4) et leurs scripts de recherche ont été retirés ;
-ils restent dans l'historique git.
+Le dépôt a été nettoyé le 14 novembre 2026 : les versions précédentes (AMD+ v1 et v2, ORB v3 et v4), les scripts
+d'expérience `v5_exp1.py` à `v5_exp10.py`, `v5_recent.py` et l'ancien fichier M5 2015-2026 ont été retirés. Ils restent
+dans l'historique git (dernier commit qui les contient : `2c0c65c`).
 
 ## À lire avant tout : ce que le test dit vraiment
 
-La v5 a été choisie sur mai 2018 → août 2022, vérifiée sur septembre 2022 → octobre 2026, puis jugée sur
-janvier 2015 → avril 2018, une période que personne n'avait regardée avant de figer la v5.
-« Sans pyramide » = les mêmes règles sans la règle 7 (l'ancienne v4).
+La v5 a été choisie sur mai 2018 → août 2022, puis vérifiée sur septembre 2022 → novembre 2026.
+« Sans pyramide » = les mêmes règles sans la règle 7 (l'ancienne v4). Données du dépôt, glissement de 0,1 point.
 
 | Période | | Trades | Par trade | Total | Pire baisse |
 |---|---|---|---|---|---|
-| 2015-01 → 2018-04 (jamais vue) | sans pyramide | 555 | -0,09R | -52R | -78R |
-| | **v5** | 555 | -0,06R | **-31R** | -74R |
+| 2018-01 → 2018-04 (avant la période de choix) | sans pyramide | 50 | +0,18R | +9R | -9R |
+| | **v5** | 50 | +0,46R | **+23R** | -9R |
 | 2018-05 → 2022-08 (période de choix) | sans pyramide | 724 | +0,21R | +152R | -23R |
 | | **v5** | 724 | +0,34R | **+249R** | -22R |
-| 2022-09 → 2026-10 (vérification) | sans pyramide | 646 | +0,17R | +111R | -27R |
-| | **v5** | 646 | +0,24R | **+155R** | -25R |
-| **Tout : 2015 → 2026** (11,8 ans) | sans pyramide | 1 925 | +0,11R | +211R | -78R |
-| | **v5** | 1 925 | **+0,19R** | **+372R** | -74R |
+| 2022-09 → 2026-11 (vérification) | sans pyramide | 653 | +0,18R | +120R | -27R |
+| | **v5** | 653 | +0,25R | **+166R** | -25R |
+| **Tout : 2018 → 2026-11** (8,9 ans) | sans pyramide | 1 427 | +0,20R | +281R | -27R |
+| | **v5** | 1 427 | **+0,31R** | **+438R** | -25R |
 
-- **L'ORB a perdu trois années de suite, 2015, 2016 et 2017.** Le spread coûtait alors 10 à 14 % du risque à chaque
-  trade (range de 9 points pour 1 point de spread ; 1 à 3 % depuis 2020), mais ce n'est pas tout : même sans spread,
-  l'avantage de ces années n'est que de +0,04R par trade.
-- **La pyramide ajoute du gain sur les trois périodes** (+21R, +97R, +44R), avec et sans les filtres, et pour presque
-  tous les réglages voisins. Elle ne réduit pas les pertes : les stops de départ sont les mêmes.
-- R par année : 2015 -44, 2016 -4, 2017 -7, 2018 +93, 2019 +36, 2020 +45, 2021 +49, 2022 +51, 2023 +62,
-  2024 +24, 2025 +42, 2026 +26. 163 trades par an, soit environ un jour de bourse sur 1,6. Pire série : 13 pertes.
-- Capital, intérêts composés :
+**Ce tableau ne montre que les bonnes années.** Avant 2018 l'ORB perdait, et ces années ne sont plus dans le dépôt :
 
-  | Risque par trade | 2015 → 2026 | Pire baisse | 2018 → 2026 seulement | Pire baisse |
-  |---|---|---|---|---|
-  | 0,25 % | +8 % par an | -17 % | +12 % par an | -6 % |
-  | 0,5 % | +16 % par an | -32 % | +25 % par an | -12 % |
-  | 1 % | +31 % par an | -56 % | +52 % par an | -23 % |
+| Période (données retirées le 14 novembre 2026) | Trades | Par trade | Total | Pire baisse |
+|---|---|---|---|---|
+| 2013-05 → 2014 (regardée pour la première fois en novembre 2026) | 231 | -0,14R | -33R | -53R, 26 pertes de suite |
+| 2015 → 2017 | 505 | -0,11R | -55R | -74R |
+| Tout l'ancien test : 2015-01 → 2026-10 | 1 925 | +0,19R | +372R | **-74R** |
 
-- **Attends-toi à +0,15 à +0,20R par trade en moyenne, avec des années perdantes possibles et une baisse de 74R
-  (trois ans et demi sans nouveau sommet, de janvier 2015 à juillet 2018) déjà vue dans l'historique.** Fais tourner
-  la v5 en démo avant le réel, et choisis le risque par trade en regardant la colonne « pire baisse », pas le retour.
+- **L'ORB a perdu de mi-2013 à 2017** (2013 -11R, 2014 -23R, 2015 -44R, 2016 -4R, 2017 -7R). Le spread coûtait alors
+  10 à 32 % du risque à chaque trade (range de 8 à 10 points pour 1 à 2 points de spread ; 1 à 6 % depuis 2018), mais ce
+  n'est pas tout : même sans spread, l'avantage de 2015-2017 n'était que de +0,04R à +0,07R par trade.
+- **La pyramide ajoute du gain sur toutes les périodes** (+14R, +97R, +46R ici ; +21R sur 2015-2018), avec et sans les
+  filtres. Elle ne réduit pas les pertes : les stops de départ sont les mêmes.
+- R par année : 2018 +93, 2019 +36, 2020 +45, 2021 +49, 2022 +51, 2023 +62, 2024 +24, 2025 +42, 2026 +37.
+  161 trades par an, soit environ un jour de bourse sur 1,6. 58 % de stops pleins. Pire série : 13 pertes.
+- Capital, intérêts composés, 2018 → 2026-11 :
+
+  | Risque par trade | Par an | Pire baisse 2018-2026 | Pire baisse de l'ancien test 2015-2026 |
+  |---|---|---|---|
+  | 0,25 % | +13 % | -6 % | -17 % |
+  | 0,5 % | +26 % | -12 % | -32 % |
+  | 1 % | +55 % | -23 % | -56 % |
+
+- **Le résultat dépend du glissement.** Avec 0,5 point par exécution au lieu de 0,1, le total 2018 → 2026 passe de +438R
+  à +385R ; avec 1 point, à +304R.
+- **Attends-toi à +0,2 à +0,3R par trade tant que le marché ressemble à 2018-2026, avec une baisse de 25R déjà vue dans
+  cette période et de 74R dans la précédente** (trois ans et demi sans nouveau sommet, de janvier 2015 à juillet 2018).
+  Fais tourner la v5 en démo avant le réel, et choisis le risque par trade en regardant la pire baisse, pas le retour.
+
+Le détail des années retirées (données, qualité, résultats) est dans
+[backtest/etude-sl/sorties/historique-2011-2026/](backtest/etude-sl/sorties/historique-2011-2026/).
 
 ## Les règles de la v5
 
@@ -70,9 +85,9 @@ janvier 2015 → avril 2018, une période que personne n'avait regardée avant d
 7. **Pyramide** : quand une bougie M5 clôture à +2R ou plus (bougie d'entrée comprise, sauf la dernière de la
    journée), on ajoute une unité au marché, de la même taille que la position de départ, et le stop de l'ensemble
    monte à 1R sous le prix de l'ajout (donc au moins à +1R). Un seul ajout par trade. Après l'ajout, le pire cas est
-   zéro : l'ajout perd 1R, la première unité gagne au moins 1R. La pyramide se déclenche sur 24 % des trades ; la
-   moitié sont ensuite stoppés au stop remonté et finissent un peu au-dessus de zéro (+0,4R en moyenne), les autres font les
-   grosses journées (meilleur trade +23R, contre +13R sans pyramide).
+   zéro : l'ajout perd 1R, la première unité gagne au moins 1R. Sur 2018-2026 la pyramide se déclenche sur 26 % des
+   trades ; la moitié sont ensuite stoppés au stop remonté et finissent un peu au-dessus de zéro (+0,3R en moyenne), les
+   autres font les grosses journées (meilleur trade +23R, contre +13R sans pyramide).
 
 Le **R** affiché = résultat net de tout le trade (ajout et commission compris) ÷ somme risquée au départ : le même
 chiffre que le testeur. Une sortie au prix d'entrée compte comme neutre dans la série de pertes.
@@ -109,13 +124,16 @@ Ce que tu vois sur le graphique :
 4. Compte en mode **hedging** conseillé (l'ajout de la pyramide est alors une deuxième position). MT5 doit tourner
    pendant la séance de New York (VPS conseillé) : l'EA gère lui-même l'entrée au niveau du range, la pyramide et la
    sortie de 15:50 ; les stops sont posés chez le broker. Avec la pyramide, la position double : vérifie la marge.
-5. Pour comparer avec le test : testeur de stratégie, NAS100, période janvier 2015 → octobre 2026, modèle « Chaque tick
+5. Pour comparer avec le test : testeur de stratégie, NAS100, période janvier 2018 → novembre 2026, modèle « Chaque tick
    basé sur des ticks réels », dépôt 10 000. Les données et le spread de ton broker ne sont pas ceux de Dukascopy :
    le résultat sera proche, pas identique.
 
 Différences avec TradingView : l'entrée se fait au tick où l'ask (achat) ou le bid (vente) atteint le niveau, comme
 le test Python ; le stop à l'entrée et la pyramide sont décidés à la clôture de la bougie M5, comme dans le test ; si
 le broker refuse de poser un stop (trop près du prix), l'EA ferme lui-même la position à ce niveau.
+
+Les en-têtes de `pine/ORB-v5.pine` et de `mt5/ORB-v5.mq5` citent encore l'ancien test (1 915 trades, +373R sur
+2015-2026) : ces deux fichiers ne peuvent pas être compilés ici et n'ont pas été touchés.
 
 ### Notifications WhatsApp
 
@@ -133,7 +151,8 @@ Notifications), ou Telegram (ajoute `https://api.telegram.org` à la même liste
 
 ## Ce que la recherche a montré
 
-Tout a été exploré sur mai 2018 → août 2022 seulement (`v5_exp1.py` à `v5_exp6.py`), avec et sans les filtres :
+Les scripts de cette recherche ont été retirés du dépôt le 14 novembre 2026 (ils sont dans l'historique git, commit
+`2c0c65c`). Ce qu'ils avaient montré, sur mai 2018 → août 2022 seulement, avec et sans les filtres :
 - **Taille du stop** (0,5 à 1,5 range, 0,10 à 0,30 ATR jour, range borné) : le range entier reste le meilleur.
 - **Entrée** (au-delà du niveau, à la clôture hors du range, sur retour au niveau) : l'ordre stop sur la cassure
   reste le meilleur ; l'entrée sur retour au niveau perd.
@@ -144,18 +163,17 @@ Tout a été exploré sur mai 2018 → août 2022 seulement (`v5_exp1.py` à `v5
 - **Pyramide** : le seul vrai levier. Plateau large (ajout entre +1,5R et +2,5R, stop commun entre +0,5R et +1R).
   Une deuxième pyramide n'apporte rien. Avec un stop fixe à +1R, une pyramide stoppée finissait à -0,35R en moyenne
   (l'ajout se fait à la clôture, souvent au-dessus de +2R) ; avec le stop à 1R sous le prix de l'ajout, elle ne perd
-  plus jamais, pour le même total sur 12 ans (`v5_exp10.py`).
+  plus jamais, pour le même total.
 - **Entrée en deux temps** (petite taille, complément dès +0,25R) : très bon avec des hypothèses dans la bougie,
   presque nul une fois simulé sans hypothèse (ajout à la clôture). Écarté : c'était un artefact des bougies M5.
 
-Puis vérification hors échantillon (`v5_exp7.py`, `v5_exp8.py`, `orb_v5.py`) : voir le tableau en haut de page.
-Les filtres n'ont rien apporté sur 2015-2018 (-52R avec, -53R sans) ; sur l'ensemble ils gardent le même gain avec
-un tiers de trades en moins. Les données à la minute, qui auraient permis de simuler dans la bougie, n'ont pas pu
-être téléchargées.
+Puis vérification hors échantillon : voir les tableaux en haut de page. Les filtres n'ont rien apporté sur 2015-2018
+(-52R avec, -53R sans).
 
 ### Pourquoi les stops, et pourquoi on ne peut pas les éviter
 
-Autopsie des trades (scripts des versions précédentes, dans l'historique git) :
+Autopsie des trades faite avec des bougies M5 sur 2015-2026 (scripts dans l'historique git). L'étude de
+`backtest/etude-sl/` la reprend avec des données à la minute :
 - Environ 58 % de stops pleins, pour des gagnants qui font +3R en moyenne. 55 % des stops tombent dans les
   15 minutes après l'entrée, 86 % dans la première heure : ce sont des faux départs de l'ouverture.
 - 6 % des trades sans filtre touchent les deux côtés du range dans la même bougie : -1R garanti, imprévisible.
@@ -167,66 +185,43 @@ Autopsie des trades (scripts des versions précédentes, dans l'historique git) 
 - Ce qui aide un peu : trader dans le sens de l'élan de l'ouverture (les deux filtres). Le taux de stops ne baisse
   presque pas ; ce sont les trades à petits gains qui disparaissent.
 
-### Les trades d'octobre et novembre 2026
-
-`v5_recent.py` rejoue la v5 sur les dernières semaines avec les contrats à terme NQ de Yahoo Finance et donne, jour
-par jour, le range, le RSI, les côtés permis et le résultat. Sur le 19 octobre → 12 novembre 2026 il retrouve les
-11 trades de TradingView (BlackBull) : 6 stops de suite du 20 octobre au 2 novembre, puis deux journées de tendance
-(+6,8R et +5,5R). Tous respectaient les deux filtres. Les perdants avaient souvent un RSI proche de 50, mais sur
-12 ans un RSI plus marqué n'aide pas de façon stable (`v5_exp9.py`) : sur 2022-2026 les trades à RSI proche de 50
-font même mieux que la moyenne. Six stops de suite sont dans la norme d'une stratégie à 57 % de stops.
+Deux recherches plus récentes sur les stops (466 variantes, puis 33 règles de stop au prix d'entrée), faites sur l'ancien
+jeu de données, sont gardées dans [backtest/etude-sl/archives/](backtest/etude-sl/archives/).
 
 ## Refaire les tests
 
-Python 3 avec `pandas` et `numpy` (versions testées dans `requirements.txt`). Décompresse d'abord le zip de `donnees/`
-dans ce même dossier, puis :
-
-```bash
-cd backtest/nas100-10ans
-python orb_v5.py     # la v5 sur les trois périodes, avec et sans pyramide, simulation du capital
-python v5_exp1.py    # stop, entrée, gestion, pyramides, ré-entrée, sorties (2018-22 seulement)
-python v5_exp2.py    # grille de pyramides
-python v5_exp3.py    # contexte du jour par tranches
-python v5_exp4.py    # entrée en deux temps (avec hypothèses dans la bougie)
-python v5_exp5.py    # ajouts décidés à la clôture (sans hypothèse)
-python v5_exp6.py    # la pyramide avec les autres réglages
-python v5_exp7.py    # pourquoi 2015-2017 perd : coût du spread, volatilité
-python v5_exp8.py    # robustesse : pyramide et filtres période par période
-python v5_exp9.py    # un RSI plus marqué aide-t-il ? (idée venue des trades d'octobre-novembre 2026)
-python v5_exp10.py   # stop de la pyramide : fixe à +1R ou 1R sous le prix de l'ajout
-python v5_recent.py  # les dernières semaines jour par jour (pip install yfinance)
-```
-
-Dans les sorties des scripts, « v3 » désigne la stratégie sans filtre ni pyramide et « v4 » les filtres sans pyramide.
-
-Le simulateur garde un cache (`v5_days.pkl`, `v5_bars.npz`) à côté des scripts ; il est refait tout seul dès que les
-fichiers de données, `v5_lab.py` ou `load10.py` changent.
-
-### Tests automatiques
+Python 3 avec `pandas` et `numpy` (versions testées dans `requirements.txt`). Les données sont lues directement dans les
+zips de `donnees/` : rien à décompresser.
 
 ```bash
 python -m venv .venv && .venv/bin/pip install -r requirements.txt
-.venv/bin/python -m pytest tests
+.venv/bin/python backtest/nas100-10ans/orb_v5.py     # la v5 sur les trois périodes, avec et sans pyramide, capital
+.venv/bin/python -m pytest tests                     # les tests du simulateur
+backtest/etude-sl/refaire.sh                         # l'étude sur les stops, du début à la fin
 ```
 
+Dans les sorties de `orb_v5.py`, « v3 » désigne la stratégie sans filtre ni pyramide et « v4 » les filtres sans pyramide.
+
+Le premier lancement reconstruit le M5 à partir du M1 (une trentaine de secondes) et le garde dans `donnees/cache/`,
+hors git. Le simulateur garde aussi un cache (`v5_days.pkl`, `v5_bars.npz`) à côté des scripts ; tout est refait tout
+seul dès que les données, `v5_lab.py` ou `load10.py` changent.
+
+### Tests automatiques
+
 - `tests/regles_readme.py` : les règles 1 à 7 réécrites naïvement, jour par jour, sans rien partager avec `v5_lab.py`.
-  Les deux donnent les mêmes 1 925 trades sur 2015 → 2026, au millionième de R près.
+  Les deux donnent les mêmes 1 427 trades sur 2018 → 2026-11, au millionième de R près.
 - `tests/test_regles_a_la_main.py` : 13 journées écrites à la main (stop plein, trou à l'ouverture, stop d'une vente
   déclenché par l'ask, stop au prix d'entrée, pyramide, côté bloqué touché d'abord…), résultat calculé sur le papier.
 - `tests/test_simulateur.py` : aucune information du futur (on change les bougies d'après 9:35, rien de ce qui précède
   ne bouge), heure d'été, cache, qualité des données, chiffres de référence.
 
-Les tests qui lisent les vraies données dézippent l'archive de `donnees/` au besoin.
-
 ## Audit du 14 novembre 2026
 
-Le détail est dans [AUDIT.md](AUDIT.md). L'essentiel :
+Le détail est dans [AUDIT.md](AUDIT.md). Il a été fait sur l'ancien jeu de données (M5, 2015-2026). L'essentiel :
 
-- Le simulateur applique bien les règles ci-dessus : une réécriture indépendante donne les mêmes 1 925 trades.
-- Deux défauts du simulateur sont corrigés (cache jamais invalidé, 10 trades de janvier 2015 écartés). La pire baisse
-  passe de -69R à -74R.
-- **Le résultat dépend du glissement.** Avec 0,5 point par exécution au lieu de 0,1, le total 2015 → 2026 passe de +372R
-  à +269R ; avec 1 point, à +145R. Les années récentes résistent mieux que 2015-2017.
+- Le simulateur applique bien les règles ci-dessus : une réécriture indépendante donnait les mêmes 1 925 trades sur
+  2015-2026, et donne les mêmes 1 427 trades sur les données actuelles.
+- Deux défauts du simulateur ont été corrigés (cache jamais invalidé, 10 trades de janvier 2015 écartés).
 - **Jours fériés américains et demi-séances** : l'EA et le script TradingView gardent la position pendant la fermeture
   du marché. Coupe-les ces jours-là en attendant une correction.
 - Le script TradingView et l'EA n'ont pas été modifiés : ils ne peuvent pas être compilés ici. Leurs défauts et les

@@ -1,87 +1,76 @@
 # Étape 1 — données et reproduction : résumé
 
-Détail : [sorties/etape1_inventaire.md](sorties/etape1_inventaire.md), [sorties/etape1_qualite.md](sorties/etape1_qualite.md),
-[sorties/etape1_m5.md](sorties/etape1_m5.md), [sorties/etape1_reproduction.md](sorties/etape1_reproduction.md).
-Pour tout refaire : `./00_telecharger.sh`, puis `01_construire.py`, `02_qualite.py`, `03_comparer_m5.py`, `04_reproduction.py`.
+Rapports : [sorties/etape1_inventaire.md](sorties/etape1_inventaire.md), [sorties/etape1_qualite.md](sorties/etape1_qualite.md),
+[sorties/etape1_reference.md](sorties/etape1_reference.md). Pour tout refaire : `./refaire.sh`.
 
-## Données téléchargées (Dukascopy, M1 bid et ask, aucun échec)
+## Décision du 14 novembre 2026 : l'étude et le dépôt vont du 2018-01-01 au 2026-11-13
 
-| | Demandé | Première bougie réelle | Premier jour avec un vrai spread et la fenêtre 9:00-9:30 | Dernière bougie | M1 |
-|---|---|---|---|---|---|
-| Nasdaq CFD (`usatechidxusd`) | 2010-01-01 | 2011-09-19 | **2013-05-22** (qualité moyenne jusqu'en mai 2014) | 2026-11-13 | 4 252 808 |
-| Or (`xauusd`) | 2010-01-01 | 2010-01-01 (2009-12-31 19:02 à New York) | **2010-01-01** | 2026-11-13 | 5 997 966 |
+Le téléchargement complet (2010 → 2026) a montré que le Nasdaq de Dukascopy ne remonte pas à 2010 :
 
-Le Nasdaq ne remonte pas à 2010 :
-- 2010 : rien. 2011 : quatre séances en septembre, puis rien jusqu'au 19 janvier 2012.
-- 2012-01-19 → 2013-02-22 : le bid et l'ask sont identiques (spread nul) et seule la séance 9:30-16:00 est cotée. Sans
-  spread réel et sans la fenêtre 9:00-9:30, la v5 ne peut pas y être simulée.
-- 2013-02-25 → 2013-05-21 : aucune cotation.
-- À partir du 2013-05-22 : vrai spread et cotation hors séance. Mais jusqu'en mai 2014 la qualité reste moyenne :
-  octobre 2013 n'a que 18 séances sur 23, le spread tombe à 0,25 point d'octobre 2013 à janvier 2014 (contre 2,2 avant et
-  après), et une pause de cotation de 15 minutes revient chaque jour vers 14:15 ou 15:15 de septembre 2013 à mai 2014.
+| | Demandé | Première bougie réelle | Ce qu'on trouve avant 2018 |
+|---|---|---|---|
+| Nasdaq CFD (`usatechidxusd`) | 2010-01-01 | 2011-09-19 | rien en 2010 ; spread nul jusqu'en février 2013 ; trou jusqu'au 2013-05-21 ; qualité moyenne jusqu'en mai 2014 ; pas de cotation de nuit de 2015 au 12 avril 2018 |
+| Or (`xauusd`) | 2010-01-01 | 2010-01-01 | propre depuis 2010 |
 
-Horizons reconstruits pour les deux instruments : M1, M3, M5, M15, M30, H1, H4, D1 (H4 et D1 alignées sur 17:00 New York).
+Les preuves (inventaire, qualité, M5 identique à l'ancien fichier, reproduction de l'ancien README) sont dans
+[sorties/historique-2011-2026/](sorties/historique-2011-2026/). Les données d'avant 2018 ont été retirées du dépôt.
 
-**La nuit manque sur le Nasdaq de 2015 à mi-2018.** La cotation ne commence qu'à 2:00 New York en 2015 (80 % des jours),
-2016 et 2017, et la séance asiatique n'est complète qu'à partir de 2019 (72 % des jours en 2018). Ces années-là il n'y a
-que 4 bougies H4 par jour au lieu de 6, et la bougie D1 commence à 2:00. Londres (3:00-8:00) et 8:00-9:30 sont cotées à
-99-100 % depuis 2015. L'or est coté 23 heures sur 24 depuis 2010.
+## Données du dépôt (`donnees/`, M1 bid et ask, un zip par année, 194 Mo)
 
-## Qualité à partir de 2015 (Nasdaq) et de 2010 (or)
+| | Première bougie (New York) | Dernière | M1 |
+|---|---|---|---|
+| Nasdaq CFD | 2018-01-02 02:05 | 2026-11-13 16:14 | 2 998 259 |
+| Or | 2018-01-01 18:00 | 2026-11-13 16:59 | 3 144 343 |
 
-- Aucune bougie incohérente, aucune valeur manquante, aucun doublon ; ask jamais sous le bid à partir de 2013.
-- Nasdaq 2015-2026 : aucun jour ouvré manquant hors jours fériés ; 37 jours fériés sans séance ; 102 séances courtes, dont
-  97 jours fériés ou demi-séances (le CFD cote jusqu'à 13:00 environ) et 5 hors calendrier (2 au 5 novembre 2015, arrêt à
-  15:00 ; 31 décembre 2015, arrêt à 13:00). Fenêtre 9:00-9:45 incomplète : 10 séances en 12 ans.
-- Spread du Nasdaq en séance : 1,0 à 1,5 point depuis 2015, mais 10 à 12 % du range de 9:30 en 2015-2017 contre 1 à 3 %
-  depuis 2021. Spreads aberrants : 16 minutes en 12 ans, dont 12 le 4 janvier 2016 (jusqu'à 35 points).
-- Or : séances complètes depuis 2010, aucun jour ouvré manquant. Spread de 0,24 à 0,62 dollar, soit 10 à 29 % du range
-  M5 de 9:30 jusqu'en 2025 et 6 % en 2026 : l'ORB de 5 minutes y coûtera cher. Spreads aberrants : 24 au 26 mars 2020
-  (jusqu'à 12,6 dollars), plus 2 minutes isolées en 2026.
-- Sauts de prix en une minute (plus de 1,5 % sur le Nasdaq : 17 ; plus de 1 % sur l'or : 29) : la plupart tombent à des
+Horizons reconstruits (hors git, `donnees/cache/bougies/`) : M1, M3, M5, M15, M30, H1, H4, D1. H4 et D1 sont alignées sur
+17:00 New York, minuit du serveur MT5.
+
+## Qualité, 2018 → 2026
+
+- Aucune bougie incohérente, aucune valeur manquante, ask jamais sous le bid.
+- Nasdaq : aucun jour ouvré manquant hors jours fériés (27 jours fériés sans séance) ; 75 séances courtes, toutes des
+  jours fériés ou des demi-séances (le CFD cote jusqu'à 13:00 environ) ; fenêtre 9:00-9:45 incomplète 8 fois en 9 ans.
+- Spread du Nasdaq en séance : 1,1 à 1,5 point, soit 5 % du range de 9:30 en 2018-2019 et 1 à 3 % depuis 2020. Spreads
+  aberrants : 3 minutes en 9 ans.
+- **La séance asiatique du Nasdaq ne commence que le 12 avril 2018.** De janvier à avril 2018 la cotation démarre à 2:00
+  New York : pas de niveaux Asie, 4 bougies H4 par jour au lieu de 6.
+- Les données commencent le 2018-01-01 : la MA200 en D1 n'existe qu'à partir d'octobre 2018, la MA200 en H4 à partir de
+  mars 2018.
+- Or : séances complètes, aucun jour manquant. Spread de 0,24 à 0,62 dollar, soit 20 % du range M5 de 9:30 en 2018-2019,
+  10 à 13 % de 2020 à 2025, 6 % en 2026 : l'ORB de 5 minutes y coûtera cher. Spreads aberrants : 24 au 26 mars 2020.
+- Sauts de prix en une minute (plus de 1,5 % sur le Nasdaq : 17 ; plus de 1 % sur l'or : 18) : la plupart tombent à des
   heures d'annonces (8:30, 10:00, 14:00) ou en avril 2025. Je ne les ai pas vérifiés un par un.
 
 ## Reproduction
 
 | Contrôle | Résultat |
 |---|---|
-| M5 reconstruit depuis le M1 contre `donnees/`, 2015-01-01 → 2026-10-30 | 733 078 bougies bid et 733 078 ask, **0 écart de prix** |
-| `v5_lab` + réglages de `orb_v5.py` sur `donnees/` | **1 925 trades, +372,4R, pire baisse -74,1R, 13 pertes de suite** : les 8 lignes du README |
-| Le même sans les 10 trades de janvier 2015 que l'ancien code écartait | **1 915 trades, +373,0R, -69,1R** : les chiffres de la demande et de l'en-tête de l'EA |
-| `v5_lab` sur le M5 reconstruit, mêmes dates | mêmes 1 925 trades, même R au trade près |
+| M5 reconstruit depuis le M1 contre l'ancien fichier M5, 2015-01-01 → 2026-10-30 (avant son retrait) | 733 078 bougies bid et 733 078 ask, **0 écart de prix** |
+| v5 sur l'ancien fichier | 1 925 trades, +372,4R, -74,1R : le README d'alors |
+| Le même sans les 10 trades de janvier 2015 que l'ancien code écartait | 1 915 trades, +373,0R, -69,1R : les chiffres de la demande et de l'en-tête de l'EA |
+| v5 sur les nouvelles données contre l'ancien fichier, 2018-01-01 → 2026-10-30 | **mêmes 1 420 trades, même R au trade près** |
+| Réécriture indépendante des règles (`tests/regles_readme.py`) sur les nouvelles données | mêmes 1 427 trades |
 
-« 1 915 trades, +373R » est l'ancien chiffre, d'avant le correctif de l'audit (commit `d2cf90e`). Le README de `main` dit
-1 925 trades, +372R, -74R. Les deux sont retrouvés et l'écart est expliqué.
-
-## La v5 non modifiée, découpage de l'étude (M5 reconstruit, glissement 0,1 point du code)
+## La v5 non modifiée, 2018-01-01 → 2026-11-13 (glissement 0,1 point du code)
 
 | | Trades | R par trade | Total | Pire baisse | Pire série de pertes |
 |---|---|---|---|---|---|
-| 2013-05 → 2014 (jamais simulé jusqu'ici) | 231 | -0,144R | -33,2R | -53,1R | 26 |
-| 2015 → 2017 | 505 | -0,108R | -54,6R | -74,1R | 11 |
-| **Recherche (si elle commence au 2013-05-22) → 2017** | 736 | -0,119R | -87,8R | -122,8R | 26 |
-| **Vérification : 2018 → 2022** | 822 | +0,332R | +273,0R | -21,8R | 9 |
+| **Recherche : 2018 → 2020** (coupe proposée) | 498 | +0,347R | +172,8R | -21,8R | 9 |
+| **Vérification : 2021 → 2022** (coupe proposée) | 324 | +0,309R | +100,2R | -13,4R | 8 |
 | **Finale : 2023 → 2026-11-13** | 605 | +0,273R | +165,0R | -24,7R | 13 |
-| Tout | 2 163 | +0,162R | +350,2R | -122,8R | 26 |
+| Tout | 1 427 | +0,307R | +438,0R | -24,7R | 13 |
 
-- La série de 26 pertes va du 2014-07-09 au 2014-09-11, dans la partie propre des données.
-- Le spread coûte alors 27 à 32 % du range de 9:30 (10 à 12 % en 2015-2017, 1 à 3 % depuis 2021). Rejouée au prix milieu,
-  la v5 de juin-décembre 2014 passe de -45R à -10R, et celle de 2015-2017 de -55R à +32R : le coût explique l'essentiel de
-  la perte, pas toute. Cette comparaison est grossière (les trades ne sont pas exactement les mêmes).
-- Période de recherche selon sa date de départ : depuis 2013-05-22, 736 trades et -88R ; depuis 2014-06-01, 596 trades et
-  -100R ; depuis 2015-01-01, 505 trades et -55R.
+Pour mémoire, sur les années retirées : 2013-05 → 2014, 231 trades, -33,2R, 26 pertes de suite ; 2015 → 2017, 505 trades,
+-54,6R, pire baisse -74,1R.
 
 ## À savoir avant l'étape 2
 
-1. **La période de recherche est celle où la v5 perd** (-55R à -100R selon son début), et la v5 a été choisie sur 2018-05 → 2022-08. Un pattern
-   « dans le même sens sur les trois périodes » devra tenir à la fois quand la stratégie perd et quand elle gagne.
-2. **La période finale 2023-2026 n'est pas vierge.** Le README y a mesuré la v5, et `research/RAPPORT.md` (branche
-   `recherche/stops`) y a déjà lu une fois cinq variantes : stop à la clôture M5, filtre de spread, jours fériés, biais
-   H4, et leur combinaison. Je les ai lus. `commun.charger` verrouille 2023+ pour tout ce qui n'est pas la v5 non modifiée.
-3. **Le volume Dukascopy n'est pas un nombre de ticks.** Pour le « volume en ticks de la bougie de 9:30 », il faut
-   télécharger les ticks de l'heure de l'ouverture (disponibles depuis 2013).
-4. **Le texte de la demande est coupé** au milieu de l'étape 3 (« Teste ensuite une seule variante »).
-5. **Variables de contexte limitées par les données** : les niveaux de la séance asiatique, et la tendance ou la MA200 en
-   H4 et D1 sur bougies complètes, ne sont pas mesurables sur le Nasdaq de 2015 à mi-2018.
-6. **Le verrou de la période finale** ne couvre que `commun.charger`. `v5_lab.prep()` sur les fichiers du dépôt lit encore
-   2023+ : à fermer au début de l'étape 2, avant toute courbe contrefactuelle.
+1. **2018-2026 est le régime où la v5 gagne, et celui où elle a été choisie** (mai 2018 → août 2022). La pire baisse y
+   est de 25R ; elle était de 74R sur 2015-2017. Pour dimensionner le risque en prop firm, c'est 74R qu'il faut garder en
+   tête. Et « dans le même sens sur les trois périodes » est plus facile à passer quand les trois se ressemblent.
+2. **Le découpage est à confirmer.** La période finale reste 2023 → 2026 comme dans la demande. La période de recherche
+   d'origine (début → 2017) n'existe plus : la coupe proposée est recherche 2018-2020, vérification 2021-2022.
+3. **La période finale 2023-2026 n'est pas vierge** : voir [archives/](archives/). `commun.charger` la verrouille pour tout
+   ce qui n'est pas la v5 non modifiée ; `v5_lab.prep()` sans argument la lit encore, à fermer au début de l'étape 2.
+4. **Le volume Dukascopy n'est pas un nombre de ticks.** Le « volume en ticks de la bougie de 9:30 » demandera de
+   télécharger les ticks de l'heure d'ouverture (étape 2).

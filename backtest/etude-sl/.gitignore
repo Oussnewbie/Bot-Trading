@@ -1,7 +1,0 @@
-# Données brutes et reconstruites : jamais dans git. Elles se refont avec 00_telecharger.sh puis 01_construire.py.
-donnees/
-__pycache__/
-*.pyc
-*.npz
-*.pkl
-.pytest_cache/

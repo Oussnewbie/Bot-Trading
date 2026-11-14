@@ -1,5 +1,11 @@
 # Étude des stops de l'ORB v5 — plan de l'étape 1 (données et reproduction)
 
+> **État au 14 novembre 2026 : étape 1 terminée.** Ce plan est celui qui a été suivi. Deux décisions ont changé depuis :
+> l'étude et les données vont du 2018-01-01 au 2026-11-13 (le M1 est dans `donnees/`, dans git), et le dépôt a été nettoyé,
+> tout est sur `main`. Les scripts `03_comparer_m5.py` et `04_reproduction.py` cités plus bas ont été remplacés par
+> `03_reference.py` ; leurs rapports sont dans `sorties/historique-2011-2026/`. La demande complète est dans `DEMANDE.md`,
+> le résumé dans `ETAPE1.md`. Le plan de l'étape 2 sera écrit après le « go ».
+
 **But :** disposer d'un historique M1 bid + ask contrôlé (Nasdaq CFD et or), et prouver que la v5 du dépôt redonne les
 chiffres du README avant toute analyse des stops.
 

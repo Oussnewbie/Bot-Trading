@@ -72,7 +72,7 @@ def test_la_bougie_de_9h30_suit_l_heure_d_ete(tmp_path, monkeypatch):
                             "2024-11-01 13:30", "2024-11-04 14:30"], tz="UTC")   # avant et après le retour à l'heure d'hiver
     df = pd.DataFrame(dict(timestamp=utc.as_unit("ms").asi8, open=1.0, high=2.0, low=0.5, close=1.5, volume=1.0))
     for cote in ("bid", "ask"):
-        df.to_csv(tmp_path / f"usatechidxusd-m5-{cote}-2015-01-01-2026-11-01.csv", index=False)
+        df.to_csv(tmp_path / f"usatechidxusd-m5-{cote}.csv", index=False)
     monkeypatch.setattr(load10, "DIR", str(tmp_path) + os.sep)
     b, a = load10.load10()
     assert [str(t.time()) for t in b.index] == ["09:30:00", "09:35:00", "09:30:00", "09:35:00", "09:30:00", "09:30:00"]
@@ -84,7 +84,7 @@ def ecrire_csv(dossier, bid, ask):
     for cote, d in (("bid", bid), ("ask", ask)):
         out = pd.DataFrame(dict(timestamp=d.index.tz_convert("UTC").as_unit("ms").asi8, open=d.o.values, high=d.h.values,
                                 low=d.l.values, close=d.c.values, volume=d.v.values))
-        out.to_csv(os.path.join(dossier, f"usatechidxusd-m5-{cote}-2015-01-01-2026-11-01.csv"), index=False)
+        out.to_csv(os.path.join(dossier, f"usatechidxusd-m5-{cote}.csv"), index=False)
 
 
 def test_le_cache_est_refait_quand_les_donnees_changent(labo, tmp_path, monkeypatch):
@@ -144,7 +144,7 @@ def test_un_stop_sans_valeur_ne_donne_pas_de_trade(labo):
 def test_donnees_reelles_saines(donnees_reelles):
     b, a = donnees_reelles
     assert b.index.equals(a.index) and b.index.is_monotonic_increasing and not b.index.has_duplicates
-    assert str(b.index[0].date()) == "2015-01-01" and str(b.index[-1].date()) == "2026-10-30"
+    assert str(b.index[0].date()) == "2018-01-02" and str(b.index[-1].date()) == "2026-11-13"
     assert not b.isna().any().any() and not a.isna().any().any()
     for col in "ohlc":
         assert (a[col] >= b[col]).all(), "ask sous le bid"
@@ -155,20 +155,20 @@ def test_donnees_reelles_saines(donnees_reelles):
 
 
 def test_reference_v5_sur_les_donnees_reelles(donnees_reelles, labo):
-    """Le simulateur et la réécriture des règles donnent les mêmes trades sur 2015-2026 : chiffres de référence du README."""
+    """Le simulateur et la réécriture des règles donnent les mêmes trades sur 2018 → 2026-11 : chiffres de référence du README."""
     bid, ask = donnees_reelles
     labo.prep(data=(bid, ask))
     X = labo.run(orb_v5.V5, labo.f_v4)
     T = N.tous_les_trades(bid, ask)
-    assert len(X) == len(T) == 1925
+    assert len(X) == len(T) == 1427
     assert list(jour_de(X)) == list(T.jour) and list(X.d) == list(T.sens)
     np.testing.assert_allclose(X.r.values, T.r.values, atol=1e-9)
     s = labo.stats(X)
-    assert s["tot"] == pytest.approx(372.39, abs=0.01)
-    assert s["dd"] == pytest.approx(74.09, abs=0.01)
+    assert s["tot"] == pytest.approx(437.98, abs=0.01)
+    assert s["dd"] == pytest.approx(24.65, abs=0.01)
     assert s["streak"] == 13
     par_periode = X.groupby("per").r.agg(["size", "sum"])
-    assert par_periode.loc["B", "size"] == 555 and par_periode.loc["train", "size"] == 724 and par_periode.loc["A", "size"] == 646
-    assert par_periode.loc["B", "sum"] == pytest.approx(-31.44, abs=0.01)
+    assert par_periode.loc["B", "size"] == 50 and par_periode.loc["train", "size"] == 724 and par_periode.loc["A", "size"] == 653
+    assert par_periode.loc["B", "sum"] == pytest.approx(23.14, abs=0.01)
     assert par_periode.loc["train", "sum"] == pytest.approx(248.81, abs=0.01)
-    assert par_periode.loc["A", "sum"] == pytest.approx(155.02, abs=0.01)
+    assert par_periode.loc["A", "sum"] == pytest.approx(166.03, abs=0.01)

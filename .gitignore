@@ -1,8 +1,8 @@
 __pycache__/
 *.pyc
-donnees/Data Bid and Ask 10y/
-__MACOSX/
-*.pkl
-*.npz
 .venv/
 .pytest_cache/
+# Tout ce qui se reconstruit à partir des zips de donnees/ : M5, bougies de l'étude, téléchargements en cours
+donnees/cache/
+*.pkl
+*.npz

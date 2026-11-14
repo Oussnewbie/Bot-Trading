@@ -7,30 +7,34 @@ Conventions :
 - H4 et D1 : alignées sur 17:00 New York, c'est-à-dire minuit du serveur MT5 de l'EA (GMT+2 l'hiver, heure d'été
   américaine). La bougie D1 va de 17:00 à 17:00 NY ; les H4 commencent à 17:00, 21:00, 1:00, 5:00, 9:00 et 13:00 NY.
 - Les minutes sans cotation n'existent pas dans les fichiers (pas de bougies plates ajoutées).
+- Les données sont les zips M1 de donnees/ (lus par backtest/nas100-10ans/load10.py). Les bougies reconstruites vont dans
+  donnees/cache/bougies/, hors git.
 """
 import os
+import sys
 
 import numpy as np
 import pandas as pd
 
 ICI = os.path.dirname(os.path.abspath(__file__))
-DONNEES = os.path.join(ICI, "donnees")
-BRUT = os.path.join(DONNEES, "brut")
-BOUGIES = os.path.join(DONNEES, "bougies")
 SORTIES = os.path.join(ICI, "sorties")
 RACINE = os.path.dirname(os.path.dirname(ICI))
-M5_DEPOT = os.path.join(RACINE, "donnees", "Data Bid and Ask 10y")
 SIMU = os.path.join(RACINE, "backtest", "nas100-10ans")
+if SIMU not in sys.path:
+    sys.path.insert(0, SIMU)
+import load10  # noqa: E402
+
+DONNEES = load10.DONNEES
+BOUGIES = os.path.join(DONNEES, "cache", "bougies")
 
 NY = "America/New_York"
-INSTRUMENTS = {"nas100": "usatechidxusd", "or": "xauusd"}
+INSTRUMENTS = load10.INSTRUMENTS
 HORIZONS = {"M1": 1, "M3": 3, "M5": 5, "M15": 15, "M30": 30, "H1": 60, "H4": 240, "D1": 1440}
 COLONNES = ["bo", "bh", "bl", "bc", "bv", "ao", "ah", "al", "ac", "av"]
 
-# Décision du 2026-11-14 : l'étude porte sur 2018-01-01 -> 2026-11-13. Les bougies de 2017 ne servent qu'à amorcer les
-# indicateurs longs (MA200 en D1, ATR) : aucun trade n'y est joué.
+# Décision du 2026-11-14 : l'étude et les données du dépôt vont du 2018-01-01 au 2026-11-13. Rien avant : les moyennes
+# longues (MA200 en D1) n'existent donc qu'à partir de l'automne 2018.
 DEBUT_ETUDE = pd.Timestamp("2018-01-01", tz=NY)
-DEBUT_AMORCAGE = pd.Timestamp("2017-01-01", tz=NY)
 
 # Découpage anti-bruit (dates en heure de New York, borne de fin exclue). La période finale est celle de la demande.
 # La coupe entre recherche et vérification (2021-01-01) est une PROPOSITION, à confirmer avant l'étape 2.
@@ -102,13 +106,20 @@ def decouper(df, finale=False, motif=None):
         f"La période finale (2023 -> 2026) est verrouillée. Motifs permis : {MOTIFS_SANS_VERROU}, ou {VERROU_ENV}=ouverte.")
 
 
-def charger(instrument, horizon, finale=False, motif=None, amorcage=False):
+def lire_m1(instrument):
+    """Le M1 du dépôt au format de l'étude : index = horodatage UTC en ms, colonnes COLONNES."""
+    b, a = load10.lire_m1(instrument)
+    m1 = pd.DataFrame({"bo": b.open, "bh": b.high, "bl": b.low, "bc": b.close, "bv": b.volume,
+                       "ao": a.open, "ah": a.high, "al": a.low, "ac": a.close, "av": a.volume})
+    m1.index.name = "t"
+    return m1
+
+
+def charger(instrument, horizon, finale=False, motif=None):
     """Bougies bid et ask d'un instrument (« nas100 » ou « or »), indexées en heure de New York.
-    Par défaut : à partir du 2018-01-01, sans la période finale (voir decouper).
-    amorcage=True rend aussi 2017, pour calculer des indicateurs longs ; aucun trade ne doit y être joué."""
+    Par défaut la période finale n'est pas rendue (voir decouper)."""
     z = np.load(chemin_bougies(instrument, horizon))
     df = pd.DataFrame({c: z[c] for c in COLONNES}, index=heure_ny(z["t"]))
-    df = df[df.index >= (DEBUT_AMORCAGE if amorcage else DEBUT_ETUDE)]
     return decouper(df, finale=finale, motif=motif)
 
 
@@ -120,11 +131,10 @@ def cotes(df):
 
 
 def periode_de(t):
-    """Nom de la période (amorcage, recherche, verification, finale) pour des dates en heure de New York."""
+    """Nom de la période (recherche, verification, finale) pour des dates en heure de New York."""
     t = pd.DatetimeIndex(t)
     j = t.tz_localize(None) if t.tz is not None else t
-    return np.where(j < pd.Timestamp("2018-01-01"), "amorcage", np.where(j < pd.Timestamp(COUPE_VERIFICATION), "recherche",
-                    np.where(j < pd.Timestamp("2023-01-01"), "verification", "finale")))
+    return np.where(j < pd.Timestamp(COUPE_VERIFICATION), "recherche", np.where(j < pd.Timestamp("2023-01-01"), "verification", "finale"))
 
 
 def resume_r(r, neutres=None):

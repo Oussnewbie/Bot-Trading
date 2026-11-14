@@ -1,5 +1,10 @@
 # Audit du 14 novembre 2026
 
+> **Note du 14 novembre 2026, après l'audit.** Le dépôt a été nettoyé : les données M5 2015-2026 sur lesquelles cet
+> audit a été fait ont été remplacées par du M1 2018-01-01 → 2026-11-13, et les scripts `v5_exp*.py` ont été retirés.
+> Les chiffres ci-dessous (1 925 trades, +372R, -74R) portent sur l'ancien jeu de données ; sur les données actuelles
+> la v5 fait 1 427 trades, +438R, pire baisse -25R (voir le README). Le texte de l'audit n'a pas été modifié.
+
 Audit du dépôt tel qu'il est sur `main` : le simulateur Python, le script TradingView et l'EA MetaTrader 5 de l'ORB v5.
 Ce document dit ce qui a été vérifié, ce qui a été corrigé, et ce qui attend une décision.
 

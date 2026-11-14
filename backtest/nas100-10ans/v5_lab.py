@@ -1,9 +1,9 @@
 """Laboratoire de la v5 : simulateur souple de l'ORB de New York sur NAS100 M5 (bid et ask, spread réel).
 
 Trois périodes :
-  B     : janvier 2015 -> avril 2018   (jamais regardée avant la v5 : contrôle final, la nuit manque dans les données)
-  train : mai 2018 -> août 2022        (toute l'exploration se fait ici)
-  A     : septembre 2022 -> octobre 2026 (vérification)
+  B     : avant mai 2018               (dans le dépôt : janvier -> avril 2018 ; 2015-2017 ont été retirées le 2026-11-14)
+  train : mai 2018 -> août 2022        (toute l'exploration s'est faite ici)
+  A     : septembre 2022 -> novembre 2026 (vérification)
 Conventions prudentes : sur la bougie d'entrée seul le stop peut être touché ; quand un stop et un gain sont dans la
 même bougie, le stop gagne ; un stop déplacé ne vaut qu'à partir de la bougie suivante.
 """
@@ -296,7 +296,7 @@ def head(pers=("train",)):
 if __name__ == "__main__":
     prep()
     print(D.per.value_counts().to_dict())
-    # contrôle : sans pyramide, sur 2018-2026, on retrouve les anciens tests (sans filtre : 2 091 trades, +0,113R ; avec : 1 369 trades, +0,193R)
+    # contrôle : sans pyramide, à partir de mai 2018, sans filtre (v3) puis avec les filtres (v4)
     for lab, f in (("v3", f_all), ("v4", f_v4)):
         X = run({}, f); X = X[X.per != "B"]
         print(lab, len(X), round(X.r.mean(), 3), round(X.r.sum()))
