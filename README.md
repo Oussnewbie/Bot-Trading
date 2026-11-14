@@ -10,7 +10,8 @@ Toutes les heures sont en heure de New York (9:30 NY = 15:30 à Paris la plupart
 |---|---|
 | `pine/ORB-v5.pine` | **La stratégie** pour TradingView. Alertes Telegram. |
 | `mt5/ORB-v5.mq5` | **La même stratégie en Expert Advisor MetaTrader 5**, mêmes règles et mêmes paramètres. Notifications push MT5, WhatsApp et Telegram. |
-| `backtest/nas100-10ans/` | La recherche de la v5 : `orb_v5.py` reproduit la v5, `v5_lab.py` est le simulateur, `v5_exp1.py` à `v5_exp8.py` les expériences. |
+| `backtest/nas100-10ans/` | La recherche de la v5 : `orb_v5.py` reproduit la v5, `v5_lab.py` est le simulateur, `v5_exp1.py` à `v5_exp10.py` les expériences. |
+| `tests/` | Les tests automatiques du simulateur (`pytest`), dont une réécriture indépendante des règles (`regles_readme.py`). |
 | `donnees/` | Données Dukascopy NAS100 CFD M5, bid et ask, 2015 → 2026 (zip). |
 
 Les versions précédentes (AMD+ v1 et v2, ORB v3 et v4) et leurs scripts de recherche ont été retirés ;
@@ -24,31 +25,31 @@ janvier 2015 → avril 2018, une période que personne n'avait regardée avant d
 
 | Période | | Trades | Par trade | Total | Pire baisse |
 |---|---|---|---|---|---|
-| 2015-01 → 2018-04 (jamais vue) | sans pyramide | 545 | -0,10R | -52R | -76R |
-| | **v5** | 545 | -0,06R | **-31R** | -69R |
+| 2015-01 → 2018-04 (jamais vue) | sans pyramide | 555 | -0,09R | -52R | -78R |
+| | **v5** | 555 | -0,06R | **-31R** | -74R |
 | 2018-05 → 2022-08 (période de choix) | sans pyramide | 724 | +0,21R | +152R | -23R |
 | | **v5** | 724 | +0,34R | **+249R** | -22R |
 | 2022-09 → 2026-10 (vérification) | sans pyramide | 646 | +0,17R | +111R | -27R |
 | | **v5** | 646 | +0,24R | **+155R** | -25R |
-| **Tout : 2015 → 2026** (11,8 ans) | sans pyramide | 1 915 | +0,11R | +211R | -76R |
-| | **v5** | 1 915 | **+0,20R** | **+373R** | -69R |
+| **Tout : 2015 → 2026** (11,8 ans) | sans pyramide | 1 925 | +0,11R | +211R | -78R |
+| | **v5** | 1 925 | **+0,19R** | **+372R** | -74R |
 
-- **L'ORB a perdu trois années de suite, 2015, 2016 et 2017.** Le spread coûtait alors 10 à 13 % du risque à chaque
+- **L'ORB a perdu trois années de suite, 2015, 2016 et 2017.** Le spread coûtait alors 10 à 14 % du risque à chaque
   trade (range de 9 points pour 1 point de spread ; 1 à 3 % depuis 2020), mais ce n'est pas tout : même sans spread,
   l'avantage de ces années n'est que de +0,04R par trade.
 - **La pyramide ajoute du gain sur les trois périodes** (+21R, +97R, +44R), avec et sans les filtres, et pour presque
   tous les réglages voisins. Elle ne réduit pas les pertes : les stops de départ sont les mêmes.
-- R par année : 2015 -43, 2016 -4, 2017 -7, 2018 +93, 2019 +36, 2020 +45, 2021 +49, 2022 +51, 2023 +62,
+- R par année : 2015 -44, 2016 -4, 2017 -7, 2018 +93, 2019 +36, 2020 +45, 2021 +49, 2022 +51, 2023 +62,
   2024 +24, 2025 +42, 2026 +26. 163 trades par an, soit environ un jour de bourse sur 1,6. Pire série : 13 pertes.
 - Capital, intérêts composés :
 
   | Risque par trade | 2015 → 2026 | Pire baisse | 2018 → 2026 seulement | Pire baisse |
   |---|---|---|---|---|
-  | 0,25 % | +8 % par an | -16 % | +12 % par an | -6 % |
-  | 0,5 % | +16 % par an | -31 % | +25 % par an | -12 % |
-  | 1 % | +31 % par an | -54 % | +52 % par an | -23 % |
+  | 0,25 % | +8 % par an | -17 % | +12 % par an | -6 % |
+  | 0,5 % | +16 % par an | -32 % | +25 % par an | -12 % |
+  | 1 % | +31 % par an | -56 % | +52 % par an | -23 % |
 
-- **Attends-toi à +0,15 à +0,20R par trade en moyenne, avec des années perdantes possibles et une baisse de 69R
+- **Attends-toi à +0,15 à +0,20R par trade en moyenne, avec des années perdantes possibles et une baisse de 74R
   (trois ans et demi sans nouveau sommet, de janvier 2015 à juillet 2018) déjà vue dans l'historique.** Fais tourner
   la v5 en démo avant le réel, et choisis le risque par trade en regardant la colonne « pire baisse », pas le retour.
 
@@ -148,7 +149,7 @@ Tout a été exploré sur mai 2018 → août 2022 seulement (`v5_exp1.py` à `v5
   presque nul une fois simulé sans hypothèse (ajout à la clôture). Écarté : c'était un artefact des bougies M5.
 
 Puis vérification hors échantillon (`v5_exp7.py`, `v5_exp8.py`, `orb_v5.py`) : voir le tableau en haut de page.
-Les filtres n'ont rien apporté sur 2015-2018 (-52R avec, -50R sans) ; sur l'ensemble ils gardent le même gain avec
+Les filtres n'ont rien apporté sur 2015-2018 (-52R avec, -53R sans) ; sur l'ensemble ils gardent le même gain avec
 un tiers de trades en moins. Les données à la minute, qui auraient permis de simuler dans la bougie, n'ont pas pu
 être téléchargées.
 
@@ -177,7 +178,8 @@ font même mieux que la moyenne. Six stops de suite sont dans la norme d'une str
 
 ## Refaire les tests
 
-Python 3 avec `pandas` et `numpy`. Décompresse d'abord le zip de `donnees/` dans ce même dossier, puis :
+Python 3 avec `pandas` et `numpy` (versions testées dans `requirements.txt`). Décompresse d'abord le zip de `donnees/`
+dans ce même dossier, puis :
 
 ```bash
 cd backtest/nas100-10ans
@@ -196,6 +198,25 @@ python v5_recent.py  # les dernières semaines jour par jour (pip install yfinan
 ```
 
 Dans les sorties des scripts, « v3 » désigne la stratégie sans filtre ni pyramide et « v4 » les filtres sans pyramide.
+
+Le simulateur garde un cache (`v5_days.pkl`, `v5_bars.npz`) à côté des scripts ; il est refait tout seul dès que les
+fichiers de données, `v5_lab.py` ou `load10.py` changent.
+
+### Tests automatiques
+
+```bash
+python -m venv .venv && .venv/bin/pip install -r requirements.txt
+.venv/bin/python -m pytest tests
+```
+
+- `tests/regles_readme.py` : les règles 1 à 7 réécrites naïvement, jour par jour, sans rien partager avec `v5_lab.py`.
+  Les deux donnent les mêmes 1 925 trades sur 2015 → 2026, au millionième de R près.
+- `tests/test_regles_a_la_main.py` : 13 journées écrites à la main (stop plein, trou à l'ouverture, stop d'une vente
+  déclenché par l'ask, stop au prix d'entrée, pyramide, côté bloqué touché d'abord…), résultat calculé sur le papier.
+- `tests/test_simulateur.py` : aucune information du futur (on change les bougies d'après 9:35, rien de ce qui précède
+  ne bouge), heure d'été, cache, qualité des données, chiffres de référence.
+
+Les tests qui lisent les vraies données dézippent l'archive de `donnees/` au besoin.
 
 ## Avertissement
 

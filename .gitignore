@@ -4,3 +4,5 @@ donnees/Data Bid and Ask 10y/
 __MACOSX/
 *.pkl
 *.npz
+.venv/
+.pytest_cache/

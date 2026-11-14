@@ -13,6 +13,7 @@ import numpy as np, pandas as pd
 from load10 import load10
 
 SLIP = 0.1
+CACHE_DIR = os.path.dirname(os.path.abspath(__file__))   # dossier des fichiers de cache v5_days.pkl et v5_bars.npz
 T0, T1 = pd.Timestamp("2018-05-01"), pd.Timestamp("2022-09-01")
 G = {}
 D = None
@@ -25,15 +26,33 @@ def rsi(c, n=14):
     return (100 - 100 / (1 + up / dn.replace(0, np.nan))).fillna(50).values
 
 
+def _heures(tn):
+    return pd.DatetimeIndex(pd.to_datetime(tn, utc=True)).tz_convert("America/New_York")
+
+
+def _empreinte():
+    """Empreinte des deux fichiers de données et du code qui construit le cache (taille et date de modification).
+    Si l'un d'eux change, le cache est reconstruit : il ne peut plus rendre un ancien résultat sans prévenir."""
+    import load10 as LD
+    parts = []
+    for p in (LD.csv_path("bid"), LD.csv_path("ask"), os.path.abspath(__file__), os.path.abspath(LD.__file__)):
+        st = os.stat(p)
+        parts.append(f"{os.path.basename(p)}:{st.st_size}:{st.st_mtime_ns}")
+    return "|".join(parts)
+
+
 def prep(data=None):
     """Charge les données et construit la table des jours (tout ce qui est connu à 9:35).
     data = (bid, ask) : deux tableaux o, h, l, c indexés en heure de New York, pour rejouer d'autres données."""
     global D
     cache = data is None
-    if cache and os.path.exists("v5_days.pkl") and os.path.exists("v5_bars.npz"):
-        z = np.load("v5_bars.npz", allow_pickle=True)
-        G.update({k: z[k] for k in z.files}); G["t"] = pd.DatetimeIndex(pd.to_datetime(G["tn"], utc=True)).tz_convert("America/New_York")
-        D = pd.read_pickle("v5_days.pkl"); return D
+    f_days, f_bars = os.path.join(CACHE_DIR, "v5_days.pkl"), os.path.join(CACHE_DIR, "v5_bars.npz")
+    sig = _empreinte() if cache else None
+    if cache and os.path.exists(f_days) and os.path.exists(f_bars):
+        z = np.load(f_bars, allow_pickle=True)
+        if "sig" in z.files and str(z["sig"]) == sig:            # cache valable seulement pour ces données et ce code
+            G.clear(); G.update({k: z[k] for k in z.files if k != "sig"}); G["t"] = _heures(G["tn"])
+            D = pd.read_pickle(f_days); return D
     b, a = load10() if cache else data
     t = b.index
     g = dict(BO=b.o.values, BH=b.h.values, BL=b.l.values, BC=b.c.values, AO=a.o.values, AH=a.h.values, AL=a.l.values, AC=a.c.values)
@@ -60,7 +79,8 @@ def prep(data=None):
     calv = cal.values
     for i in np.flatnonzero(mins == 570):
         day = cal[i]
-        if last[i] <= i or day not in Dp.index or not np.isfinite(Dp.loc[day].atr): continue
+        # l'ATR journalier (14 jours) ne sert qu'à des variantes de recherche : un jour sans ATR reste un jour de la v5
+        if last[i] <= i or day not in Dp.index: continue
         dp = Dp.loc[day]
         j = i - 1; pre = []
         while j >= 0 and calv[j] == calv[i] and mins[j] >= 540: pre.append(j); j -= 1
@@ -76,11 +96,11 @@ def prep(data=None):
     D["or_atr"] = D.orw / D.atrd
     D["or_med"] = D.orw / D.orw.rolling(20, min_periods=10).median().shift(1)   # range de 9:30 vs médiane des 20 jours précédents
     D["per"] = np.where(D.day < T0, "B", np.where(D.day < T1, "train", "A"))
-    D["dow"] = pd.DatetimeIndex(D.day).dayofweek
+    D["dow"] = pd.DatetimeIndex(D.day).day_of_week
     if cache:
-        D.to_pickle("v5_days.pkl")
-        np.savez("v5_bars.npz", **g)
-    G.update(g); G["t"] = t
+        D.to_pickle(f_days)
+        np.savez(f_bars, sig=np.array(sig), **g)
+    G.clear(); G.update(g); G["t"] = _heures(g["tn"])
     return D
 
 
@@ -100,7 +120,7 @@ def path(k, d, ent, sl, last_i, P, fill="stop"):
     """Renvoie (R total en unités du risque initial, indice de sortie, MFE, détails)."""
     BO, BH, BL, BC, AO, AH, AL, AC, mins = (G[x] for x in ("BO", "BH", "BL", "BC", "AO", "AH", "AL", "AC", "mins"))
     risk = abs(ent - sl)
-    if risk <= 0: return None
+    if not risk > 0: return None                       # stop au mauvais endroit, ou sans valeur (ATR pas encore disponible)
     if fill != "close" and ((d == 1 and BL[k] <= sl) or (d == -1 and AH[k] >= sl)):
         return (sl - d * SLIP - ent) * d / risk, k, 0.0, "stop"
     locks = sorted(P.get("locks", [(1.5, 0.0)]))       # (seuil en R, stop placé à tant de R)
