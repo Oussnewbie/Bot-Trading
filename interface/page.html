@@ -67,6 +67,14 @@
   .up, .down { white-space: nowrap; }
 
   .card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px; margin-bottom: 16px; min-width: 0; }
+  /* Bloc repliable : le titre se clique, l'état ouvert ou fermé est retenu. La courbe, elle, reste toujours visible. */
+  details.card > summary { list-style: none; cursor: pointer; display: flex; align-items: baseline; gap: 8px; margin: -16px; padding: 16px; border-radius: 12px; }
+  details.card > summary::-webkit-details-marker { display: none; }
+  details.card > summary::before { content: '▸'; color: var(--muted); font-size: 12px; width: 12px; flex: none; }
+  details.card[open] > summary::before { content: '▾'; }
+  details.card[open] > summary { margin-bottom: 0; padding-bottom: 8px; }
+  details.card > summary:hover h2 { color: var(--accent); }
+  details.card > summary .sum { color: var(--muted); font-size: 12px; margin-left: auto; text-align: right; }
   .card h2 { margin: 0 0 2px; font-size: 15px; } .card h2 small { color: var(--muted); font-weight: 500; font-size: 12px; }
   .card .hint { color: var(--muted); font-size: 12px; margin-bottom: 12px; }
   .card .head-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
@@ -157,11 +165,11 @@
 
   <section id="tab-overview">
     <div class="tiles main" id="tiles-overview"></div>
-    <div class="card">
-      <h2>Instruments</h2>
+    <details class="card" data-fold="instruments" open>
+      <summary><h2>Instruments</h2><span class="sum" id="sum-instruments"></span></summary>
       <div class="hint">Une case décochée : l’EA de cet instrument ne prend plus de nouveau trade. Un trade déjà ouvert continue d’être géré jusqu’à sa sortie.</div>
       <div id="instruments"></div>
-    </div>
+    </details>
     <div class="card">
       <div class="head-row">
         <div><h2>Courbe des trades pris</h2><div class="hint" id="curve-hint">Résultat cumulé après chaque trade clôturé par l’EA.</div></div>
@@ -169,15 +177,15 @@
       </div>
       <div class="chart" id="chart-curve"></div>
     </div>
-    <div class="card">
-      <h2>Trades clôturés <small id="trades-count"></small></h2>
+    <details class="card" data-fold="trades">
+      <summary><h2>Trades clôturés <small id="trades-count"></small></h2><span class="sum" id="sum-trades"></span></summary>
       <div class="scroll" id="trades"></div>
-    </div>
+    </details>
   </section>
 
   <section id="tab-risk" hidden>
-    <div class="card">
-      <h2>Risque par trade</h2>
+    <details class="card" data-fold="risque" open>
+      <summary><h2>Risque par trade</h2><span class="sum" id="sum-risque"></span></summary>
       <div class="hint">La part du solde perdue quand le stop est touché (1R). C’est le seul réglage : tout le reste garde les valeurs du test.</div>
       <div class="status" id="risk-status"><span class="dot"></span><span></span></div>
       <div class="risk-row">
@@ -193,22 +201,22 @@
         <button class="btn" id="risk-cancel" disabled>Annuler</button>
         <div class="msg" id="risk-msg"></div>
       </div>
-    </div>
-    <div class="card">
-      <h2>Ce que le test donne à ce risque <small id="sim-title"></small></h2>
+    </details>
+    <details class="card" data-fold="simulation" open>
+      <summary><h2>Ce que le test donne à ce risque <small id="sim-title"></small></h2></summary>
       <div class="hint" id="sim-hint"></div>
       <div class="tiles sim" id="tiles-sim"></div>
       <div id="sim-notes"></div>
-    </div>
-    <div class="card">
-      <h2>Ce que disent les tests</h2>
+    </details>
+    <details class="card" data-fold="tests">
+      <summary><h2>Ce que disent les tests</h2></summary>
       <ul>
         <li><b>Nasdaq, 2018 → novembre 2026 :</b> 1 427 trades, +0,31R par trade, +438R au total, pire baisse −25R, 13 pertes de suite au pire, 58 % de stops pleins.</li>
         <li><b>Nasdaq avant 2018 :</b> la stratégie perdait (−55R sur 2015-2017, −33R sur 2013-2014). L’ancien test 2015-2026 a connu une baisse de 74R.</li>
         <li><b>Or, 2018 → novembre 2026 :</b> la même stratégie perd : −137R sur 773 trades, 7 années sur 9 dans le rouge. Le spread y coûte environ 12 % du range.</li>
         <li>Le passé ne garantit rien : choisis le risque en regardant la pire baisse, pas le gain par an.</li>
       </ul>
-    </div>
+    </details>
   </section>
 
   <section id="tab-connections" hidden>
@@ -279,6 +287,16 @@ function toast(message) {
   node.style.display = 'block';
   clearTimeout(toast.timer);
   toast.timer = setTimeout(() => (node.style.display = 'none'), 4600);
+}
+
+// ---------------------------------------------------------------- blocs repliables
+function foldOpen(key, byDefault) {
+  try { const saved = localStorage.getItem(`bloc:${key}`); return saved === null ? byDefault : saved === '1'; } catch (error) { return byDefault; }
+}
+function rememberFold(key, open) { try { localStorage.setItem(`bloc:${key}`, open ? '1' : '0'); } catch (error) { /* sans gravité */ } }
+for (const node of document.querySelectorAll('details[data-fold]')) {
+  node.open = foldOpen(node.dataset.fold, node.hasAttribute('open'));
+  node.addEventListener('toggle', () => rememberFold(node.dataset.fold, node.open));
 }
 
 // ---------------------------------------------------------------- formats
@@ -368,8 +386,8 @@ function renderOverview() {
     const result = open.reduce((s, e) => s + (e.pos_resultat || 0), 0);
     const base = open[0].solde_depart || (a && a.solde) || 0;
     const r = open.length === 1 ? open[0].pos_r : null;
-    tiles.push(tile(`Trade en cours${open.length > 1 ? 's' : ''}`, delta(result, r != null ? rSigned(r) : moneySigned(result, devise)),
-      `${moneySigned(result, devise)} · ${base > 0 ? pctSigned((100 * result) / base) : '—'}`));
+    tiles.push(tile(`Trade${open.length > 1 ? 's' : ''} en cours`, delta(result, moneySigned(result, devise)),
+      `${base > 0 ? pctSigned((100 * result) / base) : '—'}${r != null ? ` · ${rSigned(r)}` : ''}`));
   } else {
     const waiting = running().filter((e) => e.attente);
     tiles.push(tile('Trade en cours', waiting.length ? 'Ordres en attente' : 'Aucun', waiting.length ? waiting.map((e) => e.symbole).join(', ') : running().length ? 'un trade par jour au plus, après 9:35 New York' : ''));
@@ -380,6 +398,9 @@ function renderOverview() {
   const perTrade = a && a.solde != null && risk != null ? (a.solde * risk) / 100 : null;
   tiles.push(tile('Risque par trade', risk != null ? riskText(risk) : riskText(currentRisk()), perTrade != null ? `≈ ${money(perTrade, devise)} par trade` : 'pris au prochain lancement de l’EA', risk != null && risk > 1 ? 'alert' : ''));
   $('tiles-overview').replaceChildren(...tiles);
+  const on = Object.entries(INSTRUMENTS).filter(([key]) => state.reglages.instruments[key]).map(([, label]) => label);
+  $('sum-instruments').textContent = on.length ? `actifs : ${on.join(', ')}` : 'aucun actif';
+  $('sum-trades').textContent = sum.n ? `${moneySigned(sum.argent, devise)} · ${pctSigned(sum.pct)} · ${rSigned(sum.r)}` : '';
   renderInstruments();
   renderCurve();
   renderTrades(devise);
@@ -408,7 +429,7 @@ function instrumentRow(key, label, eas) {
     const list = el('dl', {}, el('dt', {}, 'Aujourd’hui'), el('dd', {}, e.jour || '—'), el('dt', {}, 'Range 9:30'), el('dd', {}, range), el('dt', {}, 'Filtres'), el('dd', {}, e.filtres || '—'));
     if (e.position) {
       list.append(el('dt', {}, 'Position'), el('dd', {}, `${e.pos_sens === 1 ? 'Achat' : 'Vente'} ${e.pos_lots} lot à ${e.pos_entree} · stop ${e.pos_stop}${e.pos_pyramide ? ' · pyramide faite' : ''}`));
-      list.append(el('dt', {}, 'Résultat'), el('dd', {}, delta(e.pos_resultat || 0, `${rSigned(e.pos_r)} · ${moneySigned(e.pos_resultat, e.devise)}${e.solde_depart > 0 ? ` · ${pctSigned((100 * e.pos_resultat) / e.solde_depart)}` : ''}`)));
+      list.append(el('dt', {}, 'Résultat'), el('dd', {}, delta(e.pos_resultat || 0, `${moneySigned(e.pos_resultat, e.devise)}${e.solde_depart > 0 ? ` · ${pctSigned((100 * e.pos_resultat) / e.solde_depart)}` : ''} · ${rSigned(e.pos_r)}`)));
     }
     if (e.stats_n) list.append(el('dt', {}, 'Depuis le début'), el('dd', {}, `${e.stats_n} trades · ${rSigned(e.stats_r)} · pire baisse −${num(e.stats_baisse, 1)}R`));
     row.append(list);
@@ -559,6 +580,7 @@ function renderRisk(fromInput) {
   status.lastChild.textContent = used == null ? 'L’EA n’a pas encore démarré : ce réglage sera pris à son lancement.'
     : state.reglages.risquePct == null ? `L’EA utilise ${riskText(used)}, réglé dans MetaTrader. Enregistre une valeur ici pour la piloter depuis cette page.`
     : same ? `L’EA utilise ${riskText(used)}, réglé ici.` : `Enregistré ici : ${riskText(state.reglages.risquePct)}. L’EA utilise encore ${riskText(used)}${a && a.en_marche ? ' (il relit ce réglage toutes les 2 secondes)' : ' : il est arrêté'}.`;
+  $('sum-risque').textContent = `${riskText(currentRisk())}${savedLever() ? ` · levier 1:${savedLever()}` : ''}`;
   if (fromInput !== 'number') $('risk-input').value = Number.isFinite(draft.risque) ? draft.risque : '';
   if (fromInput !== 'slider' && validDraft()) $('risk-slider').value = riskToSlider(draft.risque);
   if (fromInput !== 'lever') $('lever-input').value = draft.levier === null ? '' : draft.levier;
@@ -662,6 +684,13 @@ function mt5TestOutcome() {
   return null;
 }
 const secretInput = (id, placeholder, type) => el('input', { type: type || 'password', id, placeholder, autocomplete: 'off', spellcheck: false, 'aria-label': placeholder });
+/** Un bloc repliable construit par le script (onglet Connexions). */
+function fold(key, title, defaultOpen, summary, ...children) {
+  const node = el('details', { class: 'card', 'data-fold': key, open: foldOpen(key, defaultOpen) },
+    el('summary', {}, el('h2', {}, title), summary ? el('span', { class: 'sum' }, summary) : null), ...children);
+  node.addEventListener('toggle', () => rememberFold(key, node.open));
+  return node;
+}
 const statusLine = (on, text) => el('div', { class: `status${on ? ' on' : ''}` }, el('span', { class: 'dot' }), text);
 const MT5_BLOCKED = 'MetaTrader bloque l’envoi. Dans MetaTrader 5 : Outils > Options > Expert Advisors, coche « Autoriser WebRequest pour les URL listées » et ajoute https://api.telegram.org, puis réessaie.';
 function renderConnections() {
@@ -700,8 +729,7 @@ function renderConnections() {
     else outcome.append(el('div', { class: 'banner bad' }, 'MetaTrader n’a pas répondu. Vérifie que l’EA tourne (pastille en haut de la page) et que « Lire le risque, les cases et Telegram dans l’interface Étrave » est coché dans ses réglages.'));
   }
   const sending = live.find((e) => e.telegram_envoi === 'bloque');
-  const telegram = el('div', { class: 'card' },
-    el('h2', {}, 'Alertes Telegram'),
+  const telegram = fold('telegram', 'Alertes Telegram', true, ready ? 'configuré' : 'non configuré',
     el('div', { class: 'hint' }, 'Facultatif. Ordres placés, entrées, pyramide, stop déplacé et clôtures (en R, en % et en argent) arrivent sur ton téléphone.'),
     statusLine(ready, ready ? (live.length && !live.some((e) => e.telegram) ? 'Configuré (l’EA le prend dans les 2 secondes)' : 'Configuré') : c.telegramJeton ? 'Jeton enregistré, discussion à choisir' : 'Non configuré'),
     sending ? el('div', { class: 'banner bad' }, MT5_BLOCKED) : null,
@@ -737,8 +765,7 @@ function renderConnections() {
     try { await api('/api/mt5/lancer', body); password.value = ''; toast(withAccount ? 'MetaTrader 5 se lance et se connecte au compte.' : 'MetaTrader 5 se lance.'); }
     catch (error) { toast(error.message); }
   };
-  const mt5 = el('div', { class: 'card' },
-    el('h2', {}, 'Compte MetaTrader 5'),
+  const mt5 = fold('mt5', 'Compte MetaTrader 5', true, a && a.en_marche ? `${a.compte_type === 'reel' ? 'RÉEL' : 'démo'} · ${a.compte_login}` : 'arrêté',
     el('div', { class: 'hint' }, 'Lance MetaTrader 5 et le connecte au compte de ton courtier. Le mot de passe n’est jamais gardé par cette page : MetaTrader le retient lui-même.'),
     statusLine(a && a.en_marche, a ? (a.en_marche ? `Connecté : compte ${a.compte_login} · ${a.compte_serveur} · ${a.compte_type === 'reel' ? 'RÉEL' : 'démo'}` : `MetaTrader arrêté (dernier compte vu : ${a.compte_login} · ${a.compte_serveur})`) : 'Aucun EA vu pour l’instant'),
     why ? el('p', {}, why) : null,
@@ -752,8 +779,7 @@ function renderConnections() {
       el('button', { class: 'btn', disabled: !canLaunch, onclick: () => launch(false) }, 'Ouvrir MetaTrader 5 tel quel')),
     el('p', {}, 'Après un changement de compte, vérifie dans MetaTrader que l’EA est toujours sur son graphique et que le bouton « Trading algo » est actif : cette page te le dit en haut.'));
 
-  const note = el('div', { class: 'card' },
-    el('h2', {}, 'Où vont ces réglages'),
+  const note = fold('note', 'Où vont ces réglages', false, '',
     el('p', {}, 'Le risque, le levier, les cases et Telegram sont écrits dans un fichier du dossier commun de MetaTrader, sur cet ordinateur, que l’EA relit toutes les 2 secondes. Une fois enregistré, le jeton Telegram n’est plus jamais affiché. Le mot de passe du compte n’est écrit que le temps du lancement de MetaTrader, puis effacé. Cette page ne répond qu’à cet ordinateur (127.0.0.1) : elle n’est pas visible depuis le réseau.'));
   host.replaceChildren(telegram, mt5, note);
 }
