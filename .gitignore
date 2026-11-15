@@ -2,7 +2,3 @@ __pycache__/
 *.pyc
 .venv/
 .pytest_cache/
-# Tout ce qui se reconstruit à partir des zips de donnees/ : M5, bougies de l'étude, téléchargements en cours
-donnees/cache/
-*.pkl
-*.npz

@@ -167,8 +167,8 @@
   <section id="tab-overview">
     <div class="tiles main" id="tiles-overview"></div>
     <details class="card" data-fold="instruments" open>
-      <summary><h2>Instruments</h2><span class="sum" id="sum-instruments"></span></summary>
-      <div class="hint">Une case décochée : l’EA de cet instrument ne prend plus de nouveau trade. Un trade déjà ouvert continue d’être géré jusqu’à sa sortie.</div>
+      <summary><h2>Nasdaq</h2><span class="sum" id="sum-instruments"></span></summary>
+      <div class="hint">Case décochée : l’EA ne prend plus de nouveau trade. Un trade déjà ouvert continue d’être géré jusqu’à sa sortie.</div>
       <div id="instruments"></div>
     </details>
     <div class="card">
@@ -214,8 +214,7 @@
       <ul>
         <li><b>Nasdaq, 2018 → novembre 2026 :</b> 1 427 trades, +0,31R par trade, +438R au total, pire baisse −25R, 13 pertes de suite au pire, 58 % de stops pleins.</li>
         <li><b>Nasdaq avant 2018 :</b> la stratégie perdait (−55R sur 2015-2017, −33R sur 2013-2014). L’ancien test 2015-2026 a connu une baisse de 74R.</li>
-        <li><b>Or, 2018 → novembre 2026 :</b> la même stratégie perd : −137R sur 773 trades, 7 années sur 9 dans le rouge. Le spread y coûte environ 12 % du range.</li>
-        <li><b>Dow Jones, EUR/USD, bitcoin :</b> rien ne passe. Le 15 novembre 2026, 8 700 variantes ont été rejouées sur les cinq symboles (toutes les heures de la journée, cassures, replis, VWAP, MACD, RSI, prise de liquidité, centre de gravité, MA200 H1) : seule la cassure de 9:30 sur le Nasdaq gagne sur les deux moitiés de l’historique.</li>
+        <li><b>Autres symboles :</b> la stratégie ne gagne ni sur le Dow Jones, ni sur l’or, ni sur l’EUR/USD, ni sur le bitcoin. Elle ne se trade que sur le Nasdaq.</li>
         <li>Le passé ne garantit rien : choisis le risque en regardant la pire baisse, pas le gain par an.</li>
       </ul>
     </details>
@@ -232,13 +231,6 @@
   <label for="risk-word">Tape <b>RISQUE</b> pour confirmer :</label>
   <input type="text" id="risk-word" autocomplete="off" style="width:100%;margin-top:6px">
   <div class="actions"><button class="btn" id="risk-dlg-cancel">Annuler</button><button class="btn danger" id="risk-dlg-ok" disabled>Enregistrer ce risque</button></div>
-</dialog>
-<dialog id="dlg-gold">
-  <h3 id="gold-title">Activer</h3>
-  <p>Sur cet instrument, la stratégie <b>ne passe pas les tests</b> : elle n’a tenu que sur le Nasdaq. Sur le Dow Jones elle ne gagne rien, sur l’or, l’EUR/USD et le bitcoin elle perd (−137R sur l’or, 2018-2026). Si tu l’actives, c’est une expérience, de préférence sur un compte démo.</p>
-  <label for="gold-word">Tape <b>ACTIVER</b> pour confirmer :</label>
-  <input type="text" id="gold-word" autocomplete="off" style="width:100%;margin-top:6px">
-  <div class="actions"><button class="btn" id="gold-cancel">Annuler</button><button class="btn danger" id="gold-ok" disabled>Activer</button></div>
 </dialog>
 <dialog id="dlg-close">
   <h3>Clôturer maintenant</h3>
@@ -322,8 +314,7 @@ function delta(v, text) {
 function tile(label, value, sub, variant) {
   return el('div', { class: `tile${variant ? ` ${variant}` : ''}` }, el('div', { class: 'label' }, label), el('div', { class: 'value' }, value), sub ? el('div', { class: 'sub' }, sub) : null);
 }
-const INSTRUMENTS = { nasdaq: 'Nasdaq', dow: 'Dow Jones', or: 'Or', eurusd: 'EUR/USD', bitcoin: 'Bitcoin' };
-const validated = (key) => !state || state.reglages.valides.includes(key);
+const INSTRUMENTS = { nasdaq: 'Nasdaq' };
 
 // ---------------------------------------------------------------- état global
 let state = null;      // /api/etat
@@ -334,7 +325,6 @@ let sim = null;        // dernier résultat de /api/risque
 let telegramResult = null;
 let mt5Test = null;    // essai Telegram demandé à MetaTrader : { numero, depuis, resultat }
 let closing = null;    // symbole dont on demande la clôture
-let activating = null; // instrument sans stratégie validée que l'on est en train de cocher
 let installResult = null;
 
 const running = () => (state ? state.eas.filter((e) => e.en_marche) : []);
@@ -404,7 +394,7 @@ function renderOverview() {
   tiles.push(tile('Risque par trade', risk != null ? riskText(risk) : riskText(currentRisk()), perTrade != null ? `≈ ${money(perTrade, devise)} par trade` : 'pris au prochain lancement de l’EA', risk != null && risk > 1 ? 'alert' : ''));
   $('tiles-overview').replaceChildren(...tiles);
   const on = Object.entries(INSTRUMENTS).filter(([key]) => state.reglages.instruments[key]).map(([, label]) => label);
-  $('sum-instruments').textContent = on.length ? `actifs : ${on.join(', ')}` : 'aucun actif';
+  $('sum-instruments').textContent = on.length ? 'actif' : 'en pause';
   $('sum-trades').textContent = sum.n ? `${moneySigned(sum.argent, devise)} · ${pctSigned(sum.pct)} · ${rSigned(sum.r)}` : '';
   renderInstruments();
   renderCurve();
@@ -417,7 +407,6 @@ function instrumentRow(key, label, eas) {
     : el('b', {}, label);
   const row = el('div', { class: 'inst' });
   const who = el('div', { class: 'who' }, box);
-  if (key in INSTRUMENTS && !validated(key)) who.append(el('span', { class: 'tag' }, 'aucune stratégie validée'));
   row.append(who);
   const actions = el('div', {});
   row.append(actions);
@@ -455,19 +444,11 @@ async function saveInstrument(key, value, confirmation) {
   try {
     const result = await api('/api/reglages', { valeurs: { [key]: value }, confirmation });
     state.reglages = result.reglages;
-    toast(value ? `${INSTRUMENTS[key]} activé : l’EA le prend dans les 2 secondes.` : `${INSTRUMENTS[key]} désactivé : plus de nouveau trade.`);
+    toast(value ? 'Nasdaq activé : l’EA le prend dans les 2 secondes.' : 'Nasdaq en pause : plus de nouveau trade.');
   } catch (error) { toast(error.message); }
   renderInstruments();
 }
 function toggleInstrument(key, input) {
-  if (!validated(key) && input.checked) {
-    input.checked = false;
-    activating = key;
-    $('gold-title').textContent = `Activer ${INSTRUMENTS[key]}`;
-    $('gold-word').value = '';
-    $('gold-ok').disabled = true;
-    return $('dlg-gold').showModal();
-  }
   saveInstrument(key, input.checked, '');
 }
 function askClose(e) {
@@ -859,9 +840,6 @@ $('risk-save').addEventListener('click', () => {
 $('risk-word').addEventListener('input', () => ($('risk-dlg-ok').disabled = $('risk-word').value.trim().toUpperCase() !== 'RISQUE'));
 $('risk-dlg-cancel').addEventListener('click', () => $('dlg-risk').close());
 $('risk-dlg-ok').addEventListener('click', () => { $('dlg-risk').close(); saveRisk('RISQUE'); });
-$('gold-word').addEventListener('input', () => ($('gold-ok').disabled = $('gold-word').value.trim().toUpperCase() !== 'ACTIVER'));
-$('gold-cancel').addEventListener('click', () => { $('dlg-gold').close(); renderInstruments(); });
-$('gold-ok').addEventListener('click', () => { $('dlg-gold').close(); saveInstrument(activating, true, 'ACTIVER'); });
 $('close-word').addEventListener('input', () => ($('close-ok').disabled = $('close-word').value.trim().toUpperCase() !== 'CLOTURER'));
 $('close-cancel').addEventListener('click', () => $('dlg-close').close());
 $('close-ok').addEventListener('click', async () => {

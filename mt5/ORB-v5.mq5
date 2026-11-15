@@ -1,7 +1,7 @@
 ﻿//+------------------------------------------------------------------+
 //| ORB-v5.mq5 — Cassure du range d'ouverture de New York (5 min)    |
-//| avec pyramide. Même règles et mêmes paramètres que               |
-//| pine/ORB-v5.pine et backtest/nas100-10ans/orb_v5.py               |
+//| avec pyramide. Mêmes règles et mêmes paramètres que              |
+//| pine/ORB-v5.pine (différences : voir le README)                   |
 //+------------------------------------------------------------------+
 //
 // Règles (heure de New York, bougies M5 quel que soit l'horizon du graphique) :
@@ -22,12 +22,12 @@
 // Test de référence (NAS100 CFD Dukascopy M1, spread réel), 2018-01 → 2026-11, 1 427 trades :
 //   2018-05 → 2022-08 (période de choix) : +0,34R par trade, +249R ; 2022-09 → 2026-11 (vérification) : +0,25R, +166R
 //   Tout : +0,31R par trade, +438R, pire baisse -25R. Avant 2018 l'ORB perdait (-55R sur 2015-2017) et l'ancien test
-//   2015-2026 a connu une baisse de 74R. Sur l'or, la même stratégie perd (-137R sur 2018-2026). Les données et le
-//   spread de ton broker donneront un résultat un peu différent : vérifie dans le testeur de stratégie
-//   (« Chaque tick basé sur des ticks réels »).
+//   2015-2026 a connu une baisse de 74R. Elle ne gagne sur aucun autre symbole testé (Dow Jones, or, EUR/USD,
+//   bitcoin) : ne la trade que sur le Nasdaq. Les données et le spread de ton broker donneront un résultat un peu
+//   différent : vérifie dans le testeur de stratégie (« Chaque tick basé sur des ticks réels »).
 //
 // INTERFACE ÉTRAVE (interface/etrave.py, lancée par Etrave.bat) : l'EA lit toutes les 2 secondes le fichier
-// Etrave\reglages.txt du dossier commun de MetaTrader (risque par trade, levier, cases Nasdaq / or, Telegram, demande de
+// Etrave\reglages.txt du dossier commun de MetaTrader (risque par trade, levier, case du Nasdaq, Telegram, demande de
 // clôture) et y écrit son état (Etrave\etat-<symbole>.txt) et ses trades (Etrave\trades-<symbole>.csv). Une clé absente
 // du fichier laisse la valeur saisie ici. Dans le testeur de stratégie, seuls les réglages saisis ici comptent.
 //
@@ -144,7 +144,7 @@ double   gRiskPct   = 0;        // risque par trade, % du solde
 string   gRiskSrc   = "mt5";    // d'où il vient : "interface" ou "mt5"
 double   gLever     = 0;        // levier du courtier saisi dans l'interface (0 = non saisi)
 bool     gActive    = true;     // faux = case de l'instrument décochée : plus de nouveau trade
-string   gInstr     = "autre";  // "nasdaq", "dow", "or", "eurusd", "bitcoin" ou "autre", d'après le nom du symbole
+string   gInstr     = "autre";  // "nasdaq" (commandé par la case de l'interface) ou "autre", d'après le nom du symbole
 string   gSymFile   = "";       // nom du symbole, réduit aux caractères sûrs (nom des fichiers, demandes de l'interface)
 bool     gUiLoaded  = false;    // les réglages ont été lus au moins une fois
 bool     gTgOn      = false;    // Telegram actif
@@ -960,16 +960,8 @@ string StringToUpperCopy(string s)
 string InstrumentOf(string sym)   // quelle case de l'interface commande ce symbole
   {
    string s = StringToUpperCopy(sym);
-   if(StringFind(s, "XAU") >= 0 || StringFind(s, "GOLD") >= 0)
-      return "or";
-   if(StringFind(s, "BTC") >= 0 || StringFind(s, "XBT") >= 0 || StringFind(s, "BITCOIN") >= 0)
-      return "bitcoin";
-   if(StringFind(s, "EURUSD") >= 0)
-      return "eurusd";
-   if(StringFind(s, "NAS") >= 0 || StringFind(s, "NDX") >= 0 || StringFind(s, "NQ") >= 0 || StringFind(s, "USTEC") >= 0 || StringFind(s, "US100") >= 0 || StringFind(s, "USATECH") >= 0)
+   if(StringFind(s, "NAS") >= 0 || StringFind(s, "NDX") >= 0 || StringFind(s, "NQ") >= 0 || StringFind(s, "USTEC") >= 0 || StringFind(s, "US100") >= 0 || StringFind(s, "USATECH") >= 0 || StringFind(s, "TECH100") >= 0)
       return "nasdaq";
-   if(StringFind(s, "US30") >= 0 || StringFind(s, "DJ") >= 0 || StringFind(s, "DOW") >= 0 || StringFind(s, "WS30") >= 0 || StringFind(s, "WALL") >= 0 || StringFind(s, "USA30") >= 0)
-      return "dow";
    return "autre";
   }
 
@@ -1058,8 +1050,7 @@ void ReadSettings()
    bool   ui     = InpUseUI && !MQLInfoInteger(MQL_TESTER);
    if(ui)
      {
-      // sans réglage : seul le Nasdaq est coché (la stratégie n'a passé les tests sur aucun autre instrument)
-      active = gInstr == "nasdaq" || gInstr == "autre";
+      active = true;   // sans réglage dans le fichier : la case du Nasdaq est cochée
       string name = UI_DIR + "reglages.txt";
       if(FileIsExist(name, FILE_COMMON))
         {

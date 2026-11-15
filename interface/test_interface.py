@@ -1,4 +1,4 @@
-"""Tests de l'interface Étrave (dossier interface/) et de son accord avec l'EA (mt5/ORB-v5.mq5).
+"""Tests de l'interface Étrave et de son accord avec l'EA (mt5/ORB-v5.mq5) : `python -m pytest interface`.
 
 L'EA ne peut pas être exécuté ici : ses fichiers sont fabriqués à la main dans le format qu'il écrit, et un test relit
 le code MQL5 pour vérifier que les noms de clés, les bornes et le format du journal sont les mêmes des deux côtés.
@@ -15,7 +15,7 @@ import urllib.error
 import pytest
 
 RACINE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(0, os.path.join(RACINE, "interface"))
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import etrave  # noqa: E402
 import mt5  # noqa: E402
@@ -55,7 +55,7 @@ def dossier(tmp_path):
 def test_sans_fichier_rien_n_est_impose_a_l_ea(dossier):
     r = pont.reglages_publics(dossier)
     assert r["risquePct"] is None and r["levier"] is None
-    assert r["instruments"] == {"nasdaq": True, "dow": False, "or": False, "eurusd": False, "bitcoin": False}   # seul le Nasdaq est validé
+    assert r["instruments"] == {"nasdaq": True}                    # un seul instrument : le Nasdaq, coché
     assert not r["telegramJeton"] and not r["telegramDiscussion"]
 
 
@@ -84,12 +84,10 @@ def test_levier_et_cases(dossier):
     for faux in (0.5, 2001, "x"):
         with pytest.raises(pont.Refus):
             pont.regler(dossier, {"levier": faux})
-    for instrument in ("or", "dow", "eurusd", "bitcoin"):
-        with pytest.raises(pont.Refus, match="ACTIVER"):
-            pont.regler(dossier, {instrument: True})                # aucune stratégie validée : mot ACTIVER exigé
-    pont.regler(dossier, {"or": True}, "ACTIVER")
-    assert pont.lire_reglages(dossier)["or"] == "1"
-    pont.regler(dossier, {"or": False})
+    for autre in ("or", "dow", "eurusd", "bitcoin"):
+        with pytest.raises(pont.Refus):
+            pont.regler(dossier, {autre: True})                     # seul le Nasdaq se trade : aucun autre instrument
+    pont.regler(dossier, {"nasdaq": True})
     with pytest.raises(pont.Refus):
         pont.regler(dossier, {"nasdaq": "oui"})
     with pytest.raises(pont.Refus):
@@ -130,10 +128,10 @@ def test_demande_de_cloture(dossier):
 # ───────────────────────── ce que dit l'EA ─────────────────────────
 def test_etat_de_l_ea_et_silence(dossier):
     faux_etat(dossier, "NAS100", age=1, position="1", pos_sens="1", pos_r="1.25", pos_resultat="62.50", solde_depart="10000.00")
-    faux_etat(dossier, "XAUUSD", age=120, instrument="or", actif="0")
-    nas, gold = pont.lire_etats(dossier)
+    faux_etat(dossier, "XAUUSD", age=120, instrument="autre", actif="1")
+    nas, autre = pont.lire_etats(dossier)
     assert nas["symbole"] == "NAS100" and nas["en_marche"] and nas["position"] and nas["pos_r"] == 1.25 and nas["solde"] == 10000.0
-    assert gold["instrument"] == "or" and not gold["en_marche"] and not gold["actif"]     # muet depuis 2 minutes : arrêté
+    assert autre["instrument"] == "autre" and not autre["en_marche"]                     # muet depuis 2 minutes : arrêté
 
 
 def test_journal_des_trades(dossier):
@@ -163,13 +161,6 @@ def test_la_marge_reduit_la_taille_quand_le_levier_manque():
     assert grand["reduitsPct"] > 99 and grand["risqueMoyenPct"] < 5   # à 20 %, presque tous les jours sont réduits
     assert risque.simuler(20.0, levier=2000)["reduitsPct"] < 1
     assert grand["pireBaissePct"] < risque.simuler(20.0)["pireBaissePct"]
-
-
-def test_reference_a_jour(donnees_reelles):
-    """interface/reference.json est bien ce que le simulateur donne sur les données du dépôt."""
-    import construire_reference
-    refait = construire_reference.construire()
-    assert refait["trades"] == risque.charger()["trades"]
 
 
 # ───────────────────────── Telegram ─────────────────────────
@@ -395,15 +386,13 @@ def test_memes_noms_de_cles_des_deux_cotes(dossier):
     assert {"symbole", "instrument", "compte_type", "compte_serveur", "compte_login", "devise", "heure_ny", "filtres", "jour",
             "telegram_envoi", "telegram_essai", "terminal", "risque_source"} <= ecrites_par_ea
     # tout ce que l'interface écrit, l'EA sait le lire
-    pont.regler(dossier, {"risquePct": 0.5, "levier": 20, "nasdaq": True, "or": False})
+    pont.regler(dossier, {"risquePct": 0.5, "levier": 20, "nasdaq": True})
     pont.enregistrer_connexions(dossier, {"telegram_jeton": JETON, "telegram_discussion": "4242"})
     pont.demander_essai_mt5(dossier)
     pont.demander_cloture(dossier, "NAS100", "CLOTURER")
     lues_par_ea = set(re.findall(r'k == "([a-z_]+)"', EA)) | set(pont.INSTRUMENTS)     # les cases : comparées à gInstr
     assert set(pont.lire_reglages(dossier)) - {"version"} <= lues_par_ea
-    for instrument in pont.INSTRUMENTS:
-        assert f'return "{instrument}";' in EA                       # l'EA sait reconnaître chaque instrument de l'interface
-    assert 'active = gInstr == "nasdaq" || gInstr == "autre";' in EA and pont.VALIDES == ("nasdaq",)
+    assert list(pont.INSTRUMENTS) == ["nasdaq"] and 'return "nasdaq";' in EA and "k == gInstr" in EA
     assert "reglages.txt" in EA and 'UI_DIR      "Etrave\\\\"' in EA
     assert pont.SOUS_DOSSIER == "Etrave" and pont.FICHIER_REGLAGES == "reglages.txt"
 

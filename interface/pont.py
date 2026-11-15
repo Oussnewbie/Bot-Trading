@@ -8,7 +8,7 @@ L'EA et l'interface ne se parlent que par des fichiers texte rangés dans le dos
     trades-<symbole>.csv  une ligne par trade clôturé, ajoutée par l'EA
 
 Format : une ligne `cle=valeur` par réglage. Une clé absente de reglages.txt laisse à l'EA la valeur saisie dans
-MetaTrader ; les noms de clés sont les mêmes dans mt5/ORB-v5.mq5 (tests/test_interface.py vérifie l'accord).
+MetaTrader ; les noms de clés sont les mêmes dans mt5/ORB-v5.mq5 (interface/test_interface.py vérifie l'accord).
 
 Règles reprises de Vigie :
  - tout est validé AVANT d'écrire quoi que ce soit ;
@@ -34,11 +34,10 @@ RISQUE_A_CONFIRMER = 1.0
 LEVIER_MAX = 2000.0
 # L'EA réécrit son état toutes les 2 secondes : passé ce délai sans nouvelle, il est arrêté (ou MT5 fermé).
 EA_MUET_S = 15.0
-# Instruments que l'interface sait cocher ou décocher, et leur valeur quand rien n'est écrit. Seul le Nasdaq a une
-# stratégie validée par les tests (backtest/multi/RAPPORT.md) : les autres sont décochés, et les cocher demande un mot.
-INSTRUMENTS = {"nasdaq": True, "dow": False, "or": False, "eurusd": False, "bitcoin": False}
-VALIDES = ("nasdaq",)
-MOTS = {"risque": "RISQUE", "activer": "ACTIVER", "cloturer": "CLOTURER"}
+# Le seul instrument tradé : le Nasdaq (décision du propriétaire, 15 novembre 2026 : la stratégie ne passe les tests sur
+# aucun autre symbole). Sa case sert d'interrupteur : décochée, l'EA ne prend plus de nouveau trade.
+INSTRUMENTS = {"nasdaq": True}
+MOTS = {"risque": "RISQUE", "cloturer": "CLOTURER"}
 
 REGLES = {
     "telegram_jeton": (re.compile(r"^\d{5,15}:[A-Za-z0-9_-]{30,60}$"),
@@ -147,7 +146,6 @@ def reglages_publics(dossier):
         "instruments": {nom: (cles[nom] == "1") if cles.get(nom) in ("0", "1") else defaut for nom, defaut in INSTRUMENTS.items()},
         "telegramJeton": cles.get("telegram_jeton", "") != "",
         "telegramDiscussion": cles.get("telegram_discussion", "") != "",
-        "valides": list(VALIDES),
         # compte et serveur du dernier lancement (jamais le mot de passe), et les deux automatismes de lancement
         "mt5Login": cles.get("mt5_login", ""), "mt5Serveur": cles.get("mt5_serveur", ""), "mt5Auto": cles.get("mt5_auto") == "1",
         "bornes": {"risqueMin": RISQUE_MIN, "risqueMax": RISQUE_MAX, "risqueAConfirmer": RISQUE_A_CONFIRMER, "levierMax": LEVIER_MAX},
@@ -159,8 +157,7 @@ def regler(dossier, proposition, confirmation=""):
 
     - risquePct : entre RISQUE_MIN et RISQUE_MAX ; au-delà de RISQUE_A_CONFIRMER, seulement avec le mot RISQUE.
     - levier    : celui du courtier sur l'instrument (20 pour 1:20) ; None ou 0 = laisser MetaTrader calculer seul.
-    - nasdaq, dow, or, eurusd, bitcoin : true ou false ; cocher un instrument sans stratégie validée demande le mot
-      ACTIVER.
+    - nasdaq    : true ou false (l'interrupteur des nouveaux trades).
     """
     if not isinstance(proposition, dict):
         raise Refus("Demande illisible.")
@@ -185,8 +182,6 @@ def regler(dossier, proposition, confirmation=""):
         elif cle in INSTRUMENTS:
             if not isinstance(valeur, bool):
                 raise Refus("Une case est cochée ou décochée, rien d’autre.")
-            if cle not in VALIDES and valeur and not actuels["instruments"][cle] and confirmation != MOTS["activer"]:
-                raise Refus(f"Sur cet instrument, aucune stratégie n’a passé les tests. Pour l’activer quand même, confirme en tapant {MOTS['activer']}.")
             changements[cle] = "1" if valeur else "0"
         else:
             raise Refus("Ce réglage ne se modifie pas par ce chemin.")

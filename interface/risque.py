@@ -1,7 +1,9 @@
 """Ce que le test dit d'un risque par trade et d'un levier : gain par an, pire baisse, jours où la marge manque.
 
-Les trades viennent de interface/reference.json (la v5 rejouée sur les données du dépôt, voir construire_reference.py).
-Le capital est composé trade après trade, comme dans backtest/nas100-10ans/orb_v5.py (`capital`), avec en plus la marge :
+Les trades viennent de interface/reference.json : les 1 427 trades de la v5 rejouée le 15 novembre 2026 sur le Nasdaq
+CFD de Dukascopy (M1 bid et ask, 2018-01 -> 2026-11, glissement 0,1 point), avec pour chacun sa date, son résultat en R,
+la largeur du range rapportée au prix et si la pyramide s'est déclenchée. Le simulateur et ses données ne sont plus dans
+le dépôt (ils restent dans l'historique git). Le capital est composé trade après trade, avec en plus la marge :
 
     taille de la position = solde × risque ÷ range        (règle 4 de la v5)
     marge demandée        = valeur de la position ÷ levier
