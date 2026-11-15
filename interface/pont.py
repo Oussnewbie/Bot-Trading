@@ -34,9 +34,11 @@ RISQUE_A_CONFIRMER = 1.0
 LEVIER_MAX = 2000.0
 # L'EA réécrit son état toutes les 2 secondes : passé ce délai sans nouvelle, il est arrêté (ou MT5 fermé).
 EA_MUET_S = 15.0
-# Instruments que l'interface sait cocher ou décocher, et leur valeur quand rien n'est écrit.
-INSTRUMENTS = {"nasdaq": True, "or": False}
-MOTS = {"risque": "RISQUE", "or": "OR", "cloturer": "CLOTURER"}
+# Instruments que l'interface sait cocher ou décocher, et leur valeur quand rien n'est écrit. Seul le Nasdaq a une
+# stratégie validée par les tests (backtest/multi/RAPPORT.md) : les autres sont décochés, et les cocher demande un mot.
+INSTRUMENTS = {"nasdaq": True, "dow": False, "or": False, "eurusd": False, "bitcoin": False}
+VALIDES = ("nasdaq",)
+MOTS = {"risque": "RISQUE", "activer": "ACTIVER", "cloturer": "CLOTURER"}
 
 REGLES = {
     "telegram_jeton": (re.compile(r"^\d{5,15}:[A-Za-z0-9_-]{30,60}$"),
@@ -145,6 +147,9 @@ def reglages_publics(dossier):
         "instruments": {nom: (cles[nom] == "1") if cles.get(nom) in ("0", "1") else defaut for nom, defaut in INSTRUMENTS.items()},
         "telegramJeton": cles.get("telegram_jeton", "") != "",
         "telegramDiscussion": cles.get("telegram_discussion", "") != "",
+        "valides": list(VALIDES),
+        # compte et serveur du dernier lancement (jamais le mot de passe), et les deux automatismes de lancement
+        "mt5Login": cles.get("mt5_login", ""), "mt5Serveur": cles.get("mt5_serveur", ""), "mt5Auto": cles.get("mt5_auto") == "1",
         "bornes": {"risqueMin": RISQUE_MIN, "risqueMax": RISQUE_MAX, "risqueAConfirmer": RISQUE_A_CONFIRMER, "levierMax": LEVIER_MAX},
     }
 
@@ -154,7 +159,8 @@ def regler(dossier, proposition, confirmation=""):
 
     - risquePct : entre RISQUE_MIN et RISQUE_MAX ; au-delà de RISQUE_A_CONFIRMER, seulement avec le mot RISQUE.
     - levier    : celui du courtier sur l'instrument (20 pour 1:20) ; None ou 0 = laisser MetaTrader calculer seul.
-    - nasdaq, or : true ou false ; cocher l'or (qui perd dans le test) demande le mot OR.
+    - nasdaq, dow, or, eurusd, bitcoin : true ou false ; cocher un instrument sans stratégie validée demande le mot
+      ACTIVER.
     """
     if not isinstance(proposition, dict):
         raise Refus("Demande illisible.")
@@ -179,8 +185,8 @@ def regler(dossier, proposition, confirmation=""):
         elif cle in INSTRUMENTS:
             if not isinstance(valeur, bool):
                 raise Refus("Une case est cochée ou décochée, rien d’autre.")
-            if cle == "or" and valeur and not actuels["instruments"]["or"] and confirmation != MOTS["or"]:
-                raise Refus(f"Sur l’or, la stratégie perd dans le test. Pour l’activer quand même, confirme en tapant {MOTS['or']}.")
+            if cle not in VALIDES and valeur and not actuels["instruments"][cle] and confirmation != MOTS["activer"]:
+                raise Refus(f"Sur cet instrument, aucune stratégie n’a passé les tests. Pour l’activer quand même, confirme en tapant {MOTS['activer']}.")
             changements[cle] = "1" if valeur else "0"
         else:
             raise Refus("Ce réglage ne se modifie pas par ce chemin.")
@@ -203,6 +209,18 @@ def enregistrer_connexions(dossier, valeurs):
         if valeur != "" and not motif.match(valeur):
             raise Refus(message)
         changements[cle] = valeur or None
+    return _modifier(dossier, changements)
+
+
+def retenir_mt5(dossier, login=None, serveur=None, auto=None):
+    """Retient le compte et le serveur du dernier lancement (pas le mot de passe) et l'ouverture automatique."""
+    changements = {}
+    if login is not None:
+        changements["mt5_login"] = login
+    if serveur is not None:
+        changements["mt5_serveur"] = serveur
+    if auto is not None:
+        changements["mt5_auto"] = "1" if auto else "0"
     return _modifier(dossier, changements)
 
 
@@ -252,7 +270,8 @@ def lire_etats(dossier, maintenant=None):
         etat["age_s"] = round(age, 1)
         etat["en_marche"] = age < EA_MUET_S
         etats.append(etat)
-    etats.sort(key=lambda e: (e.get("instrument") != "nasdaq", e.get("instrument") != "or", e["symbole"]))
+    ordre = list(INSTRUMENTS)
+    etats.sort(key=lambda e: (ordre.index(e["instrument"]) if e.get("instrument") in ordre else len(ordre), e["symbole"]))
     return etats
 
 

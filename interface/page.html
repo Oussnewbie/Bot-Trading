@@ -100,6 +100,7 @@
   .inst dt { color: var(--muted); } .inst dd { margin: 0; overflow-wrap: anywhere; }
   .switch { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; font-weight: 600; }
   .switch input { width: 18px; height: 18px; accent-color: var(--accent); }
+  .checks { display: flex; flex-direction: column; gap: 6px; }
   .tag { display: inline-block; padding: 1px 7px; border-radius: 6px; background: var(--raised); color: var(--ink-2); font-size: 12px; font-weight: 600; }
 
   .scroll { overflow-x: auto; }
@@ -214,6 +215,7 @@
         <li><b>Nasdaq, 2018 → novembre 2026 :</b> 1 427 trades, +0,31R par trade, +438R au total, pire baisse −25R, 13 pertes de suite au pire, 58 % de stops pleins.</li>
         <li><b>Nasdaq avant 2018 :</b> la stratégie perdait (−55R sur 2015-2017, −33R sur 2013-2014). L’ancien test 2015-2026 a connu une baisse de 74R.</li>
         <li><b>Or, 2018 → novembre 2026 :</b> la même stratégie perd : −137R sur 773 trades, 7 années sur 9 dans le rouge. Le spread y coûte environ 12 % du range.</li>
+        <li><b>Dow Jones, EUR/USD, bitcoin :</b> rien ne passe. Le 15 novembre 2026, 8 700 variantes ont été rejouées sur les cinq symboles (toutes les heures de la journée, cassures, replis, VWAP, MACD, RSI, prise de liquidité, centre de gravité, MA200 H1) : seule la cassure de 9:30 sur le Nasdaq gagne sur les deux moitiés de l’historique.</li>
         <li>Le passé ne garantit rien : choisis le risque en regardant la pire baisse, pas le gain par an.</li>
       </ul>
     </details>
@@ -232,11 +234,11 @@
   <div class="actions"><button class="btn" id="risk-dlg-cancel">Annuler</button><button class="btn danger" id="risk-dlg-ok" disabled>Enregistrer ce risque</button></div>
 </dialog>
 <dialog id="dlg-gold">
-  <h3>Activer l’or</h3>
-  <p>Sur l’or, la stratégie <b>perd</b> dans le test : −137R sur 2018-2026 (773 trades), 7 années sur 9 dans le rouge. Aucun réglage n’a été cherché pour l’or. Si tu l’actives, c’est une expérience, de préférence sur un compte démo.</p>
-  <label for="gold-word">Tape <b>OR</b> pour confirmer :</label>
+  <h3 id="gold-title">Activer</h3>
+  <p>Sur cet instrument, la stratégie <b>ne passe pas les tests</b> : elle n’a tenu que sur le Nasdaq. Sur le Dow Jones elle ne gagne rien, sur l’or, l’EUR/USD et le bitcoin elle perd (−137R sur l’or, 2018-2026). Si tu l’actives, c’est une expérience, de préférence sur un compte démo.</p>
+  <label for="gold-word">Tape <b>ACTIVER</b> pour confirmer :</label>
   <input type="text" id="gold-word" autocomplete="off" style="width:100%;margin-top:6px">
-  <div class="actions"><button class="btn" id="gold-cancel">Annuler</button><button class="btn danger" id="gold-ok" disabled>Activer l’or</button></div>
+  <div class="actions"><button class="btn" id="gold-cancel">Annuler</button><button class="btn danger" id="gold-ok" disabled>Activer</button></div>
 </dialog>
 <dialog id="dlg-close">
   <h3>Clôturer maintenant</h3>
@@ -320,7 +322,8 @@ function delta(v, text) {
 function tile(label, value, sub, variant) {
   return el('div', { class: `tile${variant ? ` ${variant}` : ''}` }, el('div', { class: 'label' }, label), el('div', { class: 'value' }, value), sub ? el('div', { class: 'sub' }, sub) : null);
 }
-const INSTRUMENTS = { nasdaq: 'Nasdaq', or: 'Or' };
+const INSTRUMENTS = { nasdaq: 'Nasdaq', dow: 'Dow Jones', or: 'Or', eurusd: 'EUR/USD', bitcoin: 'Bitcoin' };
+const validated = (key) => !state || state.reglages.valides.includes(key);
 
 // ---------------------------------------------------------------- état global
 let state = null;      // /api/etat
@@ -331,6 +334,8 @@ let sim = null;        // dernier résultat de /api/risque
 let telegramResult = null;
 let mt5Test = null;    // essai Telegram demandé à MetaTrader : { numero, depuis, resultat }
 let closing = null;    // symbole dont on demande la clôture
+let activating = null; // instrument sans stratégie validée que l'on est en train de cocher
+let installResult = null;
 
 const running = () => (state ? state.eas.filter((e) => e.en_marche) : []);
 /** L'EA qui renseigne le compte : un EA en marche, sinon le dernier état connu. */
@@ -412,12 +417,12 @@ function instrumentRow(key, label, eas) {
     : el('b', {}, label);
   const row = el('div', { class: 'inst' });
   const who = el('div', { class: 'who' }, box);
-  if (key === 'or') who.append(el('span', { class: 'tag' }, 'perd dans le test'));
+  if (key in INSTRUMENTS && !validated(key)) who.append(el('span', { class: 'tag' }, 'aucune stratégie validée'));
   row.append(who);
   const actions = el('div', {});
   row.append(actions);
   if (eas.length === 0) {
-    row.append(el('dl', {}, el('dt', {}, 'EA'), el('dd', {}, checked ? 'Aucun EA sur un graphique de cet instrument : pose ORB-v5 sur son graphique dans MetaTrader 5.' : 'Aucun EA sur un graphique de cet instrument.')));
+    if (checked) row.append(el('dl', {}, el('dt', {}, 'EA'), el('dd', {}, 'Aucun EA sur un graphique de cet instrument : pose ORB-v5 sur son graphique dans MetaTrader 5.')));
     return row;
   }
   for (const e of eas) {
@@ -455,8 +460,10 @@ async function saveInstrument(key, value, confirmation) {
   renderInstruments();
 }
 function toggleInstrument(key, input) {
-  if (key === 'or' && input.checked) {
+  if (!validated(key) && input.checked) {
     input.checked = false;
+    activating = key;
+    $('gold-title').textContent = `Activer ${INSTRUMENTS[key]}`;
     $('gold-word').value = '';
     $('gold-ok').disabled = true;
     return $('dlg-gold').showModal();
@@ -754,6 +761,8 @@ function renderConnections() {
   const login = secretInput('k-login', 'Numéro de compte (login)', 'text');
   const password = secretInput('k-password', 'Mot de passe du compte');
   const server = secretInput('k-server', 'Serveur (ex. MonCourtier-Demo)', 'text');
+  login.value = c.mt5Login || (a && a.compte_login) || '';
+  server.value = c.mt5Serveur || (a && a.compte_serveur) || '';
   const pick = m.terminaux.length > 1 ? el('select', { id: 'k-terminal', 'aria-label': 'MetaTrader 5 à lancer' }, ...m.terminaux.map((t) => el('option', { value: String(t.id) }, t.dossier))) : null;
   const canLaunch = m.windows && !m.ouvert && m.terminaux.length > 0;
   const why = !m.windows ? 'MetaTrader 5 ne se lance que sous Windows : ouvre cette page sur l’ordinateur ou le VPS où il est installé.'
@@ -765,6 +774,27 @@ function renderConnections() {
     try { await api('/api/mt5/lancer', body); password.value = ''; toast(withAccount ? 'MetaTrader 5 se lance et se connecte au compte.' : 'MetaTrader 5 se lance.'); }
     catch (error) { toast(error.message); }
   };
+  const install = async () => {
+    installResult = { pending: true };
+    renderConnections.drawn = false; renderConnections();
+    try { installResult = await api('/api/mt5/installer', { terminal: pick ? Number(pick.value) : 0 }); } catch (error) { installResult = { error: error.message }; }
+    renderConnections.drawn = false; renderConnections();
+  };
+  const option = async (values) => {
+    try { const result = await api('/api/mt5/options', values); state.reglages = result.reglages; if (result.demarrageWindows !== null) state.mt5.demarrageWindows = result.demarrageWindows; toast('Enregistré.'); }
+    catch (error) { toast(error.message); }
+    renderConnections.drawn = false; renderConnections();
+  };
+  const installed = el('div', {});
+  if (installResult) {
+    const r = installResult;
+    if (r.pending) installed.append(el('div', { class: 'banner' }, 'Copie et compilation en cours (jusqu’à une minute)…'));
+    else if (r.error) installed.append(el('div', { class: 'banner bad' }, r.error));
+    else installed.append(el('div', { class: `banner ${r.compile ? 'ok' : 'bad'}` },
+      el('b', {}, r.compile ? 'EA installé et compilé. ' : r.compile === false ? 'EA copié, mais la compilation a échoué. ' : 'EA copié, pas compilé. '),
+      r.compile ? `Il est dans ${r.emplacement} : glisse-le sur le graphique (une seule fois), MetaTrader s’en souviendra.` : 'Envoie les lignes ci-dessous pour correction :',
+      r.journal.length ? el('ul', { style: 'margin:8px 0 0' }, ...r.journal.map((line) => el('li', {}, line))) : null));
+  }
   const mt5 = fold('mt5', 'Compte MetaTrader 5', true, a && a.en_marche ? `${a.compte_type === 'reel' ? 'RÉEL' : 'démo'} · ${a.compte_login}` : 'arrêté',
     el('div', { class: 'hint' }, 'Lance MetaTrader 5 et le connecte au compte de ton courtier. Le mot de passe n’est jamais gardé par cette page : MetaTrader le retient lui-même.'),
     statusLine(a && a.en_marche, a ? (a.en_marche ? `Connecté : compte ${a.compte_login} · ${a.compte_serveur} · ${a.compte_type === 'reel' ? 'RÉEL' : 'démo'}` : `MetaTrader arrêté (dernier compte vu : ${a.compte_login} · ${a.compte_serveur})`) : 'Aucun EA vu pour l’instant'),
@@ -776,7 +806,13 @@ function renderConnections() {
       pick ? el('div', {}, el('label', { for: 'k-terminal' }, 'MetaTrader à lancer'), pick) : null),
     el('div', { class: 'secret-row' },
       el('button', { class: 'btn primary', disabled: !canLaunch, onclick: () => launch(true) }, 'Lancer MetaTrader 5 et se connecter'),
-      el('button', { class: 'btn', disabled: !canLaunch, onclick: () => launch(false) }, 'Ouvrir MetaTrader 5 tel quel')),
+      el('button', { class: 'btn', disabled: !canLaunch, onclick: () => launch(false) }, 'Ouvrir MetaTrader 5 tel quel'),
+      el('button', { class: 'btn', disabled: !m.windows || m.terminaux.length === 0, onclick: install }, 'Installer ou mettre à jour l’EA')),
+    installed,
+    el('div', { class: 'checks' },
+      el('label', { class: 'switch' }, el('input', { type: 'checkbox', checked: c.mt5Auto, onchange: (event) => option({ auto: event.target.checked }) }), 'Ouvrir MetaTrader 5 tout seul quand Étrave démarre'),
+      el('label', { class: 'switch' }, el('input', { type: 'checkbox', checked: m.demarrageWindows, disabled: !m.windows, onchange: (event) => option({ demarrageWindows: event.target.checked }) }), 'Lancer Étrave à l’ouverture de la session Windows')),
+    el('p', { style: 'margin-top:10px' }, 'Avec ces deux cases, un VPS qui redémarre relance tout seul Étrave puis MetaTrader, qui se reconnecte au compte et retrouve l’EA sur son graphique (si Windows ouvre la session automatiquement).'),
     el('p', {}, 'Après un changement de compte, vérifie dans MetaTrader que l’EA est toujours sur son graphique et que le bouton « Trading algo » est actif : cette page te le dit en haut.'));
 
   const note = fold('note', 'Où vont ces réglages', false, '',
@@ -823,9 +859,9 @@ $('risk-save').addEventListener('click', () => {
 $('risk-word').addEventListener('input', () => ($('risk-dlg-ok').disabled = $('risk-word').value.trim().toUpperCase() !== 'RISQUE'));
 $('risk-dlg-cancel').addEventListener('click', () => $('dlg-risk').close());
 $('risk-dlg-ok').addEventListener('click', () => { $('dlg-risk').close(); saveRisk('RISQUE'); });
-$('gold-word').addEventListener('input', () => ($('gold-ok').disabled = $('gold-word').value.trim().toUpperCase() !== 'OR'));
+$('gold-word').addEventListener('input', () => ($('gold-ok').disabled = $('gold-word').value.trim().toUpperCase() !== 'ACTIVER'));
 $('gold-cancel').addEventListener('click', () => { $('dlg-gold').close(); renderInstruments(); });
-$('gold-ok').addEventListener('click', () => { $('dlg-gold').close(); saveInstrument('or', true, 'OR'); });
+$('gold-ok').addEventListener('click', () => { $('dlg-gold').close(); saveInstrument(activating, true, 'ACTIVER'); });
 $('close-word').addEventListener('input', () => ($('close-ok').disabled = $('close-word').value.trim().toUpperCase() !== 'CLOTURER'));
 $('close-cancel').addEventListener('click', () => $('dlg-close').close());
 $('close-ok').addEventListener('click', async () => {

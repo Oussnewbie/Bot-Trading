@@ -36,6 +36,8 @@ import risque  # noqa: E402
 import telegram  # noqa: E402
 
 PAGE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "page.html")
+RACINE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+SOURCE_EA = os.path.join(RACINE, "mt5", "ORB-v5.mq5")
 PORT = 8788
 CORPS_MAX = 64 * 1024
 EN_TETE_JETON = "x-etrave-jeton"
@@ -52,11 +54,13 @@ class Erreur(Exception):
 class Application:
     """Les routes de l'interface, sans le transport HTTP (les tests l'appellent directement)."""
 
-    def __init__(self, dossier, appel_telegram=None, mt5_ouvert=None, mt5_lancer=None, journal=None):
+    def __init__(self, dossier, appel_telegram=None, mt5_ouvert=None, mt5_lancer=None, mt5_installer=None, mt5_demarrage=None, journal=None):
         self.dossier = dossier
         self.appel_telegram = appel_telegram or telegram.appeler
         self._mt5_ouvert = mt5_ouvert or mt5.est_ouvert
         self._mt5_lancer = mt5_lancer or mt5.lancer
+        self._mt5_installer = mt5_installer or mt5.installer_ea
+        self._mt5_demarrage = mt5_demarrage or mt5.demarrage_windows
         self.journal = journal or (lambda message: None)
         self._ouvert = (0.0, None)
 
@@ -81,7 +85,28 @@ class Application:
             "windows": sys.platform.startswith("win"),
             "ouvert": True if en_marche else ouvert,
             "terminaux": [{"id": i, "dossier": os.path.basename(os.path.dirname(chemin))} for i, chemin in enumerate(connus)],
+            "demarrageWindows": bool(mt5.fichier_demarrage() and os.path.exists(mt5.fichier_demarrage())),
         }
+
+    def _terminal(self, corps, etats):
+        connus = mt5.terminaux(etats)
+        choix = corps.get("terminal", 0)
+        chemin = connus[choix] if isinstance(choix, int) and not isinstance(choix, bool) and 0 <= choix < len(connus) else None
+        return chemin, connus
+
+    def ouvrir_mt5_si_demande(self):
+        """Au démarrage d'Étrave : ouvre MetaTrader s'il est fermé et que l'option est cochée. Ne lève jamais d'erreur."""
+        try:
+            if not pont.reglages_publics(self.dossier)["mt5Auto"] or self._mt5_ouvert() is not False:
+                return False
+            connus = mt5.terminaux(pont.lire_etats(self.dossier))
+            if not connus:
+                return False
+            self._mt5_lancer(connus[0], connus, None, ouvert=False)
+            self.journal("MetaTrader 5 ouvert automatiquement")
+            return True
+        except Exception:
+            return False
 
     # ── routes
     def traiter(self, methode, chemin, parametres, corps):
@@ -123,9 +148,7 @@ class Application:
             return {"ok": True, "numero": numero}
         if route == "POST /api/mt5/lancer":
             etats = pont.lire_etats(self.dossier)
-            connus = mt5.terminaux(etats)
-            choix = corps.get("terminal", 0)
-            chemin = connus[choix] if isinstance(choix, int) and not isinstance(choix, bool) and 0 <= choix < len(connus) else None
+            chemin, connus = self._terminal(corps, etats)
             identifiants = None
             if corps.get("connexion"):
                 identifiants = (corps.get("login"), corps.get("motDePasse"), corps.get("serveur"))
@@ -133,7 +156,21 @@ class Application:
             resultat = self._mt5_lancer(chemin, connus, identifiants, ouvert=ouvert)
             self._ouvert = (0.0, None)
             self.journal("MetaTrader 5 lancé" + (" avec connexion à un compte" if identifiants else ""))
+            if identifiants:                                    # le compte et le serveur sont retenus, jamais le mot de passe
+                pont.retenir_mt5(self.dossier, login=str(identifiants[0]).strip(), serveur=str(identifiants[2]).strip())
             return {"ok": True, **resultat}
+        if route == "POST /api/mt5/installer":
+            chemin, connus = self._terminal(corps, pont.lire_etats(self.dossier))
+            resultat = self._mt5_installer(chemin, connus, SOURCE_EA)
+            self.journal("EA copié dans MetaTrader 5" + (" et compilé" if resultat.get("compile") else ""))
+            return {"ok": True, **resultat}
+        if route == "POST /api/mt5/options":
+            if isinstance(corps.get("auto"), bool):
+                pont.retenir_mt5(self.dossier, auto=corps["auto"])
+            demarrage = None
+            if isinstance(corps.get("demarrageWindows"), bool):
+                demarrage = self._mt5_demarrage(corps["demarrageWindows"], RACINE)
+            return {"ok": True, "reglages": pont.reglages_publics(self.dossier), "demarrageWindows": demarrage}
         raise Erreur(404, "Route inconnue")
 
 
@@ -260,6 +297,7 @@ def main(arguments=None):
     print("  Laisse cette fenêtre ouverte tant que tu utilises la page. La fermer n'arrête ni l'EA ni ses alertes.")
     if not options.sans_navigateur:
         threading.Timer(0.6, lambda: webbrowser.open(serveur.url)).start()
+    threading.Timer(1.0, serveur.application.ouvrir_mt5_si_demande).start()
     try:
         serveur.serve_forever()
     except KeyboardInterrupt:

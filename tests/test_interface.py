@@ -55,7 +55,7 @@ def dossier(tmp_path):
 def test_sans_fichier_rien_n_est_impose_a_l_ea(dossier):
     r = pont.reglages_publics(dossier)
     assert r["risquePct"] is None and r["levier"] is None
-    assert r["instruments"] == {"nasdaq": True, "or": False}       # l'or reste décoché tant qu'on ne l'a pas voulu
+    assert r["instruments"] == {"nasdaq": True, "dow": False, "or": False, "eurusd": False, "bitcoin": False}   # seul le Nasdaq est validé
     assert not r["telegramJeton"] and not r["telegramDiscussion"]
 
 
@@ -84,9 +84,10 @@ def test_levier_et_cases(dossier):
     for faux in (0.5, 2001, "x"):
         with pytest.raises(pont.Refus):
             pont.regler(dossier, {"levier": faux})
-    with pytest.raises(pont.Refus, match="perd"):
-        pont.regler(dossier, {"or": True})                          # l'or perd dans le test : mot OR exigé
-    pont.regler(dossier, {"or": True}, "OR")
+    for instrument in ("or", "dow", "eurusd", "bitcoin"):
+        with pytest.raises(pont.Refus, match="ACTIVER"):
+            pont.regler(dossier, {instrument: True})                # aucune stratégie validée : mot ACTIVER exigé
+    pont.regler(dossier, {"or": True}, "ACTIVER")
     assert pont.lire_reglages(dossier)["or"] == "1"
     pont.regler(dossier, {"or": False})
     with pytest.raises(pont.Refus):
@@ -254,6 +255,51 @@ def test_terminaux_trouves():
     assert mt5.est_ouvert(systeme="linux") is None
 
 
+def test_installation_de_l_ea_et_demarrage_avec_windows(tmp_path):
+    installation = tmp_path / "Program Files" / "MetaTrader 5"
+    donnees = tmp_path / "AppData" / "MetaQuotes" / "Terminal" / "ABCDEF"
+    installation.mkdir(parents=True)
+    donnees.mkdir(parents=True)
+    (donnees / "origin.txt").write_text(str(installation), encoding="utf-16")
+    (installation / "metaeditor64.exe").write_bytes(b"")
+    exe = str(installation / "terminal64.exe")
+    env = {"APPDATA": str(tmp_path / "AppData")}
+    assert mt5.dossiers_de_donnees(env) == {os.path.normcase(os.path.normpath(str(installation))): str(donnees)}
+    source = os.path.join(RACINE, "mt5", "ORB-v5.mq5")
+
+    def compilateur(commande, timeout):
+        cible = commande[1][len("/compile:"):]
+        open(cible[:-4] + ".ex5", "wb").close()
+        open(commande[2][len("/log:"):], "w", encoding="utf-16").write("ORB-v5.mq5 : information: compiling\nResult: 0 errors, 1 warnings\n")
+    r = mt5.installer_ea(exe, [exe], source, env=env, systeme="win32", executer=compilateur)
+    assert r["compile"] is True and r["journal"] == ["Result: 0 errors, 1 warnings"]
+    copie = donnees / "MQL5" / "Experts" / "Etrave" / "ORB-v5.mq5"
+    assert copie.read_bytes() == open(source, "rb").read()
+    rate = mt5.installer_ea(exe, [exe], source, env=env, systeme="win32", executer=lambda commande, timeout: None)
+    assert rate["compile"] is False                                  # pas de nouveau programme : la compilation a échoué
+    with pytest.raises(pont.Refus):
+        mt5.installer_ea(exe, [exe], source, env=env, systeme="linux")
+    with pytest.raises(pont.Refus):
+        mt5.installer_ea(str(tmp_path / "autre.exe"), [exe], source, env=env, systeme="win32")
+    assert mt5.demarrage_windows(True, r"C:\Bot-Trading", env=env) is True
+    assert "Etrave.bat" in open(mt5.fichier_demarrage(env)).read()
+    assert mt5.demarrage_windows(False, r"C:\Bot-Trading", env=env) is False
+    with pytest.raises(pont.Refus):
+        mt5.demarrage_windows(True, "x", env={})
+
+
+def test_ouverture_automatique_de_metatrader(dossier):
+    lances = []
+    exe = os.path.join(r"C:\MT5", "terminal64.exe")
+    app = etrave.Application(dossier, mt5_ouvert=lambda: False, mt5_lancer=lambda chemin, connus, ident, ouvert: lances.append(chemin))
+    assert app.ouvrir_mt5_si_demande() is False                      # option non cochée : rien
+    pont.retenir_mt5(dossier, login="12345", serveur="Courtier-Demo", auto=True)
+    publics = pont.reglages_publics(dossier)
+    assert publics["mt5Auto"] and publics["mt5Login"] == "12345" and publics["mt5Serveur"] == "Courtier-Demo"
+    assert app.ouvrir_mt5_si_demande() is False                      # aucun MetaTrader connu : rien, et pas d'erreur
+    assert lances == []
+
+
 # ───────────────────────── serveur local ─────────────────────────
 @pytest.fixture()
 def serveur(dossier):
@@ -353,9 +399,12 @@ def test_memes_noms_de_cles_des_deux_cotes(dossier):
     pont.enregistrer_connexions(dossier, {"telegram_jeton": JETON, "telegram_discussion": "4242"})
     pont.demander_essai_mt5(dossier)
     pont.demander_cloture(dossier, "NAS100", "CLOTURER")
-    lues_par_ea = set(re.findall(r'k == "([a-z_]+)"', EA)) | {"nasdaq", "or"}     # les cases : comparées à gInstr
+    lues_par_ea = set(re.findall(r'k == "([a-z_]+)"', EA)) | set(pont.INSTRUMENTS)     # les cases : comparées à gInstr
     assert set(pont.lire_reglages(dossier)) - {"version"} <= lues_par_ea
-    assert 'return "or";' in EA and 'return "nasdaq";' in EA and "reglages.txt" in EA and 'UI_DIR      "Etrave\\\\"' in EA
+    for instrument in pont.INSTRUMENTS:
+        assert f'return "{instrument}";' in EA                       # l'EA sait reconnaître chaque instrument de l'interface
+    assert 'active = gInstr == "nasdaq" || gInstr == "autre";' in EA and pont.VALIDES == ("nasdaq",)
+    assert "reglages.txt" in EA and 'UI_DIR      "Etrave\\\\"' in EA
     assert pont.SOUS_DOSSIER == "Etrave" and pont.FICHIER_REGLAGES == "reglages.txt"
 
 

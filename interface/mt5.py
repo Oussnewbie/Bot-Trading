@@ -13,12 +13,16 @@ Garde-fous :
  - le fichier de démarrage ne contient que la connexion : il n'attache aucun EA et n'active pas le trading
    automatique (deux EA sur le même symbole doubleraient les ordres).
 
-Jamais exécuté sous Windows depuis cet environnement : seuls le contenu du fichier et les refus sont testés.
+Autres automatismes : copier l'EA dans MetaTrader et le compiler (`installer_ea`, avec le compilateur MetaEditor livré
+avec MetaTrader), ouvrir MetaTrader au démarrage d'Étrave, lancer Étrave au démarrage de Windows.
+
+Jamais exécuté sous Windows depuis cet environnement : seuls le contenu des fichiers et les refus sont testés.
 """
 import atexit
 import glob
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -58,6 +62,89 @@ def est_ouvert(systeme=sys.platform, executer=subprocess.run):
     except (OSError, subprocess.SubprocessError):
         return None
     return PROGRAMME in sortie.lower()
+
+
+def dossiers_de_donnees(env=None):
+    """Pour chaque MetaTrader installé, son dossier de données : {dossier d'installation: dossier de données}.
+    MetaTrader range ses données dans %APPDATA%\\MetaQuotes\\Terminal\\<identifiant>, avec un fichier origin.txt qui dit
+    de quelle installation il s'agit."""
+    env = os.environ if env is None else env
+    trouves = {}
+    if not env.get("APPDATA"):
+        return trouves
+    for origine in glob.glob(os.path.join(env["APPDATA"], "MetaQuotes", "Terminal", "*", "origin.txt")):
+        for encodage in ("utf-16", "utf-8-sig"):
+            try:
+                with open(origine, "r", encoding=encodage) as f:
+                    installation = f.read().strip()
+                break
+            except (OSError, UnicodeError):
+                installation = ""
+        if installation:
+            trouves[os.path.normcase(os.path.normpath(installation))] = os.path.dirname(origine)
+    return trouves
+
+
+def installer_ea(chemin, connus, source, env=None, systeme=sys.platform, executer=subprocess.run):
+    """Copie l'EA dans le dossier Experts de ce MetaTrader et le compile avec MetaEditor.
+    Retourne ce qui s'est passé et les lignes du journal de compilation (erreurs et avertissements)."""
+    if not systeme.startswith("win"):
+        raise Refus("L’installation dans MetaTrader 5 ne se fait que sous Windows.")
+    if not connus or chemin not in connus:
+        raise Refus("MetaTrader 5 introuvable sur cet ordinateur : installe-le, ouvre-le une fois, puis reviens ici.")
+    installation = os.path.dirname(chemin)
+    donnees = dossiers_de_donnees(env).get(os.path.normcase(os.path.normpath(installation)))
+    if not donnees:
+        raise Refus("MetaTrader 5 n’a pas encore créé son dossier de données : ouvre-le une première fois, puis reviens ici.")
+    cible = os.path.join(donnees, "MQL5", "Experts", "Etrave", os.path.basename(source))
+    os.makedirs(os.path.dirname(cible), exist_ok=True)
+    shutil.copyfile(source, cible)
+    resultat = {"copie": True, "emplacement": os.path.join("MQL5", "Experts", "Etrave", os.path.basename(source)), "compile": None, "journal": []}
+    editeur = os.path.join(installation, "metaeditor64.exe")
+    if not os.path.isfile(editeur):
+        resultat["journal"] = ["MetaEditor introuvable : ouvre l’EA dans MetaEditor et compile-le avec F7."]
+        return resultat
+    programme, journal = cible[:-4] + ".ex5", cible[:-4] + ".log"
+    avant = os.path.getmtime(programme) if os.path.exists(programme) else 0.0
+    try:
+        executer([editeur, f"/compile:{cible}", f"/log:{journal}"], timeout=180)
+    except (OSError, subprocess.SubprocessError):
+        resultat["journal"] = ["MetaEditor n’a pas pu être lancé : ouvre l’EA dans MetaEditor et compile-le avec F7."]
+        return resultat
+    lignes = []
+    for encodage in ("utf-16", "utf-8-sig"):
+        try:
+            with open(journal, "r", encoding=encodage) as f:
+                lignes = [ligne.strip() for ligne in f.read().splitlines() if ligne.strip()]
+            break
+        except (OSError, UnicodeError):
+            continue
+    resultat["compile"] = os.path.exists(programme) and os.path.getmtime(programme) > avant
+    utiles = [ligne for ligne in lignes if re.search(r"error|warning|erreur|avertissement|result|résultat", ligne, re.I)]
+    resultat["journal"] = (utiles or lignes)[-40:]
+    return resultat
+
+
+def fichier_demarrage(env=None):
+    """Le raccourci qui lance Étrave à l'ouverture de la session Windows, ou None hors de Windows."""
+    env = os.environ if env is None else env
+    if not env.get("APPDATA"):
+        return None
+    return os.path.join(env["APPDATA"], "Microsoft", "Windows", "Start Menu", "Programs", "Startup", "Etrave.bat")
+
+
+def demarrage_windows(actif, racine, env=None):
+    """Pose ou retire le lancement d'Étrave à l'ouverture de la session Windows. Retourne l'état obtenu."""
+    fichier = fichier_demarrage(env)
+    if fichier is None:
+        raise Refus("Le lancement au démarrage ne se règle que sous Windows.")
+    if actif:
+        os.makedirs(os.path.dirname(fichier), exist_ok=True)
+        with open(fichier, "w", encoding="utf-8", newline="") as f:
+            f.write(f'@echo off\r\nrem Lance Etrave (interface de l EA) a l ouverture de la session.\r\nstart "" /min "{os.path.join(racine, "Etrave.bat")}" --sans-navigateur\r\n')
+    elif os.path.exists(fichier):
+        os.remove(fichier)
+    return os.path.exists(fichier)
 
 
 def texte_config(login, mot_de_passe, serveur):

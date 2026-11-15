@@ -12,10 +12,11 @@ Toutes les heures sont en heure de New York (9:30 NY = 15:30 à Paris la plupart
 | `mt5/ORB-v5.mq5` | **La même stratégie en Expert Advisor MetaTrader 5**, mêmes règles et mêmes paramètres. Notifications push MT5, WhatsApp et Telegram. |
 | `interface/`, `Etrave.bat` | **Étrave, l'interface de l'EA** : une page web locale pour régler le risque, cocher les instruments, brancher Telegram, suivre et clôturer les trades. Voir [L'interface Étrave](#linterface-étrave). |
 | `backtest/or/v5_sur_or.py` | La v5 appliquée telle quelle à l'or : elle y perd (-137R sur 2018-2026). |
+| `backtest/multi/` | **La recherche du 15 novembre 2026 sur le Dow Jones, l'or, l'EUR/USD et le bitcoin** : 8 708 variantes, rien ne passe hors du Nasdaq. Voir [RAPPORT.md](backtest/multi/RAPPORT.md). |
 | `backtest/nas100-10ans/` | Le simulateur Python : `v5_lab.py` (simulateur), `orb_v5.py` (les réglages de la v5 et ses tableaux), `load10.py` (lecture des données). |
 | `backtest/etude-sl/` | L'étude en cours sur les stops (novembre 2026) : scripts numérotés, rapports dans `sorties/`, `refaire.sh` pour tout refaire. |
 | `tests/` | Les tests automatiques du simulateur (`pytest`), dont une réécriture indépendante des règles (`regles_readme.py`). |
-| `donnees/` | Données Dukascopy **M1, bid et ask, du 2018-01-01 au 2026-11-13** : Nasdaq CFD (`nas100/`) et or (`or/`), un zip par année. Voir [donnees/LISEZMOI.md](donnees/LISEZMOI.md). |
+| `donnees/` | Données Dukascopy **M1, bid et ask, du 2018-01-01 au 2026-11-13** : Nasdaq CFD (`nas100/`), or (`or/`), EUR/USD (`eurusd/`), Dow Jones CFD (`dow/`) et bitcoin (`bitcoin/`), un zip par année. Voir [donnees/LISEZMOI.md](donnees/LISEZMOI.md). |
 | `AUDIT.md` | L'audit du 14 novembre 2026, fait sur l'ancien jeu de données 2015-2026. |
 
 Le dépôt a été nettoyé le 14 novembre 2026 : les versions précédentes (AMD+ v1 et v2, ORB v3 et v4), les scripts
@@ -148,15 +149,20 @@ Une page web servie sur ton ordinateur (ou ton VPS), au même style que le dashb
   choisie, la page rejoue le test : gain par an, pire baisse, série de 13 pertes, et la part des trades que la marge
   aurait obligé à réduire. Au-delà de 1 %, il faut taper le mot RISQUE.
 - **Connexions** : Telegram (jeton, « Trouver ma discussion et tester », puis « Essai depuis MetaTrader » qui dit si
-  MetaTrader bloque l'adresse), et le lancement de MetaTrader 5 avec connexion à un compte.
+  MetaTrader bloque l'adresse), et MetaTrader 5 : connexion à un compte, bouton « Installer ou mettre à jour l'EA »
+  (copie dans `MQL5\Experts\Etrave` et compilation, avec les erreurs affichées dans la page), ouverture automatique de
+  MetaTrader au démarrage d'Étrave, lancement d'Étrave à l'ouverture de la session Windows.
+
+Chaque bloc de la page se replie d'un clic sur son titre ; seule la courbe reste toujours affichée.
 
 ### L'installer
 
 1. Installe Python 3 ([python.org](https://www.python.org/downloads/), coche « Add python.exe to PATH »). Rien d'autre.
-2. Compile `mt5/ORB-v5.mq5` et pose-le sur le graphique du Nasdaq (voir plus haut). Le réglage « Lire le risque, les
-   cases et Telegram dans l'interface Étrave » est coché par défaut.
-3. Double-clique sur `Etrave.bat` : la page s'ouvre sur `http://127.0.0.1:8788`. Sur un autre système :
+2. Double-clique sur `Etrave.bat` : la page s'ouvre sur `http://127.0.0.1:8788`. Sur un autre système :
    `python interface/etrave.py`.
+3. Onglet Connexions : « Installer ou mettre à jour l'EA » le copie dans MetaTrader et le compile (ou fais-le à la
+   main, voir plus haut). Glisse ensuite l'EA sur le graphique du Nasdaq, une seule fois : MetaTrader s'en souvient.
+   Le réglage « Lire le risque, les cases et Telegram dans l'interface Étrave » est coché par défaut.
 
 L'interface peut être fermée à tout moment : l'EA garde ses réglages et continue d'envoyer ses alertes.
 
@@ -172,8 +178,10 @@ Par des fichiers texte du dossier commun de MetaTrader (`…\MetaQuotes\Terminal
 - **Marge** : l'EA n'ouvre jamais une position (ajout de la pyramide compris) qui demande plus de 90 % de la marge
   libre. Si le risque demandé est trop grand pour le levier, il réduit la taille et le dit dans le message « Ordres
   placés ». Il retient la marge la plus prudente entre celle de MetaTrader et celle du levier saisi dans la page.
-- **Instruments** : un EA par graphique. Case « Nasdaq » cochée, case « Or » décochée par défaut (la v5 perd sur l'or ;
-  la cocher demande le mot OR). Une case décochée arrête les nouveaux trades, pas le trade en cours.
+- **Instruments** : le même EA, posé sur le graphique de chaque symbole ; il reconnaît le sien à son nom. Cinq cases :
+  Nasdaq (cochée), Dow Jones, or, EUR/USD et bitcoin (décochées : aucune stratégie n'y passe les tests, voir
+  `backtest/multi/RAPPORT.md` ; en cocher une demande le mot ACTIVER). Une case décochée arrête les nouveaux trades,
+  pas le trade en cours.
 - **Clôturer** : la demande porte son heure ; l'EA ignore une demande de plus de 2 minutes. Il ferme le trade au
   marché, ou annule les ordres du jour s'il n'est pas encore entré. Pas de nouveau trade ce jour-là.
 - **Telegram** : les messages partent de MetaTrader, après le passage des ordres (un envoi lent ne retarde plus
@@ -200,7 +208,9 @@ d'écran et ne lance aucun autre programme : l'EA y tourne, mais sans l'interfac
 - L'EA modifié **n'a jamais été compilé ni exécuté** : ni la lecture des réglages, ni l'écriture de l'état, ni le calcul
   de marge, ni les messages n'ont tourné dans MetaTrader. Les tests (`tests/test_interface.py`) couvrent l'interface et
   l'accord des noms de fichiers et de clés entre les deux côtés.
-- Le lancement de MetaTrader avec connexion à un compte n'a jamais été essayé sous Windows.
+- Le lancement de MetaTrader, la connexion à un compte, l'installation et la compilation de l'EA depuis la page et le
+  lancement au démarrage de Windows n'ont jamais été essayés sous Windows : seuls leurs fichiers et leurs refus sont
+  testés. La page ne pose pas l'EA sur le graphique à ta place (deux EA sur le même symbole doubleraient les ordres).
 - Le journal des trades commence avec cette version : les trades antérieurs ne sont pas repris.
 - Le risque est le même pour tous les instruments cochés : deux instruments le même jour, c'est deux fois le risque.
 - Les autres défauts de l'EA listés dans [AUDIT.md](AUDIT.md) (séances écourtées, état perdu après un plantage de

@@ -144,7 +144,7 @@ double   gRiskPct   = 0;        // risque par trade, % du solde
 string   gRiskSrc   = "mt5";    // d'où il vient : "interface" ou "mt5"
 double   gLever     = 0;        // levier du courtier saisi dans l'interface (0 = non saisi)
 bool     gActive    = true;     // faux = case de l'instrument décochée : plus de nouveau trade
-string   gInstr     = "autre";  // "nasdaq", "or" ou "autre", d'après le nom du symbole
+string   gInstr     = "autre";  // "nasdaq", "dow", "or", "eurusd", "bitcoin" ou "autre", d'après le nom du symbole
 string   gSymFile   = "";       // nom du symbole, réduit aux caractères sûrs (nom des fichiers, demandes de l'interface)
 bool     gUiLoaded  = false;    // les réglages ont été lus au moins une fois
 bool     gTgOn      = false;    // Telegram actif
@@ -962,8 +962,14 @@ string InstrumentOf(string sym)   // quelle case de l'interface commande ce symb
    string s = StringToUpperCopy(sym);
    if(StringFind(s, "XAU") >= 0 || StringFind(s, "GOLD") >= 0)
       return "or";
+   if(StringFind(s, "BTC") >= 0 || StringFind(s, "XBT") >= 0 || StringFind(s, "BITCOIN") >= 0)
+      return "bitcoin";
+   if(StringFind(s, "EURUSD") >= 0)
+      return "eurusd";
    if(StringFind(s, "NAS") >= 0 || StringFind(s, "NDX") >= 0 || StringFind(s, "NQ") >= 0 || StringFind(s, "USTEC") >= 0 || StringFind(s, "US100") >= 0 || StringFind(s, "USATECH") >= 0)
       return "nasdaq";
+   if(StringFind(s, "US30") >= 0 || StringFind(s, "DJ") >= 0 || StringFind(s, "DOW") >= 0 || StringFind(s, "WS30") >= 0 || StringFind(s, "WALL") >= 0 || StringFind(s, "USA30") >= 0)
+      return "dow";
    return "autre";
   }
 
@@ -1052,7 +1058,8 @@ void ReadSettings()
    bool   ui     = InpUseUI && !MQLInfoInteger(MQL_TESTER);
    if(ui)
      {
-      active = gInstr != "or";   // sans réglage : Nasdaq coché, or décoché (la stratégie y perd dans le test)
+      // sans réglage : seul le Nasdaq est coché (la stratégie n'a passé les tests sur aucun autre instrument)
+      active = gInstr == "nasdaq" || gInstr == "autre";
       string name = UI_DIR + "reglages.txt";
       if(FileIsExist(name, FILE_COMMON))
         {
