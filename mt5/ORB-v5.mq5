@@ -13,7 +13,8 @@
 //                Si un seul côté est permis et qu'une bougie close touche l'autre côté d'abord, plus de trade ce jour-là.
 //  4. Stop     : de l'autre côté du range, posé chez le broker dès l'entrée. 1R = somme perdue au stop (lots × range).
 //  5. Gestion  : à la clôture d'une bougie (après celle de l'entrée) qui a atteint +1,5R, stop au prix d'entrée.
-//                Sortie au marché à 15:50 NY (clôture de la bougie de 15:45).
+//                Sortie au marché à 15:50 NY (clôture de la bougie de 15:45) ; à 12:45 les jours fériés américains et
+//                les demi-séances, où le marché ferme vers 13:00.
 //  6. PYRAMIDE : quand une bougie M5 clôture à +2R ou plus, l'EA ajoute une unité au marché et met le stop de
 //                l'ensemble à 1R sous le prix de l'ajout (donc au moins à +1R). Après l'ajout, le pire cas est zéro :
 //                l'ajout perd 1R, la première unité gagne au moins 1R.
@@ -63,6 +64,7 @@ input string       InpOR        = "09:30";      // Bougie M5 du range
 input string       InpPre       = "09:00";      // Début de la fenêtre de l'élan (jusqu'au range)
 input int          InpLiveBars  = 2;            // Ordres valables (bougies M5 après le range)
 input string       InpFlat      = "15:50";      // Sortie de fin de journée
+input string       InpFlatShort = "12:45";      // Sortie les jours fériés américains et les demi-séances
 input bool         InpUseRSI    = true;         // Filtre RSI M5 (achat > 50, vente < 50)
 input int          InpRSILen    = 14;           // Longueur du RSI
 input bool         InpUseExt    = true;         // Filtre d'élan (le range de 9:30 dépasse 9:00-9:30)
@@ -109,7 +111,7 @@ input bool         InpPanel     = true;         // Panneau d'information
 CTrade trade;
 int    hRSI = INVALID_HANDLE;
 string GV;                      // préfixe des variables globales et des objets
-int    mOR, mPre, mFlat;        // heures en minutes depuis minuit (New York)
+int    mOR, mPre, mFlat, mFlatShort;   // heures en minutes depuis minuit (New York)
 
 //--- état du jour
 int      gDay       = 0;        // date NY (aaaammjj) du dernier range traité
@@ -244,6 +246,68 @@ int ParseHM(string s)
       return -1;
    return (int)StringToInteger(p[0]) * 60 + (int)StringToInteger(p[1]);
   }
+
+//+------------------------------------------------------------------+
+//| Jours fériés américains et demi-séances                           |
+//+------------------------------------------------------------------+
+// Ces jours-là l'indice ne cote au mieux que jusqu'à 13:00 New York : la sortie de 15:50 tomberait marché fermé et la
+// position passerait la fermeture. La sortie se fait donc à InpFlatShort. Règles de la Bourse de New York, calculées
+// (aucune liste à tenir à jour) ; contrôlées sur 2022-2025. Une fermeture exceptionnelle (deuil national…) n'y est pas.
+datetime NthDow(int y, int m, int dow, int n)   // n-ième jour « dow » du mois (0 = dimanche … 6 = samedi)
+  {
+   datetime t = MakeDate(y, m, 1);
+   MqlDateTime s;
+   TimeToStruct(t, s);
+   return t + ((dow - s.day_of_week + 7) % 7 + 7 * (n - 1)) * 86400;
+  }
+
+datetime LastDow(int y, int m, int dow)   // dernier jour « dow » du mois
+  {
+   datetime t = (m == 12 ? MakeDate(y + 1, 1, 1) : MakeDate(y, m + 1, 1)) - 86400;
+   MqlDateTime s;
+   TimeToStruct(t, s);
+   return t - ((s.day_of_week - dow + 7) % 7) * 86400;
+  }
+
+datetime Observed(datetime d)   // un férié qui tombe un samedi est chômé le vendredi, un dimanche le lundi
+  {
+   MqlDateTime s;
+   TimeToStruct(d, s);
+   return s.day_of_week == 6 ? d - 86400 : s.day_of_week == 0 ? d + 86400 : d;
+  }
+
+datetime GoodFriday(int y)   // vendredi saint : deux jours avant Pâques (calcul grégorien)
+  {
+   int a = y % 19, b = y / 100, c = y % 100, d = b / 4, e = b % 4, f = (b + 8) / 25, g = (b - f + 1) / 3;
+   int h = (19 * a + b - d - g + 15) % 30, i = c / 4, k = c % 4, l = (32 + 2 * e + 2 * i - h - k) % 7;
+   int m = (a + 11 * h + 22 * l) / 451;
+   int mo = (h + l - 7 * m + 114) / 31, da = (h + l - 7 * m + 114) % 31 + 1;
+   return MakeDate(y, mo, da) - 2 * 86400;
+  }
+
+bool ShortDay(datetime ny)   // « ny » : une heure de New York quelconque du jour à juger
+  {
+   MqlDateTime s;
+   TimeToStruct(ny, s);
+   int      y  = s.year;
+   datetime d  = MakeDate(y, s.mon, s.day);
+   datetime tg = NthDow(y, 11, 4, 4);          // Thanksgiving : 4e jeudi de novembre
+   datetime j4 = MakeDate(y, 7, 4);
+   MqlDateTime s4;
+   TimeToStruct(j4, s4);
+   // veille du 4 juillet : demi-séance quand le 4 tombe du mardi au vendredi ; par prudence aussi le jeudi quand il tombe un samedi
+   datetime pre4 = (s4.day_of_week >= 2 && s4.day_of_week <= 5) ? j4 - 86400 : s4.day_of_week == 6 ? j4 - 2 * 86400 : (datetime)0;
+   // fériés : jour de l'an (et celui de l'année suivante chômé le 31 décembre), Martin Luther King, Presidents' Day,
+   // vendredi saint, Memorial Day, Juneteenth, 4 juillet, Labor Day, Thanksgiving, Noël
+   if(d == Observed(MakeDate(y, 1, 1)) || d == Observed(MakeDate(y + 1, 1, 1)) || d == NthDow(y, 1, 1, 3) || d == NthDow(y, 2, 1, 3) ||
+      d == GoodFriday(y) || d == LastDow(y, 5, 1) || d == Observed(MakeDate(y, 6, 19)) || d == Observed(j4) || d == NthDow(y, 9, 1, 1) ||
+      d == tg || d == Observed(MakeDate(y, 12, 25)))
+      return true;
+   // demi-séances : lendemain de Thanksgiving, veille de Noël, veille du 4 juillet
+   return d == tg + 86400 || d == MakeDate(y, 12, 24) || (pre4 != 0 && d == pre4);
+  }
+
+int FlatMin(datetime ny) { return ShortDay(ny) ? mFlatShort : mFlat; }   // heure de sortie du jour, en minutes
 
 //+------------------------------------------------------------------+
 //| Textes                                                            |
@@ -614,7 +678,8 @@ void SyncPosition()
       Notify(id + " à " + Px(gEntry) + "\nStop : " + Px(gSL) + " (" + Money(-gRiskMoney) + ")" +
              (InpBeR > 0 ? "\nStop au prix d'entrée dès " + Px(gEntry + gDir * InpBeR * gRisk) + " (+" + DoubleToString(InpBeR, 1) + "R)" : "") +
              (InpUsePyr ? "\nPyramide : ajout si une bougie clôture à " + Px(gEntry + gDir * InpPyrR * gRisk) + " (" + RTxt(InpPyrR) + "), stop de l'ensemble " + DoubleToString(InpPyrGap, 1) + "R sous l'ajout" : "") +
-             (InpTgtR > 0 ? "\nObjectif : " + Px(gEntry + gDir * InpTgtR * gRisk) : "\nSortie à " + InpFlat + " NY"));
+             (InpTgtR > 0 ? "\nObjectif : " + Px(gEntry + gDir * InpTgtR * gRisk) : "") +
+             (ShortDay(ToNY(t)) ? "\n" + I_WARN + "Jour férié ou demi-séance : sortie à " + InpFlatShort + " NY" : "\nSortie à " + InpFlat + " NY"));
       gDayTxt = (gDir == 1 ? "Achat" : "Vente") + " en cours";
       SaveState();
      }
@@ -897,7 +962,7 @@ void OnNewBar()
       return;
 
    // 0. pyramide : la bougie qui vient de clôturer (celle de l'entrée comprise) est à +2R ou plus
-   if(gIn && InpUsePyr && gUsePyrToday && !gPyr && r[1].time >= gFillBar && NYMin(ToNY(r[0].time)) < mFlat && NYDate(ToNY(r[0].time)) == gPosDay)
+   if(gIn && InpUsePyr && gUsePyrToday && !gPyr && r[1].time >= gFillBar && NYMin(ToNY(r[0].time)) < FlatMin(ToNY(r[0].time)) && NYDate(ToNY(r[0].time)) == gPosDay)
      {
       double curR = gDir == 1 ? (r[1].close - gEntry) / gRisk : (gEntry - (r[1].close + r[1].spread * _Point)) / gRisk;
       if(curR >= InpPyrR)
@@ -1307,9 +1372,10 @@ int OnInit()
    mOR = ParseHM(InpOR);
    mPre = ParseHM(InpPre);
    mFlat = ParseHM(InpFlat);
-   if(mOR < 0 || mPre < 0 || mFlat < 0 || mPre >= mOR || mFlat <= mOR)
+   mFlatShort = ParseHM(InpFlatShort);
+   if(mOR < 0 || mPre < 0 || mFlat < 0 || mPre >= mOR || mFlat <= mOR || mFlatShort <= mOR || mFlatShort > mFlat)
      {
-      Alert("ORB v5 : heures invalides (format HH:MM, début de l'élan < range < sortie).");
+      Alert("ORB v5 : heures invalides (format HH:MM, début de l'élan < range < sortie des jours fériés <= sortie).");
       return INIT_PARAMETERS_INCORRECT;
      }
    if(InpUsePyr && (InpPyrGap <= 0 || InpPyrGap > InpPyrR || InpPyrSize <= 0))
@@ -1405,7 +1471,7 @@ void OnTick()
       if(gVStop > 0 && ((gDir == 1 && bid <= gVStop) || (gDir == -1 && ask >= gVStop)))
          ClosePos(gPyr ? "Stop remonté" : "Stop à l'entrée");
       datetime ny = ToNY(TimeCurrent());
-      if(gIn && (NYMin(ny) >= mFlat || NYDate(ny) != gPosDay))
+      if(gIn && (NYMin(ny) >= FlatMin(ny) || NYDate(ny) != gPosDay))
          ClosePos("Fin de journée");
      }
    // 5. messages WhatsApp / Telegram, une fois les ordres passés

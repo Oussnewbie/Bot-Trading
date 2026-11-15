@@ -437,3 +437,20 @@ def test_l_ea_reste_lisible_par_metatrader():
     notify = re.search(r"void Notify\(string msg\)(.*?)\n  }", EA, re.S).group(1)
     assert "SendTelegram" not in notify and "SendWhatsApp" not in notify
     assert EA.index("CheckEntries();\n   SyncPosition();") < EA.index("   FlushNotifs();\n   Panel();")
+
+
+def test_jours_feries_meme_regle_dans_l_ea_et_le_script():
+    """Sortie avancée les jours fériés américains et les demi-séances : même heure et mêmes jours des deux côtés.
+    (Les règles du calendrier ont été contrôlées à part sur les fermetures 2022-2025 de la Bourse de New York.)"""
+    pine = open(os.path.join(RACINE, "pine", "ORB-v5.pine"), encoding="utf-8").read()
+    assert 'InpFlatShort = "12:45"' in EA and 'input.session("1240-1600"' in pine          # bougie de 12:40 = clôture à 12:45
+    assert "NYMin(ny) >= FlatMin(ny)" in EA and "NYMin(ToNY(r[0].time)) < FlatMin(ToNY(r[0].time))" in EA
+    assert "shortDay and not na(time(timeframe.period, flatShortS, TZ_NY))" in pine
+    # les onze fériés et les trois demi-séances, dans le même ordre
+    for code in (EA, pine):
+        corps = sans_textes(code)
+        assert corps.count("(") == corps.count(")") and corps.count("[") == corps.count("]")
+    assert EA.count("Observed(") == 6 and pine.count("observed(") == 6                       # 5 dates chômées + la définition
+    assert "NthDow(y, 11, 4, 4)" in EA and "nthDow(y, 11, dayofweek.thursday, 4)" in pine      # Thanksgiving
+    assert "MakeDate(y, 12, 24)" in EA and "y * 10000 + 1224" in pine                          # veille de Noël
+    assert "(h + l - 7 * m + 114) % 31 + 1" in EA and "(h + l - 7 * m + 114) % 31 + 1" in pine  # Pâques

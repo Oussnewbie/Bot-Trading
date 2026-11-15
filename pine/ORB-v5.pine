@@ -11,7 +11,8 @@
 //                2 bougies (jusqu'à 9:45). Le premier exécuté annule l'autre. Si un seul côté est permis et que
 //                l'autre côté du range est touché d'abord, l'ordre est annulé.
 //  4. Stop     : de l'autre côté du range. 1R = la somme perdue si le stop est touché (taille de départ × range).
-//  5. Gestion  : stop au prix d'entrée dès +1,5R. Sortie à la clôture de la bougie de 15:45 (15:50).
+//  5. Gestion  : stop au prix d'entrée dès +1,5R. Sortie à la clôture de la bougie de 15:45 (15:50) ; à 12:45 les jours
+//                fériés américains et les demi-séances, où le marché ferme vers 13:00.
 //  6. PYRAMIDE : quand une bougie clôture à +2R ou plus, on ajoute une unité au marché et le stop de l'ensemble
 //                monte à 1R sous le prix de l'ajout (donc au moins à +1R). Après l'ajout, le pire cas est zéro :
 //                l'ajout perd 1R, la première unité gagne au moins 1R. Un seul ajout par trade.
@@ -41,6 +42,7 @@ orS       = input.session("0930-0935", "Bougie du range", tooltip = "La premièr
 preS      = input.session("0900-0930", "Fenêtre de l'élan", tooltip = "Le range de 9:30 doit dépasser le plus haut (achat) ou le plus bas (vente) de cette fenêtre.", group = GS, display = display.none)
 liveBars  = input.int(2, "Ordres valables (bougies après le range)", minval = 1, maxval = 24, tooltip = "2 = jusqu'à 9:45. Dans le test, les cassures plus tardives ne rapportaient rien.", group = GS, display = display.none)
 flatS     = input.session("1545-1600", "Fermeture de fin de journée", tooltip = "La position est fermée à la clôture de la bougie de 15:45, soit 15:50.", group = GS, display = display.none)
+flatShortS = input.session("1240-1600", "Fermeture les jours fériés et demi-séances", tooltip = "Jours fériés américains et demi-séances : le marché ferme vers 13:00. La position est fermée à la clôture de la bougie de 12:40, soit 12:45.", group = GS, display = display.none)
 
 GF = "Filtres"
 useRSI    = input.bool(true, "Filtre RSI14 M5", tooltip = "Achat seulement si le RSI de la bougie de 9:30 est au-dessus de 50, vente seulement en dessous.", group = GF, display = display.none)
@@ -122,10 +124,69 @@ sideLabel(int x, float y, string txt, color c, string tip) =>
     label.new(x, y, txt, xloc = xloc.bar_time, style = label.style_label_left, color = color.new(c, 15),
          textcolor = color.white, size = size.small, tooltip = tip)
 
+// ═════════════════════════ Jours fériés américains et demi-séances ═════════════════════════
+// Ces jours-là l'indice ne cote au mieux que jusqu'à 13:00 New York : la sortie de 15:50 tomberait marché fermé. Règles
+// de la Bourse de New York, calculées (aucune liste à tenir à jour). Les dates sont prises à midi pour ne pas dépendre
+// du changement d'heure. Une fermeture exceptionnelle (deuil national…) n'y est pas.
+DAY = 86400000
+
+ymd(int t) =>
+    year(t, TZ_NY) * 10000 + month(t, TZ_NY) * 100 + dayofmonth(t, TZ_NY)
+
+noon(int y, int m, int d) =>
+    timestamp(TZ_NY, y, m, d, 12, 0)
+
+// n-ième jour « dow » du mois (dayofweek.sunday = 1 … dayofweek.saturday = 7)
+nthDow(int y, int m, int dow, int n) =>
+    int t = noon(y, m, 1)
+    t + ((dow - dayofweek(t, TZ_NY) + 7) % 7 + 7 * (n - 1)) * DAY
+
+// dernier lundi de mai
+lastMondayOfMay(int y) =>
+    int t = noon(y, 6, 1) - DAY
+    t - ((dayofweek(t, TZ_NY) - dayofweek.monday + 7) % 7) * DAY
+
+// un férié qui tombe un samedi est chômé le vendredi, un dimanche le lundi
+observed(int t) =>
+    int w = dayofweek(t, TZ_NY)
+    w == dayofweek.saturday ? t - DAY : w == dayofweek.sunday ? t + DAY : t
+
+// vendredi saint : deux jours avant Pâques (calcul grégorien)
+goodFriday(int y) =>
+    int a = y % 19
+    int b = int(math.floor(y / 100))
+    int c = y % 100
+    int d = int(math.floor(b / 4))
+    int e = b % 4
+    int f = int(math.floor((b + 8) / 25))
+    int g = int(math.floor((b - f + 1) / 3))
+    int h = (19 * a + b - d - g + 15) % 30
+    int i = int(math.floor(c / 4))
+    int k = c % 4
+    int l = (32 + 2 * e + 2 * i - h - k) % 7
+    int m = int(math.floor((a + 11 * h + 22 * l) / 451))
+    int mo = int(math.floor((h + l - 7 * m + 114) / 31))
+    int da = (h + l - 7 * m + 114) % 31 + 1
+    noon(y, mo, da) - 2 * DAY
+
+isShortDay(int t) =>
+    int y   = year(t, TZ_NY)
+    int d   = ymd(t)
+    int tg  = nthDow(y, 11, dayofweek.thursday, 4)
+    int j4  = noon(y, 7, 4)
+    int w4  = dayofweek(j4, TZ_NY)
+    // veille du 4 juillet : demi-séance quand le 4 tombe du mardi au vendredi ; par prudence aussi le jeudi quand il tombe un samedi
+    int pre4 = w4 >= dayofweek.tuesday and w4 <= dayofweek.friday ? ymd(j4 - DAY) : w4 == dayofweek.saturday ? ymd(j4 - 2 * DAY) : 0
+    bool ferie = d == ymd(observed(noon(y, 1, 1))) or d == ymd(observed(noon(y + 1, 1, 1))) or d == ymd(nthDow(y, 1, dayofweek.monday, 3)) or
+         d == ymd(nthDow(y, 2, dayofweek.monday, 3)) or d == ymd(goodFriday(y)) or d == ymd(lastMondayOfMay(y)) or d == ymd(observed(noon(y, 6, 19))) or
+         d == ymd(observed(j4)) or d == ymd(nthDow(y, 9, dayofweek.monday, 1)) or d == ymd(tg) or d == ymd(observed(noon(y, 12, 25)))
+    ferie or d == ymd(tg + DAY) or d == y * 10000 + 1224 or d == pre4
+
 // ═════════════════════════ Séance ═════════════════════════
 bool isOR   = not na(time(timeframe.period, orS, TZ_NY))
 bool inPre  = not na(time(timeframe.period, preS, TZ_NY))
-bool inFlat = not na(time(timeframe.period, flatS, TZ_NY))
+bool shortDay = isShortDay(time)
+bool inFlat = not na(time(timeframe.period, flatS, TZ_NY)) or (shortDay and not na(time(timeframe.period, flatShortS, TZ_NY)))
 int  nyDate = year(time, TZ_NY) * 10000 + month(time, TZ_NY) * 100 + dayofmonth(time, TZ_NY)
 
 // Plus haut et plus bas de la fenêtre de l'élan (9:00-9:30), remis à zéro chaque jour

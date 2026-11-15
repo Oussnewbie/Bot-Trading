@@ -40,6 +40,10 @@ choisis le risque en regardant la pire baisse.
 6. **Pyramide** : quand une bougie clôture à +2R ou plus, une unité est ajoutée et le stop de l'ensemble monte à 1R sous
    le prix de l'ajout. Un seul ajout par trade.
 7. **Sortie** à 15:50. Un seul trade par jour.
+8. **Jours fériés américains et demi-séances** (le marché ferme vers 13:00) : sortie à 12:45, plus de pyramide ensuite.
+   Le calendrier est calculé par l'EA et par le script (jour de l'an, Martin Luther King, Presidents' Day, vendredi
+   saint, Memorial Day, Juneteenth, 4 juillet, Labor Day, Thanksgiving, Noël ; lendemain de Thanksgiving, veille de
+   Noël, veille du 4 juillet). Cette règle a été ajoutée le 15 novembre 2026, après le test.
 
 ## Installer
 
@@ -95,7 +99,8 @@ mêmes noms de fichiers, de clés et les mêmes bornes).
 Colle `pine/ORB-v5.pine` dans l'éditeur Pine, sur un graphique **M5** du NAS100 avec les bougies hors séance. Dans
 « Propriétés », ajoute une commission égale au spread de ton courtier. Alertes Telegram : une alerte sur la stratégie,
 condition « Uniquement les appels de la fonction alert() », webhook `https://api.telegram.org/bot<TOKEN>/sendMessage`.
-Son en-tête cite encore l'ancien test (1 915 trades, +373R sur 2015-2026).
+Son en-tête cite encore l'ancien test (1 915 trades, +373R sur 2015-2026). Après chaque mise à jour du script, supprime
+et recrée l'alerte.
 
 ## Ce que l'EA ne fait pas exactement comme le script TradingView
 
@@ -119,8 +124,11 @@ Ces écarts sont ceux du test d'origine, qui comptait le bid et l'ask : c'est lu
   compilateur signale, et fais-le tourner en démo.
 - Le lancement de MetaTrader, la connexion à un compte, l'installation de l'EA depuis la page et le lancement au démarrage
   de Windows n'ont jamais été essayés sous Windows.
-- **Jours fériés américains et demi-séances** : l'EA et le script gardent la position pendant la fermeture du marché.
-  Coupe-les ces jours-là.
+- Le script TradingView a lui aussi été modifié le 15 novembre 2026 (sortie des jours fériés) sans pouvoir être
+  compilé : si l'éditeur Pine signale une erreur, renvoie-la.
+- Jours fériés : le calendrier a été contrôlé sur les fermetures de 2022 à 2025. Une fermeture exceptionnelle (deuil
+  national, panne) n'y figure pas : ce jour-là la position passerait la fermeture. À l'inverse, environ deux fois par
+  décennie il sort à 12:45 un jour normal (31 décembre quand le 1er janvier tombe un samedi).
 - EA lancé entre 9:35 et 9:40 avec le prix déjà au-delà du range : il entre au marché, quelle que soit la distance.
 - Après un plantage de MetaTrader, l'état de l'EA peut être ancien (stop de référence, pyramide).
 - Arrondi des lots faux si le pas de volume du courtier n'est pas 1, 0,1 ou 0,01.
