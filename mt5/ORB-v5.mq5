@@ -19,17 +19,23 @@
 //                l'ajout perd 1R, la première unité gagne au moins 1R.
 //  7. R affiché = résultat net de tout le trade (ajout, commission et swap compris) ÷ somme risquée au départ.
 //
-// Test de référence (NAS100 CFD Dukascopy, spread réel), 1 915 trades :
-//   2015-01 → 2018-04 (jamais regardée avant de figer la v5) : -0,06R par trade, -31R (l'ORB perd sur 2015-2017)
-//   2018-05 → 2022-08 (période de choix) : +0,34R par trade, +249R ; 2022-09 → 2026-10 (vérification) : +0,24R, +155R
-//   Tout : +0,20R par trade, +373R, pire baisse -69R. Les données et le spread de ton broker donneront un résultat
-//   un peu différent : vérifie dans le testeur de stratégie (« Chaque tick basé sur des ticks réels »).
+// Test de référence (NAS100 CFD Dukascopy M1, spread réel), 2018-01 → 2026-11, 1 427 trades :
+//   2018-05 → 2022-08 (période de choix) : +0,34R par trade, +249R ; 2022-09 → 2026-11 (vérification) : +0,25R, +166R
+//   Tout : +0,31R par trade, +438R, pire baisse -25R. Avant 2018 l'ORB perdait (-55R sur 2015-2017) et l'ancien test
+//   2015-2026 a connu une baisse de 74R. Sur l'or, la même stratégie perd (-137R sur 2018-2026). Les données et le
+//   spread de ton broker donneront un résultat un peu différent : vérifie dans le testeur de stratégie
+//   (« Chaque tick basé sur des ticks réels »).
+//
+// INTERFACE ÉTRAVE (interface/etrave.py, lancée par Etrave.bat) : l'EA lit toutes les 2 secondes le fichier
+// Etrave\reglages.txt du dossier commun de MetaTrader (risque par trade, levier, cases Nasdaq / or, Telegram, demande de
+// clôture) et y écrit son état (Etrave\etat-<symbole>.txt) et ses trades (Etrave\trades-<symbole>.csv). Une clé absente
+// du fichier laisse la valeur saisie ici. Dans le testeur de stratégie, seuls les réglages saisis ici comptent.
 //
 // Réglages à vérifier : décalage horaire du serveur (le panneau affiche l'heure de New York calculée : elle doit être
 // juste), compte en mode « hedging » conseillé, et pour WhatsApp / Telegram autoriser l'adresse dans
 // Outils > Options > Expert Advisors > « Autoriser WebRequest pour les URL listées ».
 #property copyright   "Bot-Trading"
-#property version     "5.00"
+#property version     "5.10"
 #property description "ORB New York 5 min v5 : cassure du range de 9:30 dans le sens de l'élan de l'ouverture, avec une pyramide à +2R."
 
 #include <Trade\Trade.mqh>
@@ -43,7 +49,10 @@ enum ENUM_SRV_DST
 
 //--- paramètres
 input group "Risque"
-input double       InpRiskPct   = 0.5;          // Risque par trade (% du solde)
+input double       InpRiskPct   = 0.5;          // Risque par trade (% du solde), si l'interface n'en donne pas
+
+input group "Interface Étrave"
+input bool         InpUseUI     = true;         // Lire le risque, les cases et Telegram dans l'interface Étrave
 
 input group "Heure du serveur du broker"
 input int          InpSrvGMT    = 2;            // Décalage GMT du serveur en hiver (heures)
@@ -86,6 +95,15 @@ input bool         InpPanel     = true;         // Panneau d'information
 
 //--- constantes
 #define BAR 300   // une bougie M5 en secondes
+#define BOT         "Étrave"
+#define UI_DIR      "Etrave\\"   // sous-dossier du dossier commun de MetaTrader, partagé avec l'interface
+#define UI_PERIOD   2            // secondes entre deux lectures des réglages et deux écritures de l'état
+#define RISK_MIN    0.05         // bornes du risque lu dans l'interface (% du solde) ; hors bornes, la valeur est ignorée
+#define RISK_MAX    20.0
+#define LEVER_MAX   2000.0
+#define MARGIN_USE  0.90         // part de la marge libre que la position, pyramide comprise, peut demander
+#define CMD_MAX_AGE 120          // secondes : une demande de l'interface plus vieille est ignorée
+#define QUEUE_MAX   20           // messages en attente d'envoi, au plus
 
 //--- outils
 CTrade trade;
@@ -120,6 +138,25 @@ bool     gPyr     = false;      // l'ajout a été fait
 bool     gUsePyrToday = true;   // faux si le broker a refusé l'ajout : pas de nouvel essai sur ce trade
 long     gPosId2  = 0;          // position de l'ajout (compte hedging)
 double   gVStop   = 0;          // stop remonté (prix d'entrée ou +1R), surveillé aussi par l'EA ; 0 = aucun
+
+//--- interface Étrave : valeurs en vigueur (celles de l'interface, sinon celles saisies dans MetaTrader)
+double   gRiskPct   = 0;        // risque par trade, % du solde
+string   gRiskSrc   = "mt5";    // d'où il vient : "interface" ou "mt5"
+double   gLever     = 0;        // levier du courtier saisi dans l'interface (0 = non saisi)
+bool     gActive    = true;     // faux = case de l'instrument décochée : plus de nouveau trade
+string   gInstr     = "autre";  // "nasdaq", "or" ou "autre", d'après le nom du symbole
+string   gSymFile   = "";       // nom du symbole, réduit aux caractères sûrs (nom des fichiers, demandes de l'interface)
+bool     gUiLoaded  = false;    // les réglages ont été lus au moins une fois
+bool     gTgOn      = false;    // Telegram actif
+string   gTgToken   = "", gTgChat = "";
+string   gTgLast    = "jamais"; // résultat du dernier envoi Telegram : ok, bloque (WebRequest interdit) ou refus <code>
+string   gTgTest    = "";       // réponse à la dernière demande d'essai : <numéro>:<résultat>
+long     gTestSeen  = -1;       // dernière demande d'essai vue (-1 = fichier jamais lu)
+long     gCloseSeen = 0;        // dernière demande de clôture traitée
+bool     gCloseDue  = false;
+bool     gClockOk   = true;     // l'heure du serveur correspond aux réglages
+double   gBalStart  = 0;        // solde au moment de l'entrée (résultat du trade en %)
+string   gQueue[];              // messages WhatsApp / Telegram en attente : envoyés APRÈS le passage des ordres
 
 //--- statistiques en R
 int    gN = 0, gWin = 0, gStreak = 0, gWorst = 0;
@@ -214,6 +251,23 @@ int ParseHM(string s)
 string Px(double p)  { return DoubleToString(p, _Digits); }
 string RTxt(double r) { return (r >= 0 ? "+" : "") + DoubleToString(r, 1) + "R"; }
 string Pts(double d)  { return DoubleToString(d, _Digits) + " pts"; }
+string PctS(double v)   { return (v >= 0 ? "+" : "") + DoubleToString(v, 2) + " %"; }
+string RiskTxt(double v) { return DoubleToString(v, 2) + " %"; }
+string Money(double v)  { return (v >= 0 ? "+" : "") + DoubleToString(v, 2) + " " + AccountInfoString(ACCOUNT_CURRENCY); }
+// Pictogrammes des messages, écrits par leur numéro pour ne pas dépendre de l'encodage de ce fichier
+string Ico(ushort code) { return ShortToString(code) + " "; }
+#define I_ORDERS  Ico(0x23F0)   // réveil
+#define I_BUY     Ico(0x2B06)   // flèche vers le haut
+#define I_SELL    Ico(0x2B07)   // flèche vers le bas
+#define I_LOCK    Ico(0x26A1)   // éclair
+#define I_ADD     Ico(0x2795)   // plus
+#define I_WIN     Ico(0x2705)   // coche verte
+#define I_LOSS    Ico(0x274C)   // croix rouge
+#define I_FLAT    Ico(0x26AA)   // rond blanc
+#define I_NONE    Ico(0x26D4)   // sens interdit
+#define I_WARN    Ico(0x26A0)   // attention
+#define I_GEAR    Ico(0x2699)   // réglage
+#define I_HAND    Ico(0x270B)   // main
 
 //+------------------------------------------------------------------+
 //| Notifications : journal, push MT5, WhatsApp (CallMeBot), Telegram |
@@ -254,10 +308,10 @@ void SendWhatsApp(string msg)
       PrintFormat("WhatsApp : réponse %d du serveur (vérifie le numéro, la clé ou le chat ID)", code);
   }
 
-void SendTelegram(string msg)
+string SendTelegram(string msg)   // "ok", "bloque" (MetaTrader interdit l'adresse) ou "refus <code>"
   {
-   string url  = "https://api.telegram.org/bot" + InpTgToken + "/sendMessage";
-   string body = "chat_id=" + UrlEncode(InpTgChat) + "&text=" + UrlEncode(msg);
+   string url  = "https://api.telegram.org/bot" + gTgToken + "/sendMessage";
+   string body = "chat_id=" + UrlEncode(gTgChat) + "&text=" + UrlEncode(msg);
    char   data[], res[];
    string hdr;
    int len = StringToCharArray(body, data, 0, WHOLE_ARRAY, CP_UTF8);
@@ -265,14 +319,23 @@ void SendTelegram(string msg)
    ResetLastError();
    int code = WebRequest("POST", url, "Content-Type: application/x-www-form-urlencoded\r\n", 5000, data, res, hdr);
    if(code == -1)
+     {
       WebFail("Telegram", "https://api.telegram.org");
-   else if(code != 200)
-      PrintFormat("Telegram : réponse %d du serveur (vérifie le numéro, la clé ou le chat ID)", code);
+      return "bloque";
+     }
+   if(code != 200)
+     {
+      PrintFormat("Telegram : réponse %d du serveur (vérifie le jeton et la discussion)", code);
+      return "refus " + IntegerToString(code);
+     }
+   return "ok";
   }
 
+// Journal et notification push tout de suite ; WhatsApp et Telegram passent par une file, vidée par FlushNotifs()
+// en fin de OnTick : un envoi lent (WebRequest attend jusqu'à 5 secondes) ne retarde plus ni l'entrée ni un stop.
 void Notify(string msg)
   {
-   string full = "ORB v5 · " + _Symbol + " · " + msg;
+   string full = BOT + " · " + _Symbol + "\n" + msg;
    Print(full);
    if(MQLInfoInteger(MQL_TESTER) || MQLInfoInteger(MQL_OPTIMIZATION))
       return;
@@ -282,10 +345,29 @@ void Notify(string msg)
       StringReplace(p, "\n", " · ");
       SendNotification(StringSubstr(p, 0, 255));
      }
-   if(InpWhatsApp && InpWaPhone != "" && InpWaKey != "")
-      SendWhatsApp(full);
-   if(InpTelegram && InpTgToken != "" && InpTgChat != "")
-      SendTelegram(full);
+   bool wa = InpWhatsApp && InpWaPhone != "" && InpWaKey != "";
+   int  n  = ArraySize(gQueue);
+   if((wa || gTgOn) && n < QUEUE_MAX)
+     {
+      ArrayResize(gQueue, n + 1);
+      gQueue[n] = full;
+     }
+  }
+
+void FlushNotifs()
+  {
+   int n = ArraySize(gQueue);
+   if(n == 0)
+      return;
+   bool wa = InpWhatsApp && InpWaPhone != "" && InpWaKey != "";
+   for(int i = 0; i < n; i++)
+     {
+      if(wa)
+         SendWhatsApp(gQueue[i]);
+      if(gTgOn)
+         gTgLast = SendTelegram(gQueue[i]);
+     }
+   ArrayResize(gQueue, 0);
   }
 
 //+------------------------------------------------------------------+
@@ -303,7 +385,7 @@ void SaveState()
    Sv("in", gIn); Sv("pos", (double)gPos); Sv("posid", (double)gPosId); Sv("dir", gDir);
    Sv("entry", gEntry); Sv("sl", gSL); Sv("risk", gRisk); Sv("be", gBE); Sv("tpset", gTPset);
    Sv("fillbar", (double)gFillBar); Sv("posday", gPosDay);
-   Sv("pyr", gPyr); Sv("posid2", (double)gPosId2); Sv("vstop", gVStop);
+   Sv("pyr", gPyr); Sv("posid2", (double)gPosId2); Sv("vstop", gVStop); Sv("bal0", gBalStart);
    Sv("n", gN); Sv("win", gWin); Sv("streak", gStreak); Sv("worst", gWorst);
    Sv("sumr", gSumR); Sv("peak", gPeak); Sv("dd", gDD);
   }
@@ -315,7 +397,8 @@ void LoadState()
    gIn = Ld("in", 0) != 0; gPos = (ulong)Ld("pos", 0); gPosId = (long)Ld("posid", 0); gDir = (int)Ld("dir", 0);
    gEntry = Ld("entry", 0); gSL = Ld("sl", 0); gRisk = Ld("risk", 0); gBE = Ld("be", 0) != 0; gTPset = Ld("tpset", 1) != 0;
    gFillBar = (datetime)Ld("fillbar", 0); gPosDay = (int)Ld("posday", 0);
-   gPyr = Ld("pyr", 0) != 0; gPosId2 = (long)Ld("posid2", 0); gVStop = Ld("vstop", 0);
+   gPyr = Ld("pyr", 0) != 0; gPosId2 = (long)Ld("posid2", 0); gVStop = Ld("vstop", 0); gBalStart = Ld("bal0", 0);
+   gCloseSeen = (long)Ld("closeseen", 0);
    gN = (int)Ld("n", 0); gWin = (int)Ld("win", 0); gStreak = (int)Ld("streak", 0); gWorst = (int)Ld("worst", 0);
    gSumR = Ld("sumr", 0); gPeak = Ld("peak", 0); gDD = Ld("dd", 0);
   }
@@ -488,7 +571,12 @@ bool RecordClose(bool force)   // false = un deal de sortie n'est pas encore dan
    gDD     = MathMax(gDD, gPeak - gSumR);
    string id = (gDir == 1 ? "Achat" : "Vente");
    Txt(GV + "res_" + (string)gPosId, tx, px > 0 ? px : gEntry, " " + RTxt(r), r > 0.05 ? clrSeaGreen : r < -0.05 ? clrTomato : clrGray, ANCHOR_LEFT);
-   Notify(id + " clôturé (" + why + (gPyr ? ", avec pyramide" : "") + ") : " + RTxt(r) + (px > 0 ? " à " + Px(px) : ""));
+   double pct = gBalStart > 0 ? 100.0 * net / gBalStart : 0;
+   AppendTrade(tx, r, net, why);
+   Notify((r > 0.05 ? I_WIN : r < -0.05 ? I_LOSS : I_FLAT) + (gDir == 1 ? "ACHAT CLÔTURÉ : " : "VENTE CLÔTURÉE : ") + RTxt(r) + " · " + PctS(pct) + " · " + Money(net) +
+          "\n" + why + (gPyr ? ", avec pyramide" : "") + (px > 0 ? " · sortie à " + Px(px) : "") +
+          "\nSolde : " + DoubleToString(AccountInfoDouble(ACCOUNT_BALANCE), 2) + " " + AccountInfoString(ACCOUNT_CURRENCY) +
+          "\nDepuis le début : " + (string)gN + " trades · " + RTxt(gSumR));
    gDayTxt = id + " terminé (" + why + ") : " + RTxt(r);
    return true;
   }
@@ -520,9 +608,10 @@ void SyncPosition()
       gTPset   = InpTgtR <= 0;
       gPend    = false;
       gCloseWhy = "";
+      gBalStart = AccountInfoDouble(ACCOUNT_BALANCE);
       DropPendingDraw();
-      string id = gDir == 1 ? "ACHAT" : "VENTE";
-      Notify(id + " exécuté à " + Px(gEntry) + "\nStop : " + Px(gSL) +
+      string id = gDir == 1 ? I_BUY + "ACHAT exécuté" : I_SELL + "VENTE exécutée";
+      Notify(id + " à " + Px(gEntry) + "\nStop : " + Px(gSL) + " (" + Money(-gRiskMoney) + ")" +
              (InpBeR > 0 ? "\nStop au prix d'entrée dès " + Px(gEntry + gDir * InpBeR * gRisk) + " (+" + DoubleToString(InpBeR, 1) + "R)" : "") +
              (InpUsePyr ? "\nPyramide : ajout si une bougie clôture à " + Px(gEntry + gDir * InpPyrR * gRisk) + " (" + RTxt(InpPyrR) + "), stop de l'ensemble " + DoubleToString(InpPyrGap, 1) + "R sous l'ajout" : "") +
              (InpTgtR > 0 ? "\nObjectif : " + Px(gEntry + gDir * InpTgtR * gRisk) : "\nSortie à " + InpFlat + " NY"));
@@ -597,6 +686,15 @@ bool Setup()   // true = terminé (trade préparé ou pas de trade), false = don
    gPendDir = okL && okS ? 0 : okL ? 1 : okS ? -1 : 2;
    gFiltTxt = "Achat " + (okL ? "oui" : "non (" + whyL + ")") + " · Vente " + (okS ? "oui" : "non (" + whyS + ")") + (InpUseRSI ? " · RSI " + DoubleToString(rv, 0) : "");
 
+   // case de l'instrument décochée dans l'interface : le range est relevé, aucun ordre n'est préparé
+   if(!gActive)
+     {
+      gDayTxt = "Pas de trade : instrument désactivé dans l'interface";
+      Print(BOT + " · " + _Symbol + " · " + gDayTxt);
+      SaveState();
+      return true;
+     }
+
    // taille : risque en % du solde, arrondie au pas de volume du broker
    double tv   = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_VALUE_LOSS);
    if(tv <= 0)
@@ -606,7 +704,20 @@ bool Setup()   // true = terminé (trade préparé ou pas de trade), false = don
    double vmin = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MIN);
    double vmax = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MAX);
    double perLot = (dist > 0 && ts > 0) ? dist / ts * tv : 0;
-   double lots = perLot > 0 ? MathFloor(AccountInfoDouble(ACCOUNT_BALANCE) * InpRiskPct / 100.0 / perLot / step) * step : 0;
+   double bal  = AccountInfoDouble(ACCOUNT_BALANCE);
+   double lots = perLot > 0 ? MathFloor(bal * gRiskPct / 100.0 / perLot / step) * step : 0;
+   // marge : la position, ajout de la pyramide compris, ne demande pas plus que MARGIN_USE de la marge libre.
+   // Si le risque demandé donne une position trop grosse pour le levier, la taille est réduite (le trade est gardé).
+   double want  = lots;
+   double units = 1.0 + (InpUsePyr ? InpPyrSize : 0.0);
+   double mLot  = MarginPerLot();
+   if(mLot > 0 && step > 0)
+     {
+      double cap = MathFloor(AccountInfoDouble(ACCOUNT_MARGIN_FREE) * MARGIN_USE / (mLot * units) / step) * step;
+      if(cap < lots)
+         lots = MathMax(cap, 0);
+     }
+   bool cut = lots < want - step / 2;   // réduite par la marge (et non par le volume maximal du symbole)
    lots = MathMin(lots, vmax);
    int vd = (int)MathMax(0, MathRound(-MathLog10(step)));
    lots = NormalizeDouble(lots, vd);
@@ -614,9 +725,11 @@ bool Setup()   // true = terminé (trade préparé ou pas de trade), false = don
    string endT = TimeToString(ToNY(gOrTime) + (InpLiveBars + 1) * BAR, TIME_MINUTES);
    if(gPendDir == 2 || lots < vmin)
      {
-      string why = gPendDir == 2 ? "achat bloqué (" + whyL + "), vente bloquée (" + whyS + ")" : "taille trop petite pour " + DoubleToString(InpRiskPct, 1) + " % (minimum " + DoubleToString(vmin, vd) + " lot)";
+      string why = gPendDir == 2 ? "achat bloqué (" + whyL + "), vente bloquée (" + whyS + ")" :
+                   cut ? "marge insuffisante pour ouvrir le minimum de " + DoubleToString(vmin, vd) + " lot (pyramide comprise)" :
+                   "taille trop petite pour " + RiskTxt(gRiskPct) + " (minimum " + DoubleToString(vmin, vd) + " lot)";
       gDayTxt = "Pas de trade : " + why;
-      Notify("pas de trade aujourd'hui : " + why);
+      Notify(I_NONE + "PAS DE TRADE aujourd'hui\n" + why);
       SaveState();
       return true;
      }
@@ -650,10 +763,12 @@ bool Setup()   // true = terminé (trade préparé ou pas de trade), false = don
 
    gDayTxt = (gPendDir == 1 ? "Achat stop " + Px(gOrH) : gPendDir == -1 ? "Vente stop " + Px(gOrL) : "Achat " + Px(gOrH) + " · Vente " + Px(gOrL)) + " · jusqu'à " + endT;
    string ccy = AccountInfoString(ACCOUNT_CURRENCY);
-   Notify("ORDRES ORB placés\nRange 9:30 : " + Px(gOrL) + " – " + Px(gOrH) + " (" + Pts(dist) + " = 1R)" +
+   double realPct = bal > 0 ? 100.0 * gRiskMoney / bal : 0;
+   Notify(I_ORDERS + "ORDRES PLACÉS\nRange 9:30 : " + Px(gOrL) + " – " + Px(gOrH) + " (" + Pts(dist) + " = 1R)" +
           (gPendDir != -1 ? "\nAchat stop : " + Px(gOrH) + " · stop " + Px(gOrL) : "\nAchat bloqué (" + whyL + ")") +
           (gPendDir != 1 ? "\nVente stop : " + Px(gOrL) + " · stop " + Px(gOrH) : "\nVente bloquée (" + whyS + ")") +
-          "\nTaille : " + DoubleToString(lots, vd) + " lot · " + DoubleToString(gRiskMoney, 2) + " " + ccy + " risqués (" + DoubleToString(InpRiskPct, 1) + " %)" +
+          "\nTaille : " + DoubleToString(lots, vd) + " lot · " + DoubleToString(gRiskMoney, 2) + " " + ccy + " risqués (" + RiskTxt(realPct) + ")" +
+          (cut ? "\n" + I_WARN + "Taille réduite par la marge : " + RiskTxt(gRiskPct) + " demandés, il aurait fallu " + DoubleToString(want, vd) + " lot" : "") +
           "\nValables jusqu'à " + endT + " NY." + (gPendDir == 0 ? " Le premier déclenché annule l'autre." : " Annulé si le côté bloqué est touché d'abord."));
    SaveState();
    return true;
@@ -691,7 +806,7 @@ void CheckEntries()
       gPend = false;
       DropPendingDraw();
       gDayTxt = "Pas de trade : entrée refusée par le broker";
-      Notify("entrée refusée par le broker (" + trade.ResultRetcodeDescription() + ")");
+      Notify(I_WARN + "ENTRÉE REFUSÉE par le courtier\n" + trade.ResultRetcodeDescription());
       SaveState();
      }
   }
@@ -733,7 +848,7 @@ void DoPyramid(double curR)
    if(lots < vmin)
      {
       // ajout trop petit pour le broker : le trade continue comme sans pyramide
-      Notify("pyramide impossible : taille trop petite pour le broker, le trade continue sans ajout");
+      Notify(I_WARN + "Pyramide impossible : taille trop petite pour le courtier, le trade continue sans ajout");
       gPyr = false;
       gUsePyrToday = false;
       gBE  = gVStop > 0;
@@ -747,7 +862,7 @@ void DoPyramid(double curR)
      {
       // ajout refusé : le trade continue sans pyramide, avec le stop au prix d'entrée s'il était déjà acquis
       PrintFormat("Pyramide refusée (%d) : %s", rc, trade.ResultRetcodeDescription());
-      Notify("pyramide refusée par le broker (" + trade.ResultRetcodeDescription() + "), le trade continue sans ajout");
+      Notify(I_WARN + "Pyramide refusée par le courtier (" + trade.ResultRetcodeDescription() + "), le trade continue sans ajout");
       gPyr = false;
       gUsePyrToday = false;
       gBE  = gVStop > 0;
@@ -766,7 +881,7 @@ void DoPyramid(double curR)
          gPosId2 = id;
      }
    RaiseStop(lock, "Stop remonté");
-   Notify("PYRAMIDE : clôture à " + RTxt(curR) + "\nAjout de " + DoubleToString(lots, vd) + " lot" + (apx > 0 ? " à " + Px(apx) : "") +
+   Notify(I_ADD + "PYRAMIDE : clôture à " + RTxt(curR) + "\nAjout de " + DoubleToString(lots, vd) + " lot" + (apx > 0 ? " à " + Px(apx) : "") +
           "\nStop de l'ensemble : " + Px(lock) + " (" + RTxt(lockR) + ")");
    SaveState();
   }
@@ -804,7 +919,7 @@ void OnNewBar()
          if(gDir == 1 ? fav >= gEntry + InpBeR * gRisk : fav <= gEntry - InpBeR * gRisk)
            {
             gBE = true;
-            Notify("+" + DoubleToString(InpBeR, 1) + "R atteint, stop déplacé au prix d'entrée (" + Px(gEntry) + ")");
+            Notify(I_LOCK + "+" + DoubleToString(InpBeR, 1) + "R atteint\nStop déplacé au prix d'entrée (" + Px(gEntry) + ") : ce trade ne peut plus perdre que les frais");
             RaiseStop(gEntry, "Stop à l'entrée");
             SaveState();
            }
@@ -822,7 +937,7 @@ void OnNewBar()
          DropDayDraw();
          string why = opp ? "l'autre côté du range a été touché d'abord" : "pas de cassure avant " + TimeToString(ToNY(r[0].time), TIME_MINUTES) + " NY";
          gDayTxt = "Pas de trade : " + why;
-         Notify("ordres annulés : " + why);
+         Notify(I_NONE + "ORDRES ANNULÉS\n" + why);
          SaveState();
         }
      }
@@ -831,6 +946,339 @@ void OnNewBar()
    datetime ny1 = ToNY(r[1].time);
    if(NYMin(ny1) == mOR && NYDate(ny1) != gDay && !gIn && !gPend)
       gSetupDue = true;
+  }
+
+//+------------------------------------------------------------------+
+//| Interface Étrave : réglages lus, état et trades écrits            |
+//+------------------------------------------------------------------+
+string StringToUpperCopy(string s)
+  {
+   StringToUpper(s);
+   return s;
+  }
+
+string InstrumentOf(string sym)   // quelle case de l'interface commande ce symbole
+  {
+   string s = StringToUpperCopy(sym);
+   if(StringFind(s, "XAU") >= 0 || StringFind(s, "GOLD") >= 0)
+      return "or";
+   if(StringFind(s, "NAS") >= 0 || StringFind(s, "NDX") >= 0 || StringFind(s, "NQ") >= 0 || StringFind(s, "USTEC") >= 0 || StringFind(s, "US100") >= 0 || StringFind(s, "USATECH") >= 0)
+      return "nasdaq";
+   return "autre";
+  }
+
+string SafeName(string sym)   // lettres, chiffres et . _ - # + ; tout autre caractère devient _
+  {
+   string out = "";
+   for(int i = 0; i < StringLen(sym); i++)
+     {
+      ushort c = StringGetCharacter(sym, i);
+      bool ok = (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '.' || c == '_' || c == '-' || c == '#' || c == '+';
+      out += ok ? ShortToString(c) : "_";
+     }
+   return out;
+  }
+
+bool OnlyChars(string v, string extra)   // chiffres, lettres et les caractères de « extra », au moins un caractère
+  {
+   int n = StringLen(v);
+   for(int i = 0; i < n; i++)
+     {
+      ushort c = StringGetCharacter(v, i);
+      bool ok = (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || StringFind(extra, ShortToString(c)) >= 0;
+      if(!ok)
+         return false;
+     }
+   return n > 0;
+  }
+
+double NotionalPerLot()   // valeur d'un lot au prix du moment, devise du compte
+  {
+   double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+   double tv  = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_VALUE);
+   double ts  = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_SIZE);
+   return (ask > 0 && tv > 0 && ts > 0) ? ask / ts * tv : 0;
+  }
+
+double BrokerMarginPerLot()   // marge que MetaTrader demande pour 1 lot ; 0 = inconnue
+  {
+   double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+   double m   = 0;
+   if(ask <= 0 || !OrderCalcMargin(ORDER_TYPE_BUY, _Symbol, 1.0, ask, m) || m <= 0)
+      return 0;
+   return m;
+  }
+
+// Marge retenue pour 1 lot : la plus grande entre celle de MetaTrader et celle du levier saisi dans l'interface
+double MarginPerLot()
+  {
+   double m = BrokerMarginPerLot();
+   double n = NotionalPerLot();
+   if(gLever > 0 && n > 0)
+      m = MathMax(m, n / gLever);
+   return m;
+  }
+
+double OpenLots()
+  {
+   double v = 0;
+   for(int i = PositionsTotal() - 1; i >= 0; i--)
+     {
+      ulong tk = PositionGetTicket(i);
+      if(tk == 0 || PositionGetString(POSITION_SYMBOL) != _Symbol || (ulong)PositionGetInteger(POSITION_MAGIC) != InpMagic)
+         continue;
+      v += PositionGetDouble(POSITION_VOLUME);
+     }
+   return v;
+  }
+
+bool TestRules()   // les règles saisies sont-elles celles du test ?
+  {
+   return InpOR == "09:30" && InpPre == "09:00" && InpLiveBars == 2 && InpFlat == "15:50" && InpUseRSI && InpRSILen == 14 && InpUseExt &&
+          MathAbs(InpBeR - 1.5) < 1e-9 && InpTgtR == 0 && InpUsePyr && MathAbs(InpPyrR - 2.0) < 1e-9 &&
+          MathAbs(InpPyrSize - 1.0) < 1e-9 && MathAbs(InpPyrGap - 1.0) < 1e-9;
+  }
+
+// Lit Etrave\reglages.txt. Une clé absente ou invalide laisse la valeur de MetaTrader ; un fichier illisible à cet
+// instant (l'interface est en train de l'écrire) laisse tout en l'état jusqu'à la lecture suivante.
+void ReadSettings()
+  {
+   double risk   = InpRiskPct;
+   string src    = "mt5";
+   double lever  = 0;
+   bool   active = true;
+   bool   tgOn   = InpTelegram && InpTgToken != "" && InpTgChat != "";
+   string tok    = InpTgToken, chat = InpTgChat;
+   bool   ui     = InpUseUI && !MQLInfoInteger(MQL_TESTER);
+   if(ui)
+     {
+      active = gInstr != "or";   // sans réglage : Nasdaq coché, or décoché (la stratégie y perd dans le test)
+      string name = UI_DIR + "reglages.txt";
+      if(FileIsExist(name, FILE_COMMON))
+        {
+         int h = FileOpen(name, FILE_READ | FILE_TXT | FILE_ANSI | FILE_COMMON | FILE_SHARE_READ | FILE_SHARE_WRITE, 0, CP_UTF8);
+         if(h == INVALID_HANDLE)
+           {
+            if(gUiLoaded)
+               return;
+           }
+         else
+           {
+            string fTok = "", fChat = "";
+            long   test = 0;
+            while(!FileIsEnding(h))
+              {
+               string line = FileReadString(h);
+               int p = StringFind(line, "=");
+               if(p <= 0)
+                  continue;
+               string k = StringSubstr(line, 0, p);
+               string v = StringSubstr(line, p + 1);
+               StringTrimLeft(k);
+               StringTrimRight(k);
+               StringTrimLeft(v);
+               StringTrimRight(v);
+               if(k == "risque_pct")
+                 {
+                  double x = StringToDouble(v);
+                  if(x >= RISK_MIN - 1e-9 && x <= RISK_MAX + 1e-9)
+                    {
+                     risk = x;
+                     src  = "interface";
+                    }
+                 }
+               else if(k == "levier")
+                 {
+                  double x = StringToDouble(v);
+                  if(x >= 1 && x <= LEVER_MAX)
+                     lever = x;
+                 }
+               else if(k == gInstr && (v == "0" || v == "1"))
+                  active = v == "1";
+               else if(k == "telegram_jeton")
+                  fTok = v;
+               else if(k == "telegram_discussion")
+                  fChat = v;
+               else if(k == "essai_telegram")
+                  test = StringToInteger(v);
+               else if(k == "cloturer")
+                 {
+                  string part[];
+                  if(StringSplit(v, ';', part) == 2)
+                    {
+                     long id = StringToInteger(part[0]);
+                     if(id > gCloseSeen && part[1] == gSymFile)
+                       {
+                        gCloseSeen = id;
+                        Sv("closeseen", (double)id);
+                        // une demande ancienne (fichier oublié, MetaTrader relancé) n'est jamais exécutée
+                        if(MathAbs((long)TimeGMT() - id) <= CMD_MAX_AGE)
+                           gCloseDue = true;
+                       }
+                    }
+                 }
+              }
+            FileClose(h);
+            if(OnlyChars(fTok, ":_-") && OnlyChars(fChat, "-"))
+              {
+               tgOn = true;
+               tok  = fTok;
+               chat = fChat;
+              }
+            gTgToken = tok;
+            gTgChat  = chat;
+            gTgOn    = tgOn;
+            // demande d'essai : au premier passage on retient seulement son numéro (pas d'essai rejoué au lancement)
+            if(gTestSeen < 0)
+               gTestSeen = test;
+            else if(test != gTestSeen)
+              {
+               gTestSeen = test;
+               string res = !gTgOn ? "inactif" : (gPend || gSetupDue) ? "occupe" : MathAbs((long)TimeGMT() - test) > CMD_MAX_AGE ? "expire" :
+                            SendTelegram(BOT + " · " + _Symbol + "\n" + I_WIN + "Essai réussi : MetaTrader envoie bien les alertes.");
+               gTgTest = IntegerToString(test) + ":" + res;
+               if(res == "ok" || res == "bloque" || StringFind(res, "refus") == 0)
+                  gTgLast = res;
+              }
+           }
+        }
+     }
+   gTgToken = tok;
+   gTgChat  = chat;
+   gTgOn    = tgOn;
+   gLever   = lever;
+   if(gUiLoaded && MathAbs(risk - gRiskPct) > 1e-9)
+      Notify(I_GEAR + "RISQUE PAR TRADE : " + RiskTxt(gRiskPct) + " → " + RiskTxt(risk) + "\nRéglé dans " + (src == "interface" ? "l'interface" : "MetaTrader") + ", à partir du prochain trade");
+   if(gUiLoaded && active != gActive)
+      Notify(I_GEAR + (active ? "INSTRUMENT ACTIVÉ dans l'interface" : "INSTRUMENT DÉSACTIVÉ dans l'interface\nPlus de nouveau trade ; un trade ouvert reste géré jusqu'à sa sortie"));
+   gRiskPct  = risk;
+   gRiskSrc  = src;
+   gActive   = active;
+   gUiLoaded = true;
+  }
+
+// Demande « Clôturer » de l'interface : ferme le trade au marché, ou annule les ordres du jour
+void UiClose()
+  {
+   if(gIn)
+     {
+      Notify(I_HAND + "CLÔTURE demandée depuis l'interface");
+      ClosePos("Fermeture depuis l'interface");
+     }
+   else if(gPend)
+     {
+      gPend = false;
+      DropDayDraw();
+      gDayTxt = "Pas de trade : ordres annulés depuis l'interface";
+      Notify(I_HAND + "ORDRES ANNULÉS depuis l'interface\nPas de trade aujourd'hui");
+      SaveState();
+     }
+  }
+
+// L'heure du serveur correspond-elle toujours aux réglages ? (contrôlé au lancement, puis en continu : un mauvais
+// réglage d'heure d'été ne se voit que les semaines où les États-Unis et l'Europe sont décalés)
+void CheckClock()
+  {
+   if(!TerminalInfoInteger(TERMINAL_CONNECTED))
+      return;
+   long real = (long)(TimeTradeServer() - TimeGMT());
+   bool ok   = MathAbs(real - ServerOffsetSec(TimeTradeServer())) <= 1800;
+   if(!ok && gClockOk)
+      Notify(I_WARN + "HEURE DU SERVEUR : les réglages de l'EA ne correspondent plus à l'heure réelle du serveur.\nCorrige « Décalage GMT du serveur » ou « Heure d'été du serveur », sinon le range sera pris sur la mauvaise bougie.");
+   gClockOk = ok;
+  }
+
+void Kv(int h, string k, string v)
+  {
+   StringReplace(v, "\r", " ");
+   StringReplace(v, "\n", " · ");
+   FileWrite(h, k + "=" + v);
+  }
+
+void Kd(int h, string k, double v, int digits) { Kv(h, k, DoubleToString(v, digits)); }
+
+// Écrit Etrave\etat-<symbole>.txt : fichier provisoire, puis remplacement d'un seul coup
+void WriteState()
+  {
+   string tmp = UI_DIR + "etat-" + gSymFile + ".tmp";
+   int h = FileOpen(tmp, FILE_WRITE | FILE_TXT | FILE_ANSI | FILE_COMMON, 0, CP_UTF8);
+   if(h == INVALID_HANDLE)
+      return;
+   ENUM_ACCOUNT_TRADE_MODE tm = (ENUM_ACCOUNT_TRADE_MODE)AccountInfoInteger(ACCOUNT_TRADE_MODE);
+   double n  = NotionalPerLot();
+   double m  = BrokerMarginPerLot();
+   double pl = gIn ? OpenProfit() : 0;
+   Kv(h, "version", "1");
+   Kv(h, "ea", "5.10");
+   Kv(h, "symbole", gSymFile);
+   Kv(h, "instrument", gInstr);
+   Kv(h, "actif", gActive ? "1" : "0");
+   Kv(h, "terminal", TerminalInfoString(TERMINAL_PATH));
+   Kv(h, "compte_type", tm == ACCOUNT_TRADE_MODE_REAL ? "reel" : tm == ACCOUNT_TRADE_MODE_CONTEST ? "concours" : "demo");
+   Kv(h, "compte_serveur", AccountInfoString(ACCOUNT_SERVER));
+   Kv(h, "compte_login", IntegerToString(AccountInfoInteger(ACCOUNT_LOGIN)));
+   Kv(h, "devise", AccountInfoString(ACCOUNT_CURRENCY));
+   Kd(h, "solde", AccountInfoDouble(ACCOUNT_BALANCE), 2);
+   Kd(h, "capital", AccountInfoDouble(ACCOUNT_EQUITY), 2);
+   Kd(h, "marge_libre", AccountInfoDouble(ACCOUNT_MARGIN_FREE), 2);
+   Kv(h, "levier_compte", IntegerToString(AccountInfoInteger(ACCOUNT_LEVERAGE)));
+   Kd(h, "levier_symbole", (n > 0 && m > 0) ? n / m : 0, 1);
+   Kv(h, "connecte", TerminalInfoInteger(TERMINAL_CONNECTED) ? "1" : "0");
+   Kv(h, "trading_auto", (TerminalInfoInteger(TERMINAL_TRADE_ALLOWED) && MQLInfoInteger(MQL_TRADE_ALLOWED)) ? "1" : "0");
+   Kv(h, "heure_ny", TimeToString(ToNY(TimeTradeServer()), TIME_DATE | TIME_MINUTES));
+   Kv(h, "heure_serveur", TimeToString(TimeTradeServer(), TIME_MINUTES));
+   Kv(h, "horloge_ok", gClockOk ? "1" : "0");
+   Kv(h, "regles_test", TestRules() ? "1" : "0");
+   Kd(h, "risque_pct", gRiskPct, 4);
+   Kv(h, "risque_source", gRiskSrc);
+   Kd(h, "range_bas", gOrL, _Digits);
+   Kd(h, "range_haut", gOrH, _Digits);
+   Kv(h, "filtres", gFiltTxt);
+   Kv(h, "jour", gIn ? (gDir == 1 ? "Achat" : "Vente") + " en cours" + (gPyr ? " · pyramide faite" : gBE ? " · stop à l'entrée" : "") : gDayTxt);
+   Kv(h, "attente", gPend ? "1" : "0");
+   Kv(h, "position", gIn ? "1" : "0");
+   Kv(h, "pos_sens", IntegerToString(gIn ? gDir : 0));
+   Kd(h, "pos_entree", gIn ? gEntry : 0, _Digits);
+   Kd(h, "pos_stop", gIn ? (gVStop > 0 ? gVStop : gSL) : 0, _Digits);
+   Kd(h, "pos_lots", gIn ? OpenLots() : 0, 2);
+   Kd(h, "pos_resultat", pl, 2);
+   Kd(h, "pos_r", (gIn && gRiskMoney > 0) ? pl / gRiskMoney : 0, 2);
+   Kv(h, "pos_pyramide", (gIn && gPyr) ? "1" : "0");
+   Kd(h, "risque_argent", gIn ? gRiskMoney : 0, 2);
+   Kd(h, "solde_depart", gIn ? gBalStart : 0, 2);
+   Kv(h, "stats_n", IntegerToString(gN));
+   Kv(h, "stats_gagnants", IntegerToString(gWin));
+   Kd(h, "stats_r", gSumR, 2);
+   Kd(h, "stats_baisse", gDD, 2);
+   Kv(h, "stats_serie", IntegerToString(gWorst));
+   Kv(h, "telegram", gTgOn ? "1" : "0");
+   Kv(h, "telegram_envoi", gTgLast);
+   Kv(h, "telegram_essai", gTgTest);
+   FileClose(h);
+   FileMove(tmp, FILE_COMMON, UI_DIR + "etat-" + gSymFile + ".txt", FILE_COMMON | FILE_REWRITE);
+  }
+
+// Ajoute le trade clôturé à Etrave\trades-<symbole>.csv :
+// sortie (secondes UTC) ; date NY ; heure NY ; symbole ; sens ; lots ; R ; résultat net ; solde avant ; raison ; pyramide ; devise
+void AppendTrade(datetime tx, double r, double net, string why)
+  {
+   if(MQLInfoInteger(MQL_TESTER) || !InpUseUI)
+      return;
+   int h = FileOpen(UI_DIR + "trades-" + gSymFile + ".csv", FILE_READ | FILE_WRITE | FILE_TXT | FILE_ANSI | FILE_COMMON | FILE_SHARE_READ, 0, CP_UTF8);
+   if(h == INVALID_HANDLE)
+     {
+      PrintFormat("Journal des trades de l'interface : écriture impossible (erreur %d)", GetLastError());
+      return;
+     }
+   FileSeek(h, 0, SEEK_END);
+   datetime ny = ToNY(tx);
+   string day = TimeToString(ny, TIME_DATE);
+   StringReplace(day, ".", "-");
+   StringReplace(why, ";", ",");
+   FileWrite(h, IntegerToString((long)(tx - ServerOffsetSec(tx))) + ";" + day + ";" + TimeToString(ny, TIME_MINUTES) + ";" + gSymFile + ";" +
+             IntegerToString(gDir) + ";" + DoubleToString(gLots, 2) + ";" + DoubleToString(r, 4) + ";" + DoubleToString(net, 2) + ";" +
+             DoubleToString(gBalStart, 2) + ";" + why + ";" + (gPyr ? "1" : "0") + ";" + AccountInfoString(ACCOUNT_CURRENCY));
+   FileClose(h);
   }
 
 //+------------------------------------------------------------------+
@@ -844,7 +1292,8 @@ void Panel()
    string live = "";
    if(gIn && gRiskMoney > 0)
       live = (gDir == 1 ? "Achat" : "Vente") + " en cours · " + RTxt(OpenProfit() / gRiskMoney) + (gPyr ? " · pyramide, stop à " + Px(gVStop) : gBE ? " · stop à l'entrée" : "");
-   string s = "ORB v5 · " + _Symbol + " · " + DoubleToString(InpRiskPct, 1) + " % par trade\n" +
+   string s = BOT + " · ORB v5 · " + _Symbol + " · " + RiskTxt(gRiskPct) + " par trade (" + (gRiskSrc == "interface" ? "interface" : "MetaTrader") + ")" +
+              (gActive ? "" : " · DÉSACTIVÉ dans l'interface") + "\n" +
               "Heure NY : " + TimeToString(ny, TIME_DATE | TIME_MINUTES) + " (serveur " + TimeToString(TimeCurrent(), TIME_MINUTES) + ") — à vérifier\n" +
               "Range 9:30 : " + (gOrH > 0 ? Px(gOrL) + " – " + Px(gOrH) + " (" + Pts(gOrH - gOrL) + ")" : "—") + "\n" +
               "Filtres : " + ((InpUseRSI || InpUseExt) ? gFiltTxt : "désactivés") + "\n" +
@@ -877,6 +1326,9 @@ int OnInit()
    if(hRSI == INVALID_HANDLE)
       return INIT_FAILED;
    GV = "ORBv5_" + _Symbol + "_" + (string)InpMagic + "_";
+   gInstr   = InstrumentOf(_Symbol);
+   gSymFile = SafeName(_Symbol);
+   gRiskPct = InpRiskPct;
    if(MQLInfoInteger(MQL_TESTER))
       GlobalVariablesDeleteAll(GV);
    else
@@ -891,15 +1343,41 @@ int OnInit()
          Print("ORB v5 : compte en mode netting. L'EA fonctionne, mais n'ouvre rien d'autre sur ce symbole en même temps.");
      }
    gLastBar = 0;   // la première bougie est contrôlée tout de suite (EA lancé à 9:35 : le range du jour est pris)
+   ReadSettings();
+   if(!MQLInfoInteger(MQL_TESTER) && InpUseUI)
+     {
+      FolderCreate("Etrave", FILE_COMMON);
+      EventSetTimer(UI_PERIOD);
+      WriteState();
+     }
    Panel();
    return INIT_SUCCEEDED;
   }
 
 void OnDeinit(const int reason)
   {
+   EventKillTimer();
    if(hRSI != INVALID_HANDLE)
       IndicatorRelease(hRSI);
    Comment("");
+  }
+
+// Toutes les 2 secondes, même sans cotation : réglages et demandes de l'interface, état pour l'interface, messages en
+// attente. Aucune décision d'entrée ou de gestion n'est prise ici : elles restent dans OnTick.
+void OnTimer()
+  {
+   if(MQLInfoInteger(MQL_TESTER) || !InpUseUI)
+      return;
+   ReadSettings();
+   if(gCloseDue)
+     {
+      gCloseDue = false;
+      UiClose();
+     }
+   CheckClock();
+   FlushNotifs();
+   WriteState();
+   Panel();
   }
 
 void OnTick()
@@ -932,6 +1410,8 @@ void OnTick()
       if(gIn && (NYMin(ny) >= mFlat || NYDate(ny) != gPosDay))
          ClosePos("Fin de journée");
      }
+   // 5. messages WhatsApp / Telegram, une fois les ordres passés
+   FlushNotifs();
    Panel();
   }
 //+------------------------------------------------------------------+

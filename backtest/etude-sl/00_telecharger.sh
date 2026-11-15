@@ -1,7 +1,10 @@
 #!/bin/bash
-# Télécharge le M1 bid ET ask de Dukascopy pour le Nasdaq CFD et l'or, et range un zip par année dans donnees/ :
-#   donnees/nas100/usatechidxusd-m1-<année>.zip   (bid et ask dans le même zip)
-#   donnees/or/xauusd-m1-<année>.zip
+# Télécharge le M1 bid ET ask de Dukascopy et range un zip par année dans donnees/ (bid et ask dans le même zip) :
+#   donnees/nas100/usatechidxusd-m1-<année>.zip   Nasdaq 100 en CFD
+#   donnees/or/xauusd-m1-<année>.zip              or contre dollar
+#   donnees/eurusd/eurusd-m1-<année>.zip          euro contre dollar
+#   donnees/dow/usa30idxusd-m1-<année>.zip        Dow Jones en CFD
+#   donnees/bitcoin/btcusd-m1-<année>.zip         bitcoin contre dollar
 #
 #   ./00_telecharger.sh                 les années manquantes, de DEBUT (2018) à FIN
 #   ./00_telecharger.sh 2026            refait l'année 2026 même si son zip existe (pour prolonger les données : change FIN)
@@ -53,6 +56,9 @@ serie() {   # serie <nom du dossier> <code Dukascopy>
 
 serie nas100 usatechidxusd &
 serie or xauusd &
+serie eurusd eurusd &
+serie dow usa30idxusd &
+serie bitcoin btcusd &
 wait
 if [ -s "$BRUT/ECHECS.txt" ]; then echo "ECHECS :"; cat "$BRUT/ECHECS.txt"; exit 1; fi
 echo "Terminé sans échec."

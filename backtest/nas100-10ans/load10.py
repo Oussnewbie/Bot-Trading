@@ -1,5 +1,6 @@
 """Données du dépôt : M1 bid et ask Dukascopy, un zip par année dans donnees/<instrument>/ (UTC, début de bougie),
-du 2018-01-01 au 2026-11-13. Instruments : « nas100 » (usatechidxusd) et « or » (xauusd).
+du 2018-01-01 au 2026-11-13. Instruments : « nas100 » (usatechidxusd), « or » (xauusd), « eurusd », « dow » (usa30idxusd)
+et « bitcoin » (btcusd).
 
 - lire_m1(nom)  : le M1 bid et ask d'un instrument, sur les minutes présentes des deux côtés.
 - load10()      : le M5 bid et ask du Nasdaq CFD pour le simulateur v5_lab, indexé en heure de New York.
@@ -13,7 +14,7 @@ import pandas as pd
 
 RACINE = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 DONNEES = os.environ.get("ORB_DONNEES", os.path.join(RACINE, "donnees"))
-INSTRUMENTS = {"nas100": "usatechidxusd", "or": "xauusd"}
+INSTRUMENTS = {"nas100": "usatechidxusd", "or": "xauusd", "eurusd": "eurusd", "dow": "usa30idxusd", "bitcoin": "btcusd"}
 DIR = os.environ.get("NAS100_DIR", os.path.join(DONNEES, "cache")) + os.sep     # dossier du M5 reconstruit
 ANNEE_DEBUT = 2018      # décision du 2026-11-14 : rien avant 2018 n'est lu, même si un zip plus ancien traîne dans le dossier
 

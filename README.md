@@ -10,6 +10,8 @@ Toutes les heures sont en heure de New York (9:30 NY = 15:30 à Paris la plupart
 |---|---|
 | `pine/ORB-v5.pine` | **La stratégie** pour TradingView. Alertes Telegram. |
 | `mt5/ORB-v5.mq5` | **La même stratégie en Expert Advisor MetaTrader 5**, mêmes règles et mêmes paramètres. Notifications push MT5, WhatsApp et Telegram. |
+| `interface/`, `Etrave.bat` | **Étrave, l'interface de l'EA** : une page web locale pour régler le risque, cocher les instruments, brancher Telegram, suivre et clôturer les trades. Voir [L'interface Étrave](#linterface-étrave). |
+| `backtest/or/v5_sur_or.py` | La v5 appliquée telle quelle à l'or : elle y perd (-137R sur 2018-2026). |
 | `backtest/nas100-10ans/` | Le simulateur Python : `v5_lab.py` (simulateur), `orb_v5.py` (les réglages de la v5 et ses tableaux), `load10.py` (lecture des données). |
 | `backtest/etude-sl/` | L'étude en cours sur les stops (novembre 2026) : scripts numérotés, rapports dans `sorties/`, `refaire.sh` pour tout refaire. |
 | `tests/` | Les tests automatiques du simulateur (`pytest`), dont une réécriture indépendante des règles (`regles_readme.py`). |
@@ -132,8 +134,77 @@ Différences avec TradingView : l'entrée se fait au tick où l'ask (achat) ou l
 le test Python ; le stop à l'entrée et la pyramide sont décidés à la clôture de la bougie M5, comme dans le test ; si
 le broker refuse de poser un stop (trop près du prix), l'EA ferme lui-même la position à ce niveau.
 
-Les en-têtes de `pine/ORB-v5.pine` et de `mt5/ORB-v5.mq5` citent encore l'ancien test (1 915 trades, +373R sur
-2015-2026) : ces deux fichiers ne peuvent pas être compilés ici et n'ont pas été touchés.
+L'en-tête de `pine/ORB-v5.pine` cite encore l'ancien test (1 915 trades, +373R sur 2015-2026) : ce fichier n'a pas été
+touché. `mt5/ORB-v5.mq5` a été modifié le 15 novembre 2026 pour l'interface Étrave (version 5.10) **sans pouvoir être
+compilé ici** : compile-le dans MetaEditor (F7) et fais-le tourner en démo avant tout.
+
+## L'interface Étrave
+
+Une page web servie sur ton ordinateur (ou ton VPS), au même style que le dashboard de Vigie, en trois onglets :
+
+- **Vue d'ensemble** : solde, trade en cours et résultat cumulé en R, en % et en argent, courbe des trades pris, liste des
+  trades, et une ligne par instrument avec sa case à cocher et le bouton « Clôturer le trade ».
+- **Risque** : le seul réglage, de 0,05 % à 20 % du solde par trade, avec le levier de ton courtier. Pour la valeur
+  choisie, la page rejoue le test : gain par an, pire baisse, série de 13 pertes, et la part des trades que la marge
+  aurait obligé à réduire. Au-delà de 1 %, il faut taper le mot RISQUE.
+- **Connexions** : Telegram (jeton, « Trouver ma discussion et tester », puis « Essai depuis MetaTrader » qui dit si
+  MetaTrader bloque l'adresse), et le lancement de MetaTrader 5 avec connexion à un compte.
+
+### L'installer
+
+1. Installe Python 3 ([python.org](https://www.python.org/downloads/), coche « Add python.exe to PATH »). Rien d'autre.
+2. Compile `mt5/ORB-v5.mq5` et pose-le sur le graphique du Nasdaq (voir plus haut). Le réglage « Lire le risque, les
+   cases et Telegram dans l'interface Étrave » est coché par défaut.
+3. Double-clique sur `Etrave.bat` : la page s'ouvre sur `http://127.0.0.1:8788`. Sur un autre système :
+   `python interface/etrave.py`.
+
+L'interface peut être fermée à tout moment : l'EA garde ses réglages et continue d'envoyer ses alertes.
+
+### Comment elle parle à l'EA
+
+Par des fichiers texte du dossier commun de MetaTrader (`…\MetaQuotes\Terminal\Common\Files\Etrave`) : la page écrit
+`reglages.txt`, l'EA le relit toutes les 2 secondes et écrit son état (`etat-<symbole>.txt`) et ses trades
+(`trades-<symbole>.csv`). L'interface ne passe aucun ordre elle-même.
+
+- Un réglage absent du fichier laisse à l'EA la valeur saisie dans MetaTrader. Dans le testeur de stratégie, seuls les
+  réglages de MetaTrader comptent.
+- Un nouveau risque vaut pour le trade suivant, jamais pour un trade ouvert. L'EA l'annonce sur Telegram.
+- **Marge** : l'EA n'ouvre jamais une position (ajout de la pyramide compris) qui demande plus de 90 % de la marge
+  libre. Si le risque demandé est trop grand pour le levier, il réduit la taille et le dit dans le message « Ordres
+  placés ». Il retient la marge la plus prudente entre celle de MetaTrader et celle du levier saisi dans la page.
+- **Instruments** : un EA par graphique. Case « Nasdaq » cochée, case « Or » décochée par défaut (la v5 perd sur l'or ;
+  la cocher demande le mot OR). Une case décochée arrête les nouveaux trades, pas le trade en cours.
+- **Clôturer** : la demande porte son heure ; l'EA ignore une demande de plus de 2 minutes. Il ferme le trade au
+  marché, ou annule les ordres du jour s'il n'est pas encore entré. Pas de nouveau trade ce jour-là.
+- **Telegram** : les messages partent de MetaTrader, après le passage des ordres (un envoi lent ne retarde plus
+  l'entrée : défaut n° 2 de l'audit). Exemple de clôture :
+  `✅ ACHAT CLÔTURÉ : +1,3R · +0,65 % · +65,20 USD` puis la raison, le prix de sortie, le solde et le cumul.
+- **Heure du serveur** : l'EA vérifie en continu que ses réglages d'heure correspondent au serveur ; la page affiche une
+  alerte rouge si ce n'est plus le cas.
+
+### Sécurité
+
+Comme le dashboard de Vigie : écoute sur 127.0.0.1 uniquement, jeton tiré au hasard à chaque lancement, contrôle de
+l'en-tête Host, aucune ressource extérieure. Le jeton Telegram est écrit dans `reglages.txt` et n'est plus jamais
+affiché. Le mot de passe du compte MetaTrader n'est écrit que dans un fichier de démarrage provisoire, effacé une minute
+après le lancement. Sur un VPS, ouvre la page par le Bureau à distance : n'ouvre jamais le port 8788 sur internet.
+
+### Où faire tourner l'EA
+
+MetaTrader 5 doit rester ouvert de 9:30 à 15:50 New York. Ton ordinateur suffit pour la démo (sans mise en veille) ; pour
+le réel, un **VPS Windows** (2 cœurs, 4 Go) avec MetaTrader 5, ce dépôt et Python. Le VPS intégré à MetaTrader n'a pas
+d'écran et ne lance aucun autre programme : l'EA y tourne, mais sans l'interface.
+
+### Limites
+
+- L'EA modifié **n'a jamais été compilé ni exécuté** : ni la lecture des réglages, ni l'écriture de l'état, ni le calcul
+  de marge, ni les messages n'ont tourné dans MetaTrader. Les tests (`tests/test_interface.py`) couvrent l'interface et
+  l'accord des noms de fichiers et de clés entre les deux côtés.
+- Le lancement de MetaTrader avec connexion à un compte n'a jamais été essayé sous Windows.
+- Le journal des trades commence avec cette version : les trades antérieurs ne sont pas repris.
+- Le risque est le même pour tous les instruments cochés : deux instruments le même jour, c'est deux fois le risque.
+- Les autres défauts de l'EA listés dans [AUDIT.md](AUDIT.md) (séances écourtées, état perdu après un plantage de
+  MetaTrader, arrondi des lots…) ne sont pas corrigés.
 
 ### Notifications WhatsApp
 
@@ -224,8 +295,9 @@ Le détail est dans [AUDIT.md](AUDIT.md). Il a été fait sur l'ancien jeu de do
 - Deux défauts du simulateur ont été corrigés (cache jamais invalidé, 10 trades de janvier 2015 écartés).
 - **Jours fériés américains et demi-séances** : l'EA et le script TradingView gardent la position pendant la fermeture
   du marché. Coupe-les ces jours-là en attendant une correction.
-- Le script TradingView et l'EA n'ont pas été modifiés : ils ne peuvent pas être compilés ici. Leurs défauts et les
-  corrections proposées sont listés dans AUDIT.md.
+- Le script TradingView n'a pas été modifié. L'EA l'a été le 15 novembre 2026, pour l'interface Étrave et pour le
+  défaut n° 2 (messages envoyés après les ordres), sans pouvoir être compilé ici. Les autres défauts et les corrections
+  proposées sont listés dans AUDIT.md.
 
 ## Avertissement
 

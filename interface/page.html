@@ -1,0 +1,824 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>__NOM__ · interface</title>
+<style>
+  /* Mêmes couleurs et mêmes pièces que le dashboard de Vigie, en beaucoup moins de pièces. */
+  :root {
+    color-scheme: dark;
+    --page: #0d0d0d; --surface: #1a1a19; --raised: #232321; --border: rgba(255,255,255,.10);
+    --ink: #f0efec; --ink-2: #c3c2b7; --muted: #898781; --grid: #2c2c2a; --axis: #383835;
+    --accent: #3987e5; --accent-wash: rgba(57,135,229,.12);
+    --good: #0ca30c; --warning: #fab219; --critical: #e66767; --critical-fill: #d03b3b;
+  }
+  :root[data-theme="light"] {
+    color-scheme: light;
+    --page: #f9f9f7; --surface: #fcfcfb; --raised: #f1f0ec; --border: rgba(11,11,11,.10);
+    --ink: #0b0b0b; --ink-2: #52514e; --muted: #898781; --grid: #e1e0d9; --axis: #c3c2b7;
+    --accent: #2a78d6; --accent-wash: rgba(42,120,214,.10);
+    --good: #006300; --warning: #8a5a00; --critical: #d03b3b; --critical-fill: #d03b3b;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--page); color: var(--ink); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  button, input, select { font: inherit; color: inherit; }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 0 16px 48px; }
+
+  header { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; padding: 18px 0 14px; }
+  .brand { display: flex; align-items: center; gap: 12px; margin-right: auto; }
+  .brand svg { width: 38px; height: 38px; color: var(--accent); flex: none; }
+  .brand .name { font-size: 22px; font-weight: 700; letter-spacing: .22em; text-transform: uppercase; line-height: 1; }
+  .brand .tagline { color: var(--muted); font-size: 12px; margin-top: 5px; }
+  .pills { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .pill { display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; border-radius: 999px; border: 1px solid var(--border); background: var(--surface); font-size: 12px; font-weight: 600; white-space: nowrap; }
+  .pill .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+  .pill.good .dot { background: var(--good); } .pill.warn .dot { background: var(--warning); } .pill.bad .dot { background: var(--critical-fill); }
+  .pill.live { border-color: var(--critical-fill); color: var(--critical); }
+  .btn { padding: 7px 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); cursor: pointer; font-weight: 600; font-size: 13px; }
+  .btn:hover { background: var(--raised); } .btn:disabled { opacity: .45; cursor: not-allowed; }
+  .btn.primary { background: var(--accent); border-color: transparent; color: #fff; }
+  .btn.danger { border-color: var(--critical-fill); color: var(--critical); }
+  .btn.ghost { border-color: transparent; background: transparent; color: var(--ink-2); padding: 7px 8px; }
+  .btn svg { width: 18px; height: 18px; display: block; }
+  .btn.small { padding: 5px 10px; font-size: 12px; white-space: nowrap; }
+
+  nav { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 18px; overflow-x: auto; }
+  nav button { background: none; border: 0; padding: 10px 14px; cursor: pointer; color: var(--ink-2); font-weight: 600; border-bottom: 2px solid transparent; white-space: nowrap; }
+  nav button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent); }
+  section[hidden] { display: none; }
+
+  .banner { border: 1px solid var(--border); border-left: 3px solid var(--warning); background: var(--surface); border-radius: 8px; padding: 10px 14px; margin-bottom: 12px; color: var(--ink-2); }
+  .banner.bad { border-left-color: var(--critical-fill); } .banner.ok { border-left-color: var(--good); }
+  .banner b { color: var(--ink); }
+
+  .tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-bottom: 16px; }
+  .tiles .hero { grid-column: 1 / -1; }
+  @media (min-width: 700px) { .tiles { grid-template-columns: repeat(3, minmax(0, 1fr)); } .tiles.sim { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+  @media (min-width: 1000px) { .tiles.main { grid-template-columns: repeat(6, minmax(0, 1fr)); } .tiles.main .hero { grid-column: span 2; } }
+  .tile { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; min-width: 0; container-type: inline-size; }
+  .tile .label { color: var(--muted); font-size: 12px; }
+  .tile .value { font-size: clamp(16px, 12.5cqw, 24px); font-weight: 600; margin-top: 4px; overflow-wrap: anywhere; }
+  .tile .value small { font-size: 13px; font-weight: 500; color: var(--ink-2); }
+  .tile .sub { color: var(--ink-2); font-size: 12px; margin-top: 2px; }
+  .hero .value { font-size: clamp(28px, 11cqw, 46px); line-height: 1.05; white-space: nowrap; }
+  .tile.alert { border-color: var(--critical-fill); }
+  .up { color: var(--good); } .down { color: var(--critical); }
+  .up, .down { white-space: nowrap; }
+
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px; margin-bottom: 16px; min-width: 0; }
+  .card h2 { margin: 0 0 2px; font-size: 15px; } .card h2 small { color: var(--muted); font-weight: 500; font-size: 12px; }
+  .card .hint { color: var(--muted); font-size: 12px; margin-bottom: 12px; }
+  .card .head-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+  .card p { color: var(--ink-2); margin: 0 0 10px; max-width: 78ch; }
+  .card ol, .card ul { color: var(--ink-2); margin: 0 0 12px; padding-left: 20px; max-width: 78ch; } .card li { margin: 3px 0; }
+  .status { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; margin-bottom: 10px; }
+  .status .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); flex: none; } .status.on .dot { background: var(--good); }
+  .secret-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 10px; }
+  .secret-row input { flex: 1; min-width: 200px; max-width: 460px; }
+  input[type="text"], input[type="password"], input[type="number"], select { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 7px 10px; min-width: 0; }
+  input:focus, select:focus, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .empty { color: var(--muted); padding: 22px 0; text-align: center; }
+  .chips { display: flex; gap: 6px; flex-wrap: wrap; }
+  .chip { padding: 3px 10px; border-radius: 999px; border: 1px solid var(--border); background: var(--surface); cursor: pointer; font-size: 12px; font-weight: 600; color: var(--ink-2); }
+  .chip[aria-pressed="true"] { background: var(--accent-wash); border-color: var(--accent); color: var(--ink); }
+
+  /* Instruments : une ligne par instrument, sa case, puis ce que fait son EA aujourd'hui. */
+  .inst { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 14px; padding: 12px 0; border-top: 1px solid var(--grid); }
+  .inst:first-of-type { border-top: 0; padding-top: 4px; }
+  .inst .who { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .inst .who b { font-size: 15px; }
+  .inst dl { grid-column: 1 / -1; display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 3px 12px; margin: 0; color: var(--ink-2); font-size: 13px; }
+  .inst dt { color: var(--muted); } .inst dd { margin: 0; overflow-wrap: anywhere; }
+  .switch { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; font-weight: 600; }
+  .switch input { width: 18px; height: 18px; accent-color: var(--accent); }
+  .tag { display: inline-block; padding: 1px 7px; border-radius: 6px; background: var(--raised); color: var(--ink-2); font-size: 12px; font-weight: 600; }
+
+  .scroll { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+  th { text-align: left; color: var(--muted); font-weight: 600; font-size: 12px; padding: 6px 10px; border-bottom: 1px solid var(--grid); white-space: nowrap; }
+  th.num, td.num { text-align: right; }
+  td { padding: 8px 10px; border-bottom: 1px solid var(--grid); white-space: nowrap; }
+  tr:last-child td { border-bottom: 0; }
+  @media (max-width: 620px) { .opt { display: none; } td, th { padding-left: 4px; padding-right: 4px; } table { font-size: 12.5px; } .card { padding: 14px 12px; } td:first-child, th:first-child { padding-left: 0; } td:last-child, th:last-child { padding-right: 0; } }
+
+  .chart { position: relative; width: 100%; }
+  .chart svg { display: block; width: 100%; overflow: visible; }
+  .chart text { fill: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+  .tip { position: absolute; pointer-events: none; background: var(--raised); border: 1px solid var(--border); border-radius: 8px; padding: 7px 10px; font-size: 12px; box-shadow: 0 6px 20px rgba(0,0,0,.25); white-space: nowrap; z-index: 2; }
+  .tip b { display: block; font-size: 14px; } .tip span { display: block; color: var(--ink-2); }
+
+  /* Réglage du risque */
+  .risk-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 6px 0 10px; }
+  .risk-row .big { display: flex; align-items: baseline; gap: 6px; }
+  .risk-row .big input { width: 108px; font-size: 26px; font-weight: 600; padding: 4px 10px; text-align: right; }
+  .risk-row .big span { font-size: 18px; color: var(--ink-2); }
+  .risk-row input[type="range"] { flex: 1; min-width: 180px; accent-color: var(--accent); }
+  .lever { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 4px; }
+  .lever input { width: 90px; text-align: right; }
+  .savebar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 12px; }
+  .savebar .msg { color: var(--ink-2); flex: 1; min-width: 200px; } .savebar .msg.err { color: var(--critical); }
+  .form { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px 14px; margin-bottom: 12px; max-width: 760px; }
+  .form label { display: block; font-weight: 600; font-size: 13px; margin-bottom: 4px; } .form input { width: 100%; }
+
+  dialog { background: var(--surface); color: var(--ink); border: 1px solid var(--border); border-radius: 12px; padding: 20px; max-width: 440px; width: calc(100% - 32px); }
+  dialog::backdrop { background: rgba(0,0,0,.55); }
+  dialog h3 { margin: 0 0 8px; } dialog p { color: var(--ink-2); margin: 0 0 12px; }
+  dialog .actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 14px; }
+  #toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: var(--raised); border: 1px solid var(--border); border-radius: 10px; padding: 10px 16px; display: none; z-index: 5; max-width: calc(100% - 32px); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="brand">
+      <svg viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M8 8c1.800 9.500 5.800 17.500 12 24 6.200-6.500 10.200-14.500 12-24"/>
+        <path d="M20 5v27"/>
+        <path d="M3 33c2.800-2.300 5.700-2.300 8.500 0M28.500 33c2.800-2.300 5.700-2.300 8.500 0" opacity=".55"/>
+      </svg>
+      <div><div class="name">__NOM__</div><div class="tagline">__SLOGAN__</div></div>
+    </div>
+    <div class="pills">
+      <span class="pill" id="pill-ea"><span class="dot"></span><span>…</span></span>
+      <span class="pill" id="pill-compte" hidden><span class="dot"></span><span></span></span>
+      <span class="pill" id="pill-ny" hidden><span class="dot"></span><span></span></span>
+      <button class="btn ghost" id="btn-theme" title="Thème clair / sombre" aria-label="Changer de thème"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="7.5" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M10 2.500a7.500 7.500 0 0 1 0 15Z" fill="currentColor"/></svg></button>
+    </div>
+  </header>
+
+  <nav role="tablist">
+    <button role="tab" data-tab="overview" aria-selected="true">Vue d’ensemble</button>
+    <button role="tab" data-tab="risk" aria-selected="false">Risque</button>
+    <button role="tab" data-tab="connections" aria-selected="false">Connexions</button>
+  </nav>
+
+  <div id="banner"></div>
+
+  <section id="tab-overview">
+    <div class="tiles main" id="tiles-overview"></div>
+    <div class="card">
+      <h2>Instruments</h2>
+      <div class="hint">Une case décochée : l’EA de cet instrument ne prend plus de nouveau trade. Un trade déjà ouvert continue d’être géré jusqu’à sa sortie.</div>
+      <div id="instruments"></div>
+    </div>
+    <div class="card">
+      <div class="head-row">
+        <div><h2>Courbe des trades pris</h2><div class="hint" id="curve-hint">Résultat cumulé après chaque trade clôturé par l’EA.</div></div>
+        <div class="chips" id="curve-unit" role="group" aria-label="Unité de la courbe"></div>
+      </div>
+      <div class="chart" id="chart-curve"></div>
+    </div>
+    <div class="card">
+      <h2>Trades clôturés <small id="trades-count"></small></h2>
+      <div class="scroll" id="trades"></div>
+    </div>
+  </section>
+
+  <section id="tab-risk" hidden>
+    <div class="card">
+      <h2>Risque par trade</h2>
+      <div class="hint">La part du solde perdue quand le stop est touché (1R). C’est le seul réglage : tout le reste garde les valeurs du test.</div>
+      <div class="status" id="risk-status"><span class="dot"></span><span></span></div>
+      <div class="risk-row">
+        <div class="big"><input type="number" id="risk-input" min="0.05" max="20" step="0.05" inputmode="decimal" aria-label="Risque par trade, en pourcentage du solde"><span>% du solde</span></div>
+        <input type="range" id="risk-slider" min="0" max="1000" step="1" aria-label="Risque par trade">
+      </div>
+      <div class="chips" id="risk-presets" role="group" aria-label="Valeurs courantes"></div>
+      <h2 style="margin-top:18px">Levier de ton courtier</h2>
+      <div class="hint">Il fixe la marge demandée, donc la taille maximale de la position. Plus le risque est grand, plus la position est grosse : sans assez de levier, l’EA doit la réduire.</div>
+      <div class="lever"><span>1 :</span><input type="number" id="lever-input" min="1" max="2000" step="1" inputmode="decimal" placeholder="—" aria-label="Levier du courtier"><span id="lever-hint" style="color:var(--muted);font-size:12px"></span></div>
+      <div class="savebar">
+        <button class="btn primary" id="risk-save" disabled>Enregistrer</button>
+        <button class="btn" id="risk-cancel" disabled>Annuler</button>
+        <div class="msg" id="risk-msg"></div>
+      </div>
+    </div>
+    <div class="card">
+      <h2>Ce que le test donne à ce risque <small id="sim-title"></small></h2>
+      <div class="hint" id="sim-hint"></div>
+      <div class="tiles sim" id="tiles-sim"></div>
+      <div id="sim-notes"></div>
+    </div>
+    <div class="card">
+      <h2>Ce que disent les tests</h2>
+      <ul>
+        <li><b>Nasdaq, 2018 → novembre 2026 :</b> 1 427 trades, +0,31R par trade, +438R au total, pire baisse −25R, 13 pertes de suite au pire, 58 % de stops pleins.</li>
+        <li><b>Nasdaq avant 2018 :</b> la stratégie perdait (−55R sur 2015-2017, −33R sur 2013-2014). L’ancien test 2015-2026 a connu une baisse de 74R.</li>
+        <li><b>Or, 2018 → novembre 2026 :</b> la même stratégie perd : −137R sur 773 trades, 7 années sur 9 dans le rouge. Le spread y coûte environ 12 % du range.</li>
+        <li>Le passé ne garantit rien : choisis le risque en regardant la pire baisse, pas le gain par an.</li>
+      </ul>
+    </div>
+  </section>
+
+  <section id="tab-connections" hidden>
+    <div id="connections"></div>
+  </section>
+</div>
+
+<dialog id="dlg-risk">
+  <h3>Risque élevé</h3>
+  <p id="risk-dlg-text"></p>
+  <label for="risk-word">Tape <b>RISQUE</b> pour confirmer :</label>
+  <input type="text" id="risk-word" autocomplete="off" style="width:100%;margin-top:6px">
+  <div class="actions"><button class="btn" id="risk-dlg-cancel">Annuler</button><button class="btn danger" id="risk-dlg-ok" disabled>Enregistrer ce risque</button></div>
+</dialog>
+<dialog id="dlg-gold">
+  <h3>Activer l’or</h3>
+  <p>Sur l’or, la stratégie <b>perd</b> dans le test : −137R sur 2018-2026 (773 trades), 7 années sur 9 dans le rouge. Aucun réglage n’a été cherché pour l’or. Si tu l’actives, c’est une expérience, de préférence sur un compte démo.</p>
+  <label for="gold-word">Tape <b>OR</b> pour confirmer :</label>
+  <input type="text" id="gold-word" autocomplete="off" style="width:100%;margin-top:6px">
+  <div class="actions"><button class="btn" id="gold-cancel">Annuler</button><button class="btn danger" id="gold-ok" disabled>Activer l’or</button></div>
+</dialog>
+<dialog id="dlg-close">
+  <h3>Clôturer maintenant</h3>
+  <p id="close-text"></p>
+  <label for="close-word">Tape <b>CLOTURER</b> pour confirmer :</label>
+  <input type="text" id="close-word" autocomplete="off" style="width:100%;margin-top:6px">
+  <div class="actions"><button class="btn" id="close-cancel">Annuler</button><button class="btn danger" id="close-ok" disabled>Clôturer</button></div>
+</dialog>
+<div id="toast" role="status"></div>
+
+<script>
+'use strict';
+const JETON = '__JETON__';
+const $ = (id) => document.getElementById(id);
+
+/** Crée un élément. Le texte passe toujours par textContent : jamais de HTML venu des données. */
+function el(tag, attrs, ...children) {
+  const node = document.createElement(tag);
+  for (const [key, value] of Object.entries(attrs || {})) {
+    if (value === false || value == null) continue;
+    if (key === 'class') node.className = value;
+    else if (key.startsWith('on')) node.addEventListener(key.slice(2), value);
+    else if (key in node && key !== 'list') node[key] = value;
+    else node.setAttribute(key, value);
+  }
+  for (const child of children.flat()) if (child != null && child !== false) node.append(child);
+  return node;
+}
+function svg(tag, attrs, ...children) {
+  const node = document.createElementNS('http://www.w3.org/2000/svg', tag);
+  for (const [key, value] of Object.entries(attrs || {})) node.setAttribute(key, value);
+  node.append(...children);
+  return node;
+}
+async function api(path, body) {
+  const response = await fetch(path, {
+    method: body === undefined ? 'GET' : 'POST',
+    headers: { 'x-etrave-jeton': JETON, ...(body === undefined ? {} : { 'content-type': 'application/json' }) },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  const data = await response.json().catch(() => ({ ok: false, error: 'Réponse illisible' }));
+  if (!response.ok) throw new Error(data.error || `Erreur ${response.status}`);
+  return data;
+}
+function toast(message) {
+  const node = $('toast');
+  node.textContent = message;
+  node.style.display = 'block';
+  clearTimeout(toast.timer);
+  toast.timer = setTimeout(() => (node.style.display = 'none'), 4600);
+}
+
+// ---------------------------------------------------------------- formats
+const sign = (v) => (v > 0 ? '+' : v < 0 ? '−' : '');
+const num = (v, d = 2) => Math.abs(v).toLocaleString('fr-FR', { minimumFractionDigits: d, maximumFractionDigits: d });
+function money(v, devise, d = 2) {
+  if (v == null) return '—';
+  try { return v.toLocaleString('fr-FR', { style: 'currency', currency: devise || 'USD', currencyDisplay: 'narrowSymbol', minimumFractionDigits: d, maximumFractionDigits: d }); }
+  catch (error) { return `${v.toLocaleString('fr-FR', { minimumFractionDigits: d, maximumFractionDigits: d })} ${devise || ''}`.trim(); }
+}
+const moneySigned = (v, devise) => (v == null ? '—' : `${sign(v)}${money(Math.abs(v), devise)}`);
+const pctSigned = (v, d = 2) => (v == null ? '—' : `${sign(v)}${num(v, d)} %`);
+const rSigned = (v, d = 1) => (v == null ? '—' : `${sign(v)}${num(v, d)}R`);
+const pct = (v, d = 0) => `${v.toLocaleString('fr-FR', { minimumFractionDigits: d, maximumFractionDigits: d })} %`;
+const riskText = (v) => `${v.toLocaleString('fr-FR', { maximumFractionDigits: 2 })} %`;
+const fmtDate = (ts) => new Date(ts * 1000).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: '2-digit' });
+/** Un résultat : flèche + signe + couleur, pour ne jamais reposer sur la couleur seule. */
+function delta(v, text) {
+  return el('span', { class: v > 0 ? 'up' : v < 0 ? 'down' : '' }, `${v > 0 ? '▲ ' : v < 0 ? '▼ ' : ''}${text}`);
+}
+function tile(label, value, sub, variant) {
+  return el('div', { class: `tile${variant ? ` ${variant}` : ''}` }, el('div', { class: 'label' }, label), el('div', { class: 'value' }, value), sub ? el('div', { class: 'sub' }, sub) : null);
+}
+const INSTRUMENTS = { nasdaq: 'Nasdaq', or: 'Or' };
+
+// ---------------------------------------------------------------- état global
+let state = null;      // /api/etat
+let trades = [];       // /api/trades
+let unit = 'argent';   // unité de la courbe : argent, pct ou r
+let draft = null;      // réglage du risque en cours de saisie : { risque, levier }
+let sim = null;        // dernier résultat de /api/risque
+let telegramResult = null;
+let mt5Test = null;    // essai Telegram demandé à MetaTrader : { numero, depuis, resultat }
+let closing = null;    // symbole dont on demande la clôture
+
+const running = () => (state ? state.eas.filter((e) => e.en_marche) : []);
+/** L'EA qui renseigne le compte : un EA en marche, sinon le dernier état connu. */
+const account = () => running()[0] || (state && state.eas[0]) || null;
+const eaRisk = () => { const a = account(); return a && a.risque_pct != null ? a.risque_pct : null; };
+const currentRisk = () => (state && state.reglages.risquePct != null ? state.reglages.risquePct : eaRisk() != null ? eaRisk() : 0.5);
+
+// ---------------------------------------------------------------- en-tête et alertes
+function renderHeader() {
+  const ea = $('pill-ea'), compte = $('pill-compte'), ny = $('pill-ny');
+  const live = running();
+  const a = account();
+  if (!state) { ea.className = 'pill bad'; ea.lastChild.textContent = 'interface arrêtée'; compte.hidden = ny.hidden = true; return; }
+  ea.className = `pill ${live.length ? 'good' : 'warn'}`;
+  ea.lastChild.textContent = live.length ? `EA en marche (${live.map((e) => e.symbole).join(', ')})` : 'EA arrêté';
+  compte.hidden = !a;
+  if (a) {
+    const real = a.compte_type === 'reel';
+    compte.className = `pill${real ? ' live' : ''}`;
+    compte.lastChild.textContent = real ? 'Compte RÉEL' : a.compte_type === 'demo' ? 'Compte démo' : 'Compte de concours';
+    compte.title = `Compte ${a.compte_login || ''} · ${a.compte_serveur || ''}`;
+  }
+  ny.hidden = !live.length;
+  if (live.length) { ny.className = `pill ${live[0].horloge_ok ? '' : 'bad'}`; ny.lastChild.textContent = `New York ${String(live[0].heure_ny || '').slice(-5)}`; }
+
+  const banners = [];
+  if (state.eas.length === 0) banners.push(el('div', { class: 'banner' }, el('b', {}, 'Aucun EA vu pour l’instant. '), 'Ouvre MetaTrader 5, pose l’EA ORB-v5 sur un graphique du Nasdaq et autorise le trading algorithmique. Tes réglages d’ici seront pris dès qu’il démarre.'));
+  else if (live.length === 0) banners.push(el('div', { class: 'banner bad' }, el('b', {}, 'L’EA ne répond plus. '), 'MetaTrader 5 est fermé, ou l’EA a été retiré du graphique. Tant qu’il est arrêté, seuls les stops posés chez le courtier protègent un trade ouvert.'));
+  for (const e of live) {
+    if (!e.connecte) banners.push(el('div', { class: 'banner bad' }, el('b', {}, `${e.symbole} : `), 'MetaTrader 5 n’est pas connecté au courtier.'));
+    else if (!e.trading_auto) banners.push(el('div', { class: 'banner bad' }, el('b', {}, `${e.symbole} : trading automatique coupé. `), 'Dans MetaTrader 5, active le bouton « Trading algo » et coche « Autoriser le trading algorithmique » dans les réglages de l’EA.'));
+    if (!e.horloge_ok) banners.push(el('div', { class: 'banner bad' }, el('b', {}, `${e.symbole} : heure du serveur mal réglée. `), 'L’heure de New York calculée par l’EA est fausse : corrige « Décalage GMT du serveur » ou « Heure d’été du serveur » dans les réglages de l’EA, sinon le range sera pris sur la mauvaise bougie.'));
+    if (!e.regles_test) banners.push(el('div', { class: 'banner' }, el('b', {}, `${e.symbole} : `), 'un réglage de la stratégie saisi dans MetaTrader diffère des valeurs du test. Les chiffres de l’onglet Risque ne valent que pour les valeurs d’origine.'));
+  }
+  $('banner').replaceChildren(...banners);
+}
+
+// ---------------------------------------------------------------- vue d'ensemble
+function totals() {
+  let argent = 0, r = 0, compose = 1, gagnants = 0;
+  for (const t of trades) { argent += t.net; r += t.r || 0; if (t.pct != null) compose *= 1 + t.pct / 100; if ((t.r || 0) > 0.05) gagnants += 1; }
+  return { argent, r, pct: (compose - 1) * 100, gagnants, n: trades.length };
+}
+function renderOverview() {
+  const a = account();
+  const devise = a ? a.devise : (trades[0] && trades[0].devise) || 'USD';
+  const open = running().filter((e) => e.position);
+  const sum = totals();
+  const tiles = [];
+  tiles.push(tile('Solde du compte', a && a.solde != null ? money(a.solde, devise) : '—',
+    a ? (a.en_marche ? (a.capital != null && open.length ? `${money(a.capital, devise)} avec le trade en cours` : `${a.compte_type === 'reel' ? 'compte réel' : 'compte démo'} · ${a.compte_serveur || ''}`) : 'dernier solde connu, EA arrêté') : 'en attente de l’EA', 'hero'));
+  if (open.length) {
+    const result = open.reduce((s, e) => s + (e.pos_resultat || 0), 0);
+    const base = open[0].solde_depart || (a && a.solde) || 0;
+    const r = open.length === 1 ? open[0].pos_r : null;
+    tiles.push(tile(`Trade en cours${open.length > 1 ? 's' : ''}`, delta(result, r != null ? rSigned(r) : moneySigned(result, devise)),
+      `${moneySigned(result, devise)} · ${base > 0 ? pctSigned((100 * result) / base) : '—'}`));
+  } else {
+    const waiting = running().filter((e) => e.attente);
+    tiles.push(tile('Trade en cours', waiting.length ? 'Ordres en attente' : 'Aucun', waiting.length ? waiting.map((e) => e.symbole).join(', ') : running().length ? 'un trade par jour au plus, après 9:35 New York' : ''));
+  }
+  tiles.push(tile('Résultat cumulé', sum.n ? delta(sum.argent, moneySigned(sum.argent, devise)) : '—', sum.n ? `${pctSigned(sum.pct)} · ${rSigned(sum.r)}` : 'aucun trade clôturé'));
+  tiles.push(tile('Trades clôturés', String(sum.n), sum.n ? `${pct((100 * sum.gagnants) / sum.n)} gagnants` : ''));
+  const risk = eaRisk();
+  const perTrade = a && a.solde != null && risk != null ? (a.solde * risk) / 100 : null;
+  tiles.push(tile('Risque par trade', risk != null ? riskText(risk) : riskText(currentRisk()), perTrade != null ? `≈ ${money(perTrade, devise)} par trade` : 'pris au prochain lancement de l’EA', risk != null && risk > 1 ? 'alert' : ''));
+  $('tiles-overview').replaceChildren(...tiles);
+  renderInstruments();
+  renderCurve();
+  renderTrades(devise);
+}
+function instrumentRow(key, label, eas) {
+  const checked = key in state.reglages.instruments ? state.reglages.instruments[key] : true;
+  const box = key in INSTRUMENTS
+    ? el('label', { class: 'switch' }, el('input', { type: 'checkbox', checked, onchange: (event) => toggleInstrument(key, event.target) }), el('b', {}, label))
+    : el('b', {}, label);
+  const row = el('div', { class: 'inst' });
+  const who = el('div', { class: 'who' }, box);
+  if (key === 'or') who.append(el('span', { class: 'tag' }, 'perd dans le test'));
+  row.append(who);
+  const actions = el('div', {});
+  row.append(actions);
+  if (eas.length === 0) {
+    row.append(el('dl', {}, el('dt', {}, 'EA'), el('dd', {}, checked ? 'Aucun EA sur un graphique de cet instrument : pose ORB-v5 sur son graphique dans MetaTrader 5.' : 'Aucun EA sur un graphique de cet instrument.')));
+    return row;
+  }
+  for (const e of eas) {
+    who.append(el('span', { class: 'tag' }, e.symbole), el('span', { class: `status${e.en_marche ? ' on' : ''}`, style: 'margin:0' }, el('span', { class: 'dot' }), e.en_marche ? (e.actif ? 'en marche' : 'en marche, désactivé') : 'arrêté'));
+    if (e.en_marche && (e.position || e.attente)) {
+      actions.append(el('button', { class: 'btn danger small', onclick: () => askClose(e) }, e.position ? 'Clôturer le trade' : 'Annuler les ordres'));
+    }
+    const range = e.range_haut ? `${e.range_bas} – ${e.range_haut}` : '—';
+    const list = el('dl', {}, el('dt', {}, 'Aujourd’hui'), el('dd', {}, e.jour || '—'), el('dt', {}, 'Range 9:30'), el('dd', {}, range), el('dt', {}, 'Filtres'), el('dd', {}, e.filtres || '—'));
+    if (e.position) {
+      list.append(el('dt', {}, 'Position'), el('dd', {}, `${e.pos_sens === 1 ? 'Achat' : 'Vente'} ${e.pos_lots} lot à ${e.pos_entree} · stop ${e.pos_stop}${e.pos_pyramide ? ' · pyramide faite' : ''}`));
+      list.append(el('dt', {}, 'Résultat'), el('dd', {}, delta(e.pos_resultat || 0, `${rSigned(e.pos_r)} · ${moneySigned(e.pos_resultat, e.devise)}${e.solde_depart > 0 ? ` · ${pctSigned((100 * e.pos_resultat) / e.solde_depart)}` : ''}`)));
+    }
+    if (e.stats_n) list.append(el('dt', {}, 'Depuis le début'), el('dd', {}, `${e.stats_n} trades · ${rSigned(e.stats_r)} · pire baisse −${num(e.stats_baisse, 1)}R`));
+    row.append(list);
+  }
+  return row;
+}
+function renderInstruments() {
+  const host = $('instruments');
+  if (!state) return host.replaceChildren(el('div', { class: 'empty' }, 'Chargement…'));
+  // Ne pas redessiner pendant qu'une case est en cours de confirmation.
+  if (document.querySelector('dialog[open]')) return;
+  const rows = Object.entries(INSTRUMENTS).map(([key, label]) => instrumentRow(key, label, state.eas.filter((e) => e.instrument === key)));
+  const others = state.eas.filter((e) => !(e.instrument in INSTRUMENTS));
+  if (others.length) rows.push(instrumentRow('autre', 'Autre symbole', others));
+  host.replaceChildren(...rows);
+}
+async function saveInstrument(key, value, confirmation) {
+  try {
+    const result = await api('/api/reglages', { valeurs: { [key]: value }, confirmation });
+    state.reglages = result.reglages;
+    toast(value ? `${INSTRUMENTS[key]} activé : l’EA le prend dans les 2 secondes.` : `${INSTRUMENTS[key]} désactivé : plus de nouveau trade.`);
+  } catch (error) { toast(error.message); }
+  renderInstruments();
+}
+function toggleInstrument(key, input) {
+  if (key === 'or' && input.checked) {
+    input.checked = false;
+    $('gold-word').value = '';
+    $('gold-ok').disabled = true;
+    return $('dlg-gold').showModal();
+  }
+  saveInstrument(key, input.checked, '');
+}
+function askClose(e) {
+  closing = e.symbole;
+  $('close-text').textContent = e.position
+    ? `L’EA va fermer au marché le trade ${e.symbole} (${e.pos_sens === 1 ? 'achat' : 'vente'} de ${e.pos_lots} lot${e.pos_pyramide ? ', ajout de la pyramide compris' : ''}), au prix du moment. Résultat actuel : ${rSigned(e.pos_r)}, ${moneySigned(e.pos_resultat, e.devise)}.`
+    : `L’EA va annuler ses ordres du jour sur ${e.symbole} : pas de trade aujourd’hui.`;
+  $('close-word').value = '';
+  $('close-ok').disabled = true;
+  $('dlg-close').showModal();
+}
+
+function niceTicks(min, max, count) {
+  if (min === max) { min -= 1; max += 1; }
+  const raw = (max - min) / count;
+  const mag = Math.pow(10, Math.floor(Math.log10(raw)));
+  const step = [1, 2, 2.5, 5, 10].map((m) => m * mag).find((s) => s >= raw);
+  const ticks = [];
+  for (let v = Math.floor(min / step) * step; v <= max + step * 0.5; v += step) ticks.push(Number(v.toFixed(10)));
+  return ticks;
+}
+const UNITS = { argent: 'Argent', pct: '%', r: 'R' };
+/** Courbe du résultat cumulé : un point par trade clôturé, la ligne de zéro en repère. */
+function renderCurve() {
+  const host = $('chart-curve');
+  $('curve-unit').replaceChildren(...Object.entries(UNITS).map(([key, label]) => el('button', { class: 'chip', 'aria-pressed': String(unit === key), onclick: () => { unit = key; delete host.dataset.drawn; renderCurve(); } }, label)));
+  if (trades.length === 0) { delete host.dataset.drawn; return host.replaceChildren(el('div', { class: 'empty' }, 'Aucun trade clôturé pour l’instant : la courbe apparaîtra après la première sortie.')); }
+  const devise = trades[trades.length - 1].devise || 'USD';
+  const show = (v) => (unit === 'argent' ? moneySigned(v, devise) : unit === 'pct' ? pctSigned(v) : rSigned(v));
+  const axis = (v) => (unit === 'argent' ? money(v, devise, 0) : unit === 'pct' ? `${v.toLocaleString('fr-FR')} %` : `${v.toLocaleString('fr-FR')}R`);
+  let argent = 0, r = 0, compose = 1;
+  const points = [{ i: 0, value: 0 }];
+  trades.forEach((t, index) => {
+    argent += t.net; r += t.r || 0; if (t.pct != null) compose *= 1 + t.pct / 100;
+    points.push({ i: index + 1, value: unit === 'argent' ? argent : unit === 'pct' ? (compose - 1) * 100 : r, trade: t });
+  });
+  const W = Math.max(320, host.clientWidth), H = W > 520 ? 280 : 220, m = { l: 62, r: 78, t: 12, b: 26 };
+  const last = points[points.length - 1];
+  const drawn = [W, unit, points.length, last.value].join('|');
+  if (host.dataset.drawn === drawn) return;
+  host.dataset.drawn = drawn;
+  host.replaceChildren();
+  const values = points.map((p) => p.value);
+  const ticks = niceTicks(Math.min(...values), Math.max(...values), 4);
+  const y0 = ticks[0], y1 = ticks[ticks.length - 1];
+  const x = (i) => m.l + (i / Math.max(1, last.i)) * (W - m.l - m.r);
+  const y = (v) => m.t + (1 - (v - y0) / (y1 - y0)) * (H - m.t - m.b);
+  const root = svg('svg', { viewBox: `0 0 ${W} ${H}`, height: H, role: 'img', 'aria-label': 'Résultat cumulé des trades pris par l’EA' });
+  for (const tick of ticks) {
+    root.append(svg('line', { x1: m.l, x2: W - m.r, y1: y(tick), y2: y(tick), stroke: tick === 0 ? 'var(--axis)' : 'var(--grid)', 'stroke-width': 1 }));
+    const label = svg('text', { x: m.l - 8, y: y(tick) + 4, 'text-anchor': 'end' }); label.textContent = axis(tick); root.append(label);
+  }
+  for (const [i, anchor, text] of [[0, 'start', fmtDate(trades[0].sortie)], [last.i, 'end', fmtDate(trades[trades.length - 1].sortie)]]) {
+    const label = svg('text', { x: x(i), y: H - 6, 'text-anchor': anchor }); label.textContent = text; root.append(label);
+  }
+  const line = points.map((p, index) => `${index ? 'L' : 'M'}${x(p.i).toFixed(1)},${y(p.value).toFixed(1)}`).join(' ');
+  root.append(svg('path', { d: line, fill: 'none', stroke: 'var(--accent)', 'stroke-width': 2, 'stroke-linejoin': 'round', 'stroke-linecap': 'round' }));
+  if (points.length <= 60) for (const p of points.slice(1)) root.append(svg('circle', { cx: x(p.i), cy: y(p.value), r: 3, fill: 'var(--accent)', stroke: 'var(--surface)', 'stroke-width': 1.5 }));
+  root.append(svg('circle', { cx: x(last.i), cy: y(last.value), r: 4.5, fill: 'var(--accent)', stroke: 'var(--surface)', 'stroke-width': 2 }));
+  const end = svg('text', { x: x(last.i) + 9, y: y(last.value) + 4, style: 'fill:var(--ink);font-weight:600' }); end.textContent = show(last.value); root.append(end);
+  const cross = svg('line', { y1: m.t, y2: H - m.b, stroke: 'var(--axis)', 'stroke-width': 1, visibility: 'hidden' });
+  const dot = svg('circle', { r: 4.5, fill: 'var(--accent)', stroke: 'var(--surface)', 'stroke-width': 2, visibility: 'hidden' });
+  root.append(cross, dot);
+  const tip = el('div', { class: 'tip', hidden: true });
+  host.append(root, tip);
+  const hide = () => { cross.setAttribute('visibility', 'hidden'); dot.setAttribute('visibility', 'hidden'); tip.hidden = true; };
+  root.addEventListener('pointerleave', hide);
+  root.addEventListener('pointermove', (event) => {
+    const box = root.getBoundingClientRect();
+    const px = ((event.clientX - box.left) / box.width) * W;
+    let best = points[0];
+    for (const p of points) if (Math.abs(x(p.i) - px) < Math.abs(x(best.i) - px)) best = p;
+    cross.setAttribute('x1', x(best.i)); cross.setAttribute('x2', x(best.i)); cross.setAttribute('visibility', 'visible');
+    dot.setAttribute('cx', x(best.i)); dot.setAttribute('cy', y(best.value)); dot.setAttribute('visibility', 'visible');
+    const t = best.trade;
+    if (!t) tip.replaceChildren(el('b', {}, show(0)), el('span', {}, 'avant le premier trade'));
+    else tip.replaceChildren(el('b', {}, `Cumul ${show(best.value)}`), el('span', {}, `Trade ${best.i} · ${t.date} · ${t.symbole} · ${t.sens === 1 ? 'achat' : 'vente'}`), el('span', {}, `${rSigned(t.r)} · ${moneySigned(t.net, t.devise)} · ${pctSigned(t.pct)}`), el('span', {}, t.raison));
+    tip.hidden = false;
+    const left = (x(best.i) / W) * box.width;
+    tip.style.left = `${Math.min(Math.max(0, left + 12), box.width - tip.offsetWidth)}px`;
+    tip.style.top = `${Math.max(0, (y(best.value) / H) * box.height - tip.offsetHeight - 10)}px`;
+  });
+}
+function renderTrades(devise) {
+  $('trades-count').textContent = trades.length ? `${trades.length}` : '';
+  if (trades.length === 0) return $('trades').replaceChildren(el('div', { class: 'empty' }, 'Aucun trade clôturé pour l’instant.'));
+  const rows = trades.slice().reverse().slice(0, 200).map((t) => el('tr', {},
+    el('td', {}, t.date.slice(2), el('span', { class: 'opt' }, ` ${t.heure}`)),
+    el('td', { class: 'opt' }, t.symbole),
+    el('td', {}, t.sens === 1 ? 'Achat' : 'Vente', t.pyramide ? el('span', { class: 'opt' }, ' + pyramide') : null),
+    el('td', { class: 'num' }, delta(t.r || 0, rSigned(t.r))),
+    el('td', { class: 'num' }, pctSigned(t.pct)),
+    el('td', { class: 'num' }, moneySigned(t.net, t.devise || devise)),
+    el('td', { class: 'opt' }, t.raison)));
+  $('trades').replaceChildren(el('table', {},
+    el('thead', {}, el('tr', {}, el('th', {}, 'Sortie', el('span', { class: 'opt' }, ' (New York)')), el('th', { class: 'opt' }, 'Symbole'), el('th', {}, 'Sens'), el('th', { class: 'num' }, 'R'), el('th', { class: 'num' }, '%'), el('th', { class: 'num' }, 'Résultat'), el('th', { class: 'opt' }, 'Raison'))),
+    el('tbody', {}, ...rows)));
+}
+
+// ---------------------------------------------------------------- risque
+const RISK_PRESETS = [0.25, 0.5, 1, 2, 5, 10, 20];
+function bounds() { return state ? state.reglages.bornes : { risqueMin: 0.05, risqueMax: 20, risqueAConfirmer: 1, levierMax: 2000 }; }
+function roundRisk(v) { const step = v < 1 ? 0.05 : v < 5 ? 0.1 : 0.5; return Number((Math.round(v / step) * step).toFixed(2)); }
+function sliderToRisk(position) { const b = bounds(); return roundRisk(b.risqueMin * Math.pow(b.risqueMax / b.risqueMin, position / 1000)); }
+function riskToSlider(risk) { const b = bounds(); return Math.round((1000 * Math.log(risk / b.risqueMin)) / Math.log(b.risqueMax / b.risqueMin)); }
+const savedLever = () => (state && state.reglages.levier != null ? state.reglages.levier : null);
+const riskDirty = () => draft && state && (Math.abs(draft.risque - currentRisk()) > 1e-9 || draft.levier !== savedLever());
+function validDraft() { const b = bounds(); return draft && Number.isFinite(draft.risque) && draft.risque >= b.risqueMin && draft.risque <= b.risqueMax && (draft.levier === null || (draft.levier >= 1 && draft.levier <= b.levierMax)); }
+function renderRisk(fromInput) {
+  if (!state) return;
+  if (!draft) draft = { risque: currentRisk(), levier: savedLever() };
+  const a = account();
+  const used = eaRisk();
+  const status = $('risk-status');
+  const same = used != null && state.reglages.risquePct != null && Math.abs(used - state.reglages.risquePct) < 1e-9;
+  status.className = `status${same ? ' on' : ''}`;
+  status.lastChild.textContent = used == null ? 'L’EA n’a pas encore démarré : ce réglage sera pris à son lancement.'
+    : state.reglages.risquePct == null ? `L’EA utilise ${riskText(used)}, réglé dans MetaTrader. Enregistre une valeur ici pour la piloter depuis cette page.`
+    : same ? `L’EA utilise ${riskText(used)}, réglé ici.` : `Enregistré ici : ${riskText(state.reglages.risquePct)}. L’EA utilise encore ${riskText(used)}${a && a.en_marche ? ' (il relit ce réglage toutes les 2 secondes)' : ' : il est arrêté'}.`;
+  if (fromInput !== 'number') $('risk-input').value = Number.isFinite(draft.risque) ? draft.risque : '';
+  if (fromInput !== 'slider' && validDraft()) $('risk-slider').value = riskToSlider(draft.risque);
+  if (fromInput !== 'lever') $('lever-input').value = draft.levier === null ? '' : draft.levier;
+  $('risk-presets').replaceChildren(...RISK_PRESETS.map((value) => el('button', { class: 'chip', 'aria-pressed': String(Math.abs(draft.risque - value) < 1e-9), onclick: () => { draft.risque = value; renderRisk(); loadSim(); } }, riskText(value))));
+  const hint = a && a.levier_symbole ? `MetaTrader indique environ 1:${Math.round(a.levier_symbole)} sur ${a.symbole}${a.levier_compte ? ` (compte en 1:${Math.round(a.levier_compte)})` : ''}. Vide : l’EA s’en remet au calcul de MetaTrader.` : 'Vide : l’EA s’en remet au calcul de marge de MetaTrader. Exemple : 20 pour un levier de 1:20.';
+  $('lever-hint').textContent = hint;
+  const dirty = riskDirty();
+  $('risk-save').disabled = !dirty || !validDraft();
+  $('risk-cancel').disabled = !dirty;
+  if (!validDraft()) { $('risk-msg').className = 'msg err'; $('risk-msg').textContent = `Risque entre ${riskText(bounds().risqueMin)} et ${riskText(bounds().risqueMax)} ; levier entre 1 et ${bounds().levierMax}, ou vide.`; }
+  else if (dirty) { $('risk-msg').className = 'msg'; $('risk-msg').textContent = 'Non enregistré. Le nouveau risque vaudra pour le prochain trade, jamais pour un trade déjà ouvert.'; }
+  else if ($('risk-msg').dataset.keep !== '1') $('risk-msg').textContent = '';
+  renderSim();
+}
+let simTimer = null;
+function loadSim() {
+  clearTimeout(simTimer);
+  simTimer = setTimeout(async () => {
+    if (!validDraft()) return;
+    const asked = { ...draft };
+    try {
+      const result = await api(`/api/risque?pct=${asked.risque}${asked.levier ? `&levier=${asked.levier}` : ''}`);
+      if (draft && asked.risque === draft.risque && asked.levier === draft.levier) { sim = result; renderSim(); }
+    } catch (error) { /* la prochaine saisie relancera le calcul */ }
+  }, 120);
+}
+function renderSim() {
+  const host = $('tiles-sim');
+  if (!sim || !draft) return host.replaceChildren(el('div', { class: 'empty' }, 'Calcul…'));
+  const a = account();
+  const s = sim;
+  $('sim-title').textContent = `${riskText(s.risquePct)} par trade${s.levier ? ` · levier 1:${s.levier}` : ''}`;
+  $('sim-hint').textContent = `La stratégie rejouée sur le Nasdaq du ${s.debut} au ${s.fin} (${s.trades} trades, ${String(s.annees).replace('.', ',')} ans), gains et pertes réinvestis.${s.levier ? '' : ' Sans levier saisi, la marge n’est pas prise en compte.'}`;
+  const gain = s.parAnPct > 100000 ? 'plus de 100 000 %' : pctSigned(s.parAnPct, s.parAnPct < 100 ? 1 : 0);
+  const tiles = [
+    tile('Gain par an dans le test', gain, 'si les années à venir ressemblent à 2018-2026'),
+    tile('Pire baisse du test', `−${num(s.pireBaissePct, 1)} %`, 'du plus haut au plus bas, 2018-2026', s.pireBaissePct >= 30 ? 'alert' : ''),
+    tile(`${s.serie} pertes de suite`, `−${num(s.seriePct, 1)} %`, 'la pire série du test', s.seriePct >= 30 ? 'alert' : ''),
+    tile('Si 2015-2017 revenait', `au moins −${num(s.ancienTestPct, 0)} %`, `l’ancien test a baissé de ${s.ancienTestR}R`, s.ancienTestPct >= 30 ? 'alert' : ''),
+  ];
+  if (s.levier) tiles.push(tile('Trades réduits par la marge', pct(s.reduitsPct), s.reduitsPct > 0 ? `risque réellement pris : ${riskText(Number(s.risqueMoyenPct.toFixed(2)))} en moyenne` : 'la marge suffit tous les jours du test', s.reduitsPct >= 50 ? 'alert' : ''));
+  if (a && a.solde != null) tiles.push(tile('Sur ton solde', `${money((a.solde * s.risquePct) / 100, a.devise)}`, `risqués par trade, pour ${money(a.solde, a.devise)}`));
+  host.replaceChildren(...tiles);
+  const notes = [];
+  if (s.levier && s.reduitsPct > 0) {
+    const needed = Math.ceil((s.risquePct / 100) * 2 / (0.9 * s.rangeMedianPct / 100));
+    notes.push(el('div', { class: `banner${s.reduitsPct >= 50 ? ' bad' : ''}` }, el('b', {}, 'La marge manque certains jours. '),
+      `Avec un levier de 1:${s.levier}, ${pct(s.reduitsPct)} des trades du test n’auraient pas pu être ouverts à ${riskText(s.risquePct)} : l’EA réduit alors la taille pour garder de quoi ouvrir la pyramide (deux unités, 90 % de la marge libre au plus). Pour qu’un jour sur deux passe en entier, il faudrait environ 1:${needed}.`));
+  }
+  if (s.risquePct > bounds().risqueAConfirmer) notes.push(el('div', { class: 'banner bad' }, el('b', {}, 'Au-delà de ce que le test rend raisonnable. '), `À ${riskText(s.risquePct)} par trade, la pire série du test (${s.serie} pertes) coûte ${num(s.seriePct, 0)} % du compte, et une période comme 2015-2017 au moins ${num(s.ancienTestPct, 0)} %. Le gain par an affiché suppose qu’aucune de ces séries n’arrive plus tôt ou plus fort que dans le test.`));
+  $('sim-notes').replaceChildren(...notes);
+}
+async function saveRisk(confirmation) {
+  const values = {};
+  if (Math.abs(draft.risque - currentRisk()) > 1e-9 || state.reglages.risquePct == null) values.risquePct = draft.risque;
+  if (draft.levier !== savedLever()) values.levier = draft.levier;
+  try {
+    const result = await api('/api/reglages', { valeurs: values, confirmation: confirmation || '' });
+    state.reglages = result.reglages;
+    draft = null;
+    $('risk-msg').dataset.keep = '1';
+    $('risk-msg').className = 'msg';
+    $('risk-msg').textContent = result.changees.length ? 'Enregistré. L’EA le prend dans les 2 secondes, pour le prochain trade.' : 'Rien à modifier.';
+    setTimeout(() => { delete $('risk-msg').dataset.keep; }, 6000);
+  } catch (error) { $('risk-msg').className = 'msg err'; $('risk-msg').textContent = error.message; return; }
+  renderRisk();
+  renderOverview();
+}
+
+// ---------------------------------------------------------------- connexions
+// La page ne reçoit jamais une valeur enregistrée : seulement « renseignée » ou « vide ».
+async function saveConnection(values, done) {
+  try {
+    const result = await api('/api/connexions', { valeurs: values });
+    state.reglages = result.reglages;
+    toast(result.changees.length === 0 ? 'Rien à modifier.' : running().length ? 'Enregistré. L’EA le prend dans les 2 secondes.' : 'Enregistré. L’EA le prendra à son lancement.');
+    if (done) done(result);
+  } catch (error) { toast(error.message); }
+  renderConnections();
+}
+async function testTelegram() {
+  telegramResult = { pending: true };
+  renderConnections();
+  try { telegramResult = await api('/api/connexions/telegram-test', {}); } catch (error) { telegramResult = { error: error.message }; }
+  renderConnections();
+}
+async function testTelegramMt5() {
+  mt5Test = { pending: true };
+  renderConnections();
+  try { const result = await api('/api/connexions/telegram-test-mt5', {}); mt5Test = { numero: result.numero, depuis: Date.now() }; }
+  catch (error) { mt5Test = { error: error.message }; }
+  renderConnections();
+}
+/** Ce que l'EA a répondu à la demande d'essai en cours, s'il a répondu. */
+function mt5TestOutcome() {
+  if (!mt5Test || !mt5Test.numero || !state) return null;
+  for (const e of state.eas) {
+    const [numero, ...rest] = String(e.telegram_essai || '').split(':');
+    if (numero === mt5Test.numero) return { symbole: e.symbole, resultat: rest.join(':') };
+  }
+  return null;
+}
+const secretInput = (id, placeholder, type) => el('input', { type: type || 'password', id, placeholder, autocomplete: 'off', spellcheck: false, 'aria-label': placeholder });
+const statusLine = (on, text) => el('div', { class: `status${on ? ' on' : ''}` }, el('span', { class: 'dot' }), text);
+const MT5_BLOCKED = 'MetaTrader bloque l’envoi. Dans MetaTrader 5 : Outils > Options > Expert Advisors, coche « Autoriser WebRequest pour les URL listées » et ajoute https://api.telegram.org, puis réessaie.';
+function renderConnections() {
+  const host = $('connections');
+  if (!state) return host.replaceChildren(el('div', { class: 'empty' }, 'Chargement…'));
+  // Ne pas effacer une saisie en cours : on ne redessine pas tant qu'un champ de cet onglet a le curseur.
+  if (host.contains(document.activeElement) && document.activeElement.tagName === 'INPUT' && renderConnections.drawn) return;
+  renderConnections.drawn = true;
+  const c = state.reglages;
+  const live = running();
+
+  // Telegram
+  const tokenInput = secretInput('k-telegram', 'Jeton du bot (123456789:AA…)');
+  const ready = c.telegramJeton && c.telegramDiscussion;
+  const outcome = el('div', {});
+  if (telegramResult) {
+    const r = telegramResult;
+    if (r.pending) outcome.append(el('div', { class: 'banner' }, 'Vérification auprès de Telegram…'));
+    else if (r.error) outcome.append(el('div', { class: 'banner bad' }, r.error));
+    else if (r.step === 'token-missing') outcome.append(el('div', { class: 'banner' }, 'Enregistre d’abord le jeton de ton bot.'));
+    else if (r.step === 'no-chat') outcome.append(el('div', { class: 'banner' }, `Jeton valide (bot @${r.bot}). Personne ne lui a encore écrit : dans Telegram, ouvre @${r.bot}, envoie-lui « bonjour », puis reclique sur le bouton.`));
+    else if (r.step === 'sent') outcome.append(el('div', { class: 'banner ok' }, `Message d’essai envoyé par @${r.bot} : regarde ton Telegram. Reste à vérifier que MetaTrader peut envoyer lui aussi (bouton suivant).`));
+    else if (r.step === 'choose-chat') outcome.append(el('div', { class: 'banner' }, `Jeton valide (bot @${r.bot}). Choisis la discussion où recevoir les alertes : `,
+      ...r.chats.map((chat) => el('button', { class: 'btn', style: 'margin:4px 6px 0 0', onclick: () => saveConnection({ telegram_discussion: chat.id }, () => testTelegram()) }, `${chat.name || 'discussion'} (${chat.id})`))));
+  }
+  if (mt5Test) {
+    const answer = mt5TestOutcome();
+    if (mt5Test.error) outcome.append(el('div', { class: 'banner bad' }, mt5Test.error));
+    else if (answer && answer.resultat === 'ok') outcome.append(el('div', { class: 'banner ok' }, `MetaTrader (${answer.symbole}) a envoyé son message d’essai : les alertes des trades arriveront.`));
+    else if (answer && answer.resultat === 'bloque') outcome.append(el('div', { class: 'banner bad' }, MT5_BLOCKED));
+    else if (answer && answer.resultat === 'occupe') outcome.append(el('div', { class: 'banner' }, `L’EA (${answer.symbole}) guette la cassure du range : il ne fait pas d’essai à ce moment-là. Réessaie après 9:45 New York.`));
+    else if (answer && answer.resultat === 'inactif') outcome.append(el('div', { class: 'banner' }, 'L’EA n’a pas encore pris le jeton et la discussion : réessaie dans quelques secondes.'));
+    else if (answer && answer.resultat === 'expire') outcome.append(el('div', { class: 'banner' }, 'La demande est arrivée trop tard à l’EA : réessaie.'));
+    else if (answer) outcome.append(el('div', { class: 'banner bad' }, `Telegram a refusé le message de MetaTrader (${answer.resultat}). Refais « Trouver ma discussion et tester ».`));
+    else if (mt5Test.pending || Date.now() - mt5Test.depuis < 20000) outcome.append(el('div', { class: 'banner' }, 'Demande envoyée à MetaTrader, réponse dans quelques secondes…'));
+    else outcome.append(el('div', { class: 'banner bad' }, 'MetaTrader n’a pas répondu. Vérifie que l’EA tourne (pastille en haut de la page) et que « Lire le risque, les cases et Telegram dans l’interface Étrave » est coché dans ses réglages.'));
+  }
+  const sending = live.find((e) => e.telegram_envoi === 'bloque');
+  const telegram = el('div', { class: 'card' },
+    el('h2', {}, 'Alertes Telegram'),
+    el('div', { class: 'hint' }, 'Facultatif. Ordres placés, entrées, pyramide, stop déplacé et clôtures (en R, en % et en argent) arrivent sur ton téléphone.'),
+    statusLine(ready, ready ? (live.length && !live.some((e) => e.telegram) ? 'Configuré (l’EA le prend dans les 2 secondes)' : 'Configuré') : c.telegramJeton ? 'Jeton enregistré, discussion à choisir' : 'Non configuré'),
+    sending ? el('div', { class: 'banner bad' }, MT5_BLOCKED) : null,
+    el('ol', {},
+      el('li', {}, 'Dans Telegram, ouvre une discussion avec @BotFather (le compte officiel, coche bleue) et envoie /newbot.'),
+      el('li', {}, 'Il te donne un jeton : colle-le ci-dessous et enregistre.'),
+      el('li', {}, 'Toujours dans Telegram, ouvre ton nouveau bot et envoie-lui un message.'),
+      el('li', {}, 'Clique sur « Trouver ma discussion et tester ».'),
+      el('li', {}, 'Dans MetaTrader 5 : Outils > Options > Expert Advisors, coche « Autoriser WebRequest pour les URL listées » et ajoute https://api.telegram.org. Puis clique sur « Essai depuis MetaTrader ».')),
+    el('div', { class: 'secret-row' }, tokenInput,
+      el('button', { class: 'btn primary', onclick: () => { if (tokenInput.value.trim()) { telegramResult = null; mt5Test = null; renderConnections.drawn = false; saveConnection({ telegram_jeton: tokenInput.value, telegram_discussion: '' }); } } }, 'Enregistrer le jeton')),
+    el('div', { class: 'secret-row' },
+      el('button', { class: 'btn', disabled: !c.telegramJeton, onclick: () => testTelegram() }, ready ? 'Envoyer un message d’essai' : 'Trouver ma discussion et tester'),
+      el('button', { class: 'btn', disabled: !ready || live.length === 0, title: live.length === 0 ? 'L’EA doit tourner dans MetaTrader 5' : '', onclick: () => testTelegramMt5() }, 'Essai depuis MetaTrader'),
+      c.telegramDiscussion ? el('button', { class: 'btn', onclick: () => { telegramResult = null; mt5Test = null; saveConnection({ telegram_discussion: '' }); } }, 'Changer de discussion') : null,
+      c.telegramJeton ? el('button', { class: 'btn', onclick: () => { telegramResult = null; mt5Test = null; saveConnection({ telegram_jeton: '', telegram_discussion: '' }); } }, 'Désactiver Telegram') : null),
+    outcome);
+
+  // Compte MetaTrader 5
+  const a = account();
+  const m = state.mt5;
+  const login = secretInput('k-login', 'Numéro de compte (login)', 'text');
+  const password = secretInput('k-password', 'Mot de passe du compte');
+  const server = secretInput('k-server', 'Serveur (ex. MonCourtier-Demo)', 'text');
+  const pick = m.terminaux.length > 1 ? el('select', { id: 'k-terminal', 'aria-label': 'MetaTrader 5 à lancer' }, ...m.terminaux.map((t) => el('option', { value: String(t.id) }, t.dossier))) : null;
+  const canLaunch = m.windows && !m.ouvert && m.terminaux.length > 0;
+  const why = !m.windows ? 'MetaTrader 5 ne se lance que sous Windows : ouvre cette page sur l’ordinateur ou le VPS où il est installé.'
+    : m.ouvert ? 'MetaTrader 5 est ouvert. Pour changer de compte, ferme-le d’abord toi-même (vérifie qu’aucun trade n’est en cours), puis reviens ici.'
+    : m.terminaux.length === 0 ? 'MetaTrader 5 n’a pas été trouvé sur cet ordinateur : ouvre-le une première fois à la main et pose l’EA sur un graphique.' : '';
+  const launch = async (withAccount) => {
+    const body = { terminal: pick ? Number(pick.value) : 0, connexion: withAccount };
+    if (withAccount) Object.assign(body, { login: login.value, motDePasse: password.value, serveur: server.value });
+    try { await api('/api/mt5/lancer', body); password.value = ''; toast(withAccount ? 'MetaTrader 5 se lance et se connecte au compte.' : 'MetaTrader 5 se lance.'); }
+    catch (error) { toast(error.message); }
+  };
+  const mt5 = el('div', { class: 'card' },
+    el('h2', {}, 'Compte MetaTrader 5'),
+    el('div', { class: 'hint' }, 'Lance MetaTrader 5 et le connecte au compte de ton courtier. Le mot de passe n’est jamais gardé par cette page : MetaTrader le retient lui-même.'),
+    statusLine(a && a.en_marche, a ? (a.en_marche ? `Connecté : compte ${a.compte_login} · ${a.compte_serveur} · ${a.compte_type === 'reel' ? 'RÉEL' : 'démo'}` : `MetaTrader arrêté (dernier compte vu : ${a.compte_login} · ${a.compte_serveur})`) : 'Aucun EA vu pour l’instant'),
+    why ? el('p', {}, why) : null,
+    el('div', { class: 'form' },
+      el('div', {}, el('label', { for: 'k-login' }, 'Numéro de compte'), login),
+      el('div', {}, el('label', { for: 'k-password' }, 'Mot de passe'), password),
+      el('div', {}, el('label', { for: 'k-server' }, 'Serveur'), server),
+      pick ? el('div', {}, el('label', { for: 'k-terminal' }, 'MetaTrader à lancer'), pick) : null),
+    el('div', { class: 'secret-row' },
+      el('button', { class: 'btn primary', disabled: !canLaunch, onclick: () => launch(true) }, 'Lancer MetaTrader 5 et se connecter'),
+      el('button', { class: 'btn', disabled: !canLaunch, onclick: () => launch(false) }, 'Ouvrir MetaTrader 5 tel quel')),
+    el('p', {}, 'Après un changement de compte, vérifie dans MetaTrader que l’EA est toujours sur son graphique et que le bouton « Trading algo » est actif : cette page te le dit en haut.'));
+
+  const note = el('div', { class: 'card' },
+    el('h2', {}, 'Où vont ces réglages'),
+    el('p', {}, 'Le risque, le levier, les cases et Telegram sont écrits dans un fichier du dossier commun de MetaTrader, sur cet ordinateur, que l’EA relit toutes les 2 secondes. Une fois enregistré, le jeton Telegram n’est plus jamais affiché. Le mot de passe du compte n’est écrit que le temps du lancement de MetaTrader, puis effacé. Cette page ne répond qu’à cet ordinateur (127.0.0.1) : elle n’est pas visible depuis le réseau.'));
+  host.replaceChildren(telegram, mt5, note);
+}
+
+// ---------------------------------------------------------------- chargement
+async function loadState() {
+  try { state = await api('/api/etat'); } catch (error) { state = null; }
+  renderHeader();
+  if (!state) return;
+  if (!$('tab-overview').hidden) renderOverview();
+  if (!$('tab-risk').hidden) renderRisk('poll');
+  if (!$('tab-connections').hidden) renderConnections();
+}
+async function loadTrades() {
+  try { trades = (await api('/api/trades')).trades; } catch (error) { return; }
+  if (!$('tab-overview').hidden && state) renderOverview();
+}
+function showTab(name) {
+  for (const button of document.querySelectorAll('nav button')) button.setAttribute('aria-selected', String(button.dataset.tab === name));
+  for (const id of ['overview', 'risk', 'connections']) $(`tab-${id}`).hidden = id !== name;
+  if (!state) return;
+  if (name === 'overview') renderOverview();
+  if (name === 'risk') { renderRisk(); loadSim(); }
+  if (name === 'connections') { renderConnections.drawn = false; renderConnections(); }
+}
+
+document.querySelectorAll('nav button').forEach((button) => button.addEventListener('click', () => showTab(button.dataset.tab)));
+$('risk-input').addEventListener('input', () => { draft.risque = Number(String($('risk-input').value).replace(',', '.')); renderRisk('number'); loadSim(); });
+$('risk-slider').addEventListener('input', () => { draft.risque = sliderToRisk(Number($('risk-slider').value)); renderRisk('slider'); loadSim(); });
+$('lever-input').addEventListener('input', () => { const raw = $('lever-input').value.trim(); draft.levier = raw === '' ? null : Number(raw.replace(',', '.')); renderRisk('lever'); loadSim(); });
+$('risk-cancel').addEventListener('click', () => { draft = null; renderRisk(); loadSim(); });
+$('risk-save').addEventListener('click', () => {
+  if (draft.risque > bounds().risqueAConfirmer && draft.risque > currentRisk()) {
+    $('risk-dlg-text').textContent = `Tu passes à ${riskText(draft.risque)} du solde par trade.${sim && sim.risquePct === draft.risque ? ` Dans le test, la pire baisse à ce risque est de ${num(sim.pireBaissePct, 0)} %, et ${sim.serie} pertes de suite coûtent ${num(sim.seriePct, 0)} % du compte.` : ''} Au-delà de ${riskText(bounds().risqueAConfirmer)}, c’est ton choix : rien dans le test ne le recommande.`;
+    $('risk-word').value = '';
+    $('risk-dlg-ok').disabled = true;
+    return $('dlg-risk').showModal();
+  }
+  saveRisk('');
+});
+$('risk-word').addEventListener('input', () => ($('risk-dlg-ok').disabled = $('risk-word').value.trim().toUpperCase() !== 'RISQUE'));
+$('risk-dlg-cancel').addEventListener('click', () => $('dlg-risk').close());
+$('risk-dlg-ok').addEventListener('click', () => { $('dlg-risk').close(); saveRisk('RISQUE'); });
+$('gold-word').addEventListener('input', () => ($('gold-ok').disabled = $('gold-word').value.trim().toUpperCase() !== 'OR'));
+$('gold-cancel').addEventListener('click', () => { $('dlg-gold').close(); renderInstruments(); });
+$('gold-ok').addEventListener('click', () => { $('dlg-gold').close(); saveInstrument('or', true, 'OR'); });
+$('close-word').addEventListener('input', () => ($('close-ok').disabled = $('close-word').value.trim().toUpperCase() !== 'CLOTURER'));
+$('close-cancel').addEventListener('click', () => $('dlg-close').close());
+$('close-ok').addEventListener('click', async () => {
+  $('dlg-close').close();
+  try { await api('/api/cloturer', { symbole: closing, confirmation: 'CLOTURER' }); toast('Demande envoyée : l’EA s’en occupe dans les 2 secondes.'); } catch (error) { toast(error.message); }
+});
+$('btn-theme').addEventListener('click', () => {
+  const next = document.documentElement.dataset.theme === 'light' ? 'dark' : 'light';
+  document.documentElement.dataset.theme = next;
+  try { localStorage.setItem('theme', next); } catch (error) { /* stockage indisponible : sans gravité */ }
+});
+try { const saved = localStorage.getItem('theme'); if (saved) document.documentElement.dataset.theme = saved; } catch (error) { /* idem */ }
+window.addEventListener('resize', () => { if (!$('tab-overview').hidden && state) renderCurve(); });
+
+(async () => {
+  await Promise.all([loadState(), loadTrades()]);
+  setInterval(loadState, 2000);
+  setInterval(loadTrades, 10000);
+})();
+</script>
+</body>
+</html>
