@@ -2,8 +2,7 @@ __pycache__/
 *.pyc
 .venv/
 .pytest_cache/
-crypto/donnees/
-crypto/bot/etat/
-crypto/bot/config.json
-backtest/m1/cache.npz
 donnees/
+bitcoin/etat/
+bitcoin/config.json
+recherches/nasdaq/cache.npz

@@ -4,16 +4,21 @@ Cassure du range d'ouverture de New York (bougie M5 de 9:30) sur le Nasdaq (NAS1
 l'ouverture, avec une pyramide sur les journées de tendance. Heures de New York (9:30 NY = 15:30 à Paris la plupart de
 l'année). **Nasdaq uniquement** : la stratégie ne gagne sur aucun autre symbole testé (Dow Jones, or, EUR/USD, bitcoin).
 
-| Fichier | Rôle |
+Le dépôt a quatre dossiers :
+
+| Dossier | Contenu |
 |---|---|
-| `mt5/ORB-v6.mq5` | L'Expert Advisor MetaTrader 5 (version 6.10). |
-| `interface/`, `Etrave.bat` | **Étrave**, une page web locale à deux espaces : **⛵ Nasdaq** (l'EA : risque, levier, Telegram, suivi et clôture des trades, lancement de MetaTrader) et **₿ Bitcoin** (le bot BTC : tableau de bord, 9 votes, levier ×1 à ×10, clé API Binance, démarrer / arrêter / tout fermer). |
-| `pine/ORB-v6.pine` | La même stratégie pour TradingView (langage Pine v6), avec alertes Telegram. |
-| `backtest/m1/` | Le simulateur à la minute qui refait les trades de référence de l'interface, et le rapport de la recherche du 17 novembre 2026. |
-| `crypto/` | **BTC : `crypto/RAPPORT-BTC.md`** (la stratégie une fois les biais corrigés, tableau du jour `python crypto/btc_jour.py`). Recherche bitcoin et Ethereum : `crypto/RAPPORT.md` (confluence de 9 outils), `crypto/RAPPORT-2.md` (ventes, supports et résistances, sentiment, apprentissage, cash-and-carry), `crypto/RAPPORT-3.md` (retournements, M5 à H4, système multi-unités), `crypto/RAPPORT-4.md` (vue d'ensemble, optimisations, portefeuille de cryptos), `crypto/CATALOGUE.md` (toutes les stratégies et leur verdict). Bot BTC : `crypto/bot/` (voir `crypto/bot/LISEZMOI.md`), piloté depuis Étrave. |
+| `nasdaq/` | La stratégie ORB v6 : `ORB-v6.mq5`, l'Expert Advisor MetaTrader 5 (version 6.10), et `ORB-v6.pine`, la même stratégie pour TradingView (Pine v6), avec alertes Telegram. |
+| `bitcoin/` | Le bot BTC (Binance) : voir [bitcoin/LISEZMOI.md](bitcoin/LISEZMOI.md). Il contient aussi le code de la stratégie (`btc.py`, `indicateurs.py`, `donnees.py`) : c'est le même code que le backtest, et la recherche l'importe d'ici. |
+| `etrave/` | **Étrave**, la page web locale qui pilote les deux : **⛵ Nasdaq** (l'EA : risque, levier, Telegram, suivi et clôture des trades, lancement de MetaTrader) et **₿ Bitcoin** (le bot : tableau de bord, 9 votes, levier ×1 à ×10, clé API Binance, démarrer / arrêter / tout fermer). On la lance avec `etrave/Etrave.bat`. |
+| `recherches/` | Toutes les hypothèses et tous les tests. **`recherches/nasdaq/`** : le simulateur à la minute qui refait les trades de référence d'Étrave, et le rapport [recherches/nasdaq/RAPPORT.md](recherches/nasdaq/RAPPORT.md) (stops, entrées, flux d'ordres, gestion, coûts réels, stop à l'entrée plus tôt et objectif). **`recherches/crypto/`** : bitcoin et Ethereum. Le rapport principal est `RAPPORT-BTC.md` : la stratégie BTC une fois les biais corrigés. Le tableau du jour se lance avec `python recherches/crypto/btc_jour.py`. `RAPPORT.md` : confluence de 9 outils. `RAPPORT-2.md` : ventes, supports et résistances, sentiment, apprentissage, cash-and-carry. `RAPPORT-3.md` : retournements, M5 à H4, système multi-unités. `RAPPORT-4.md` : vue d'ensemble, optimisations, portefeuille de cryptos. `CATALOGUE.md` : toutes les stratégies et leur verdict. |
+
+Les données téléchargées (Dukascopy, Binance, Coin Metrics…) vont dans `donnees/` à la racine, hors git : `donnees/nas100/`
+pour le Nasdaq, `donnees/crypto/` pour les cryptos.
 
 Le 15 novembre 2026 le dépôt a été réduit à ces éléments. Les données Dukascopy, les anciennes études et l'audit restent
-dans l'historique git (dernier commit qui les contient : `afb79de`).
+dans l'historique git (dernier commit qui les contient : `afb79de`). Le 17 novembre 2026 il a été rangé dans ces quatre
+dossiers (voir « Mettre à jour depuis l'ancienne organisation » plus bas).
 
 ## Ce que dit le test
 
@@ -25,14 +30,14 @@ trades (156 par an), **+0,46R par trade, +643R**, pire baisse −23R, 15 pertes 
 - **La v6 = les règles de la v5 avec une pyramide de 2 unités** (17 novembre 2026). Les fichiers v5 ont été retirés du
   dépôt (ils restent dans l'historique git). Avec un ajout d'une unité : +471R, pire baisse −22R ; sans pyramide : +312R.
   Le détail, et tout ce qui a été essayé sans succès (placement du stop, autres entrées, flux d'ordres du future NQ,
-  sorties anticipées, règles de mise), est dans [backtest/m1/RAPPORT.md](backtest/m1/RAPPORT.md).
+  sorties anticipées, règles de mise), est dans [recherches/nasdaq/RAPPORT.md](recherches/nasdaq/RAPPORT.md).
 - **Avant 2018 la stratégie perdait** : −55R sur 2015-2017, −33R sur 2013-2014. L'ancien test 2015-2026 a connu une baisse
   de 76R avec la pyramide de 2 unités (74R avec une unité).
 - Capital, gains réinvestis, 2018 → 2026 : 0,25 % par trade → +19 % par an, pire baisse −6 % ; 0,5 % → +40 %, −11 % ;
   1 % → +88 %, −22 %. Si une période comme 2015-2017 revenait : environ −17 % à 0,25 %, −32 % à 0,5 %, −53 % à 1 %.
 - Le résultat dépend du glissement : +565R avec 0,5 point par exécution, +455R avec 1 point. Mesuré sur le future NQ, le
   glissement réel d'un ordre stop natif donne environ +500R (CFD ou futures), et un ordre au marché envoyé 250 ms après le
-  déclenchement +352R : voir [backtest/m1/RAPPORT.md](backtest/m1/RAPPORT.md).
+  déclenchement +352R : voir [recherches/nasdaq/RAPPORT.md](recherches/nasdaq/RAPPORT.md).
 - Garde un risque fixe : réduire la mise après des pertes ou en période de baisse a fait moins bien dans le test.
 
 Ce n'est pas un conseil en investissement, et le passé ne garantit rien. Fais tourner l'EA en démo avant le réel, et
@@ -61,10 +66,10 @@ choisis le risque en regardant la pire baisse.
 ## Installer
 
 1. Installe Python 3 ([python.org](https://www.python.org/downloads/), coche « Add python.exe to PATH »). Rien d'autre.
-2. Double-clique sur `Etrave.bat` : la page s'ouvre sur `http://127.0.0.1:8788` (ailleurs que sous Windows :
-   `python interface/etrave.py`).
+2. Double-clique sur `etrave/Etrave.bat` : la page s'ouvre sur `http://127.0.0.1:8788` (ailleurs que sous Windows :
+   `python etrave/etrave.py`).
 3. Onglet **Connexions** : « Installer ou mettre à jour l'EA » le copie dans `MQL5\Experts\Etrave` et le compile ; les
-   erreurs éventuelles s'affichent dans la page. À la main : copie `mt5/ORB-v6.mq5` dans `MQL5/Experts`, ouvre-le dans
+   erreurs éventuelles s'affichent dans la page. À la main : copie `nasdaq/ORB-v6.mq5` dans `MQL5/Experts`, ouvre-le dans
    MetaEditor, F7.
 4. Dans MetaTrader, glisse l'EA sur un graphique du Nasdaq (une seule fois, MetaTrader s'en souvient) et coche
    « Autoriser le trading algorithmique ».
@@ -105,12 +110,13 @@ son état et ses trades. L'interface ne passe aucun ordre ; on peut la fermer sa
 **Où faire tourner l'EA** : ton ordinateur pour la démo (sans mise en veille), un VPS Windows pour le réel. Le VPS intégré
 à MetaTrader n'a pas d'écran et ne lance aucun autre programme : l'EA y tourne, sans l'interface.
 
-Tests de l'interface : `python -m pytest interface` (28 tests ; ils vérifient aussi que l'EA et l'interface emploient les
-mêmes noms de fichiers, de clés et les mêmes bornes).
+Tests : `python -m pytest` à la racine du dépôt (Étrave, son accord avec l'EA et le script Pine, et le bot BTC). Ils
+vérifient aussi que l'EA et l'interface emploient les mêmes noms de fichiers, de clés et les mêmes bornes. Seuls
+`pytest` et, pour le bot, `numpy` et `pandas` sont nécessaires.
 
 ## TradingView
 
-Colle `pine/ORB-v6.pine` dans l'éditeur Pine, sur un graphique **M5** du NAS100 avec les bougies hors séance. Dans
+Colle `nasdaq/ORB-v6.pine` dans l'éditeur Pine, sur un graphique **M5** du NAS100 avec les bougies hors séance. Dans
 « Propriétés », ajoute une commission égale au spread de ton courtier. Alertes Telegram : une alerte sur la stratégie,
 condition « Uniquement les appels de la fonction alert() », webhook `https://api.telegram.org/bot<TOKEN>/sendMessage`.
 Après chaque mise à jour du script, supprime et recrée l'alerte.
@@ -153,6 +159,24 @@ Ces écarts sont ceux du test d'origine, qui comptait le bid et l'ask : c'est lu
 - **Passer de la v5 à la v6** : fais-le hors séance, sans trade ouvert (la v6 ne reprend pas l'état d'un trade de la
   v5). Retire ORB-v5 de ses graphiques, supprime `ORB-v5.mq5` et `ORB-v5.ex5` de `MQL5\Experts\Etrave`, installe la v6
   depuis Étrave (onglet Connexions) et pose ORB-v6 sur le graphique du Nasdaq. Sur TradingView, supprime l'ancien script
-  et son alerte, colle `pine/ORB-v6.pine` et recrée l'alerte.
+  et son alerte, colle `nasdaq/ORB-v6.pine` et recrée l'alerte.
 - Arrondi des lots faux si le pas de volume du courtier n'est pas 1, 0,1 ou 0,01.
 - Le journal des trades de l'interface commence avec la version 5.10 de l'EA ; la v6 continue le même journal.
+
+## Mettre à jour depuis l'ancienne organisation
+
+Avant le 17 novembre 2026, le dépôt avait d'autres dossiers : `interface/` et `Etrave.bat` à la racine, `mt5/`, `pine/`,
+`backtest/m1/` et `crypto/` (avec le bot dans `crypto/bot/`). Pour passer à la nouvelle organisation :
+
+1. **Arrête le bot BTC** (Étrave, espace Bitcoin, « Arrêter ») et ferme Étrave. Fais-le hors séance du Nasdaq.
+2. Récupère la nouvelle version du dépôt (`git pull`, ou un nouveau téléchargement à la place de l'ancien dossier).
+3. Lance Étrave avec `etrave/Etrave.bat`. Au premier lancement, Étrave fait trois choses toutes seules, sans rien
+   écraser :
+   - il déplace les réglages et l'état du bot (`crypto/bot/config.json` et `crypto/bot/etat/`) dans `bitcoin/` ;
+   - il déplace les données de la recherche crypto de `crypto/donnees/` vers `donnees/crypto/` ;
+   - il fait pointer le lancement au démarrage de Windows, s'il était coché, vers `etrave/Etrave.bat`.
+4. Si tu lançais le bot sans Étrave, change le chemin dans ta commande : `bitcoin/bot.py --config bitcoin/config.json`
+   (`bitcoin/lancer_bot.bat` et `bitcoin/bot-btc.service` sont à jour).
+
+L'EA déjà installé dans MetaTrader ne change pas : il reste dans `MQL5\Experts\Etrave`, et ses fichiers d'échange avec
+Étrave ne bougent pas. « Installer ou mettre à jour l'EA » prend désormais `nasdaq/ORB-v6.mq5`.
