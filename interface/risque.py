@@ -1,11 +1,11 @@
 """Ce que le test dit d'un risque par trade et d'un levier : gain par an, pire baisse, jours où la marge manque.
 
-Les trades viennent de interface/reference.json : les 1 427 trades de la v5 rejouée le 15 novembre 2026 sur le Nasdaq
-CFD de Dukascopy (M1 bid et ask, 2018-01 -> 2026-11, glissement 0,1 point), avec pour chacun sa date, son résultat en R,
-la largeur du range rapportée au prix et si la pyramide s'est déclenchée. Le simulateur et ses données ne sont plus dans
-le dépôt (ils restent dans l'historique git). Le capital est composé trade après trade, avec en plus la marge :
+Les trades viennent de interface/reference.json : les 1 391 trades de la v6 (ajout de 2 unités à +2R) rejouée le
+17 novembre 2026 minute par minute sur le Nasdaq CFD de Dukascopy (M1 bid et ask, 2018-01 -> 2026-11, glissement
+0,1 point), avec pour chacun sa date, son résultat en R, la largeur du range rapportée au prix et si la pyramide s'est
+déclenchée. Le fichier est refait par backtest/m1/reference.py. Le capital est composé trade après trade, avec en plus la marge :
 
-    taille de la position = solde × risque ÷ range        (règle 4 de la v5)
+    taille de la position = solde × risque ÷ range        (règle 4 de la v6)
     marge demandée        = valeur de la position ÷ levier
     donc risque possible  = levier × (range ÷ prix) × part de la marge utilisable ÷ nombre d'unités
 
@@ -17,12 +17,12 @@ import json
 import os
 
 REFERENCE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "reference.json")
-# Les deux valeurs suivantes sont celles de l'EA (MARGIN_USE, et 1 unité de départ + 1 unité de pyramide).
+# Les deux valeurs suivantes sont celles de l'EA (MARGIN_USE, et 1 unité de départ + 2 unités de pyramide).
 PART_MARGE = 0.90
-UNITES = 2.0
-# Repères du README : pire série de pertes du test 2018-2026, pire baisse de l'ancien test 2015-2026.
-PIRE_SERIE = 13
-PIRE_BAISSE_ANCIEN_TEST_R = 74
+UNITES = 3.0
+# Repères du README : pire série de pertes du test 2018-2026, pire baisse de l'ancien test 2015-2026 (ajout de 2 unités).
+PIRE_SERIE = 15
+PIRE_BAISSE_ANCIEN_TEST_R = 76
 
 _cache = {}
 
@@ -80,4 +80,6 @@ def simuler(risque_pct, levier=None, reference=None):
         "ancienTestPct": 100.0 * (1.0 - (1.0 - voulu) ** PIRE_BAISSE_ANCIEN_TEST_R),
         # levier qu'il faut pour que la moitié des jours passent sans réduction à ce risque
         "rangeMedianPct": 100.0 * sorted(t[2] for t in trades)[len(trades) // 2],
+        # unités ouvertes au plus (départ + pyramide) : ce que la marge doit pouvoir porter
+        "unites": UNITES,
     }

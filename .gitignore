@@ -5,3 +5,5 @@ __pycache__/
 crypto/donnees/
 crypto/bot/etat/
 crypto/bot/config.json
+backtest/m1/cache.npz
+donnees/
