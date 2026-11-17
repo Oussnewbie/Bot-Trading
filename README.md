@@ -121,6 +121,14 @@ Colle `nasdaq/ORB-v6.pine` dans l'éditeur Pine, sur un graphique **M5** du NAS1
 condition « Uniquement les appels de la fonction alert() », webhook `https://api.telegram.org/bot<TOKEN>/sendMessage`.
 Après chaque mise à jour du script, supprime et recrée l'alerte.
 
+**Lot à passer chez le courtier** (réglages, groupe « Lots chez le courtier ») : à 9:35, le script calcule le lot à
+saisir dans MetaTrader : solde × risque ÷ (range × taille de contrat), arrondi vers le bas au pas de lot. Il l'affiche
+dans le tableau, sur les ordres et dans l'alerte « Ordres placés », avec le lot de l'ajout de la pyramide (2 fois le
+lot de départ). Renseigne la taille de contrat (20 sur FundingPips pour le NAS100 : 1 lot = 20 $ par point) et le solde
+de ton compte (par exemple 100000 pour un compte de 100K). Avec 0, le script prend le capital de la stratégie
+TradingView, qui n'est pas celui de ton compte. Exemple : 100 000 $, 0,5 % de risque, range de 30 points → 500 $ ÷
+(30 × 20) = 0,83 lot, ajout de 1,66 lot. L'EA, lui, calcule le lot tout seul à partir de la spécification du symbole.
+
 ## Ce que l'EA ne fait pas exactement comme le script TradingView
 
 Les règles sont les mêmes. Les écarts viennent du spread, que TradingView ne voit pas (il n'a qu'un prix par bougie) :
