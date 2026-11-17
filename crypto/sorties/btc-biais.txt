@@ -1,0 +1,73 @@
+== B2 + B3 : années jamais vues et références simples ==
+  achat-conservation                           2012-17 (neuf): Sh 1.99 cagr +301% dd -85%  2018-26: Sh 0.60 cagr +19% dd -81%  2012-26: Sh 1.23 cagr +89% dd -85%
+  MA200 journalière, tout ou rien              2012-17 (neuf): Sh 2.12 cagr +312% dd -71%  2018-26: Sh 0.57 cagr +17% dd -68%  2012-26: Sh 1.33 cagr +90% dd -72%
+  MA200 journalière, dosée 40 %                2012-17 (neuf): Sh 2.39 cagr +144% dd -44%  2018-26: Sh 0.72 cagr +19% dd -41%  2012-26: Sh 1.47 cagr +57% dd -44%
+  EMA 50/200 journalières, dosée               2012-17 (neuf): Sh 2.32 cagr +138% dd -45%  2018-26: Sh 0.62 cagr +16% dd -52%  2012-26: Sh 1.35 cagr +53% dd -52%
+  confluence seule (sans 4h, sans vente)       2012-17 (neuf): Sh 2.65 cagr +134% dd -30%  2018-26: Sh 1.13 cagr +30% dd -27%  2012-26: Sh 1.80 cagr +62% dd -30%
+  FINAL (confluence + 4h + vente 0,25)         2012-17 (neuf): Sh 2.71 cagr +134% dd -25%  2018-26: Sh 1.27 cagr +34% dd -21%  2012-26: Sh 1.89 cagr +66% dd -25%
+
+== B1 : walk-forward, réglage choisi chaque année avec le passé seul ==
+  2014 : seuil 0.5, conf. ema50/200, vente 0.0, vol 0.3 (Sharpe passé 4.83)
+  2015 : seuil 0.5, conf. ema50/200, vente 0.25, vol 0.3 (Sharpe passé 3.66)
+  2016 : seuil 0.5, conf. ema50/200, vente 0.25, vol 0.3 (Sharpe passé 3.23)
+  2017 : seuil 0.5, conf. ema50/200, vente 0.25, vol 0.3 (Sharpe passé 2.93)
+  2018 : seuil 0.5, conf. ema50/200, vente 0.0, vol 0.3 (Sharpe passé 3.10)
+  2019 : seuil 0.5, conf. ema50/200, vente 0.25, vol 0.3 (Sharpe passé 2.83)
+  2020 : seuil 0.5, conf. ema50/200, vente 0.0, vol 0.3 (Sharpe passé 2.70)
+  2021 : seuil 0.5, conf. ema50/200, vente 0.0, vol 0.3 (Sharpe passé 2.56)
+  2022 : seuil 0.5, conf. ema50/200, vente 0.0, vol 0.3 (Sharpe passé 2.35)
+  2023 : seuil 0.5, conf. ema50/200, vente 0.0, vol 0.3 (Sharpe passé 2.23)
+  2024 : seuil 0.5, conf. ema50/200, vente 0.0, vol 0.3 (Sharpe passé 2.19)
+  2025 : seuil 0.5, conf. ema50/200, vente 0.0, vol 0.3 (Sharpe passé 2.13)
+  2026 : seuil 0.5, conf. aucune, vente 0.0, vol 0.3 (Sharpe passé 2.01)
+  walk-forward (hors échantillon)              2014-17 (neuf): Sh 2.19 cagr +56% dd -17%  2018-26: Sh 1.05 cagr +18% dd -17%  2014-26: Sh 1.44 cagr +29% dd -17%
+  achat-conservation                           2014-17 (neuf): Sh 1.36 cagr +109% dd -81%  2018-26: Sh 0.60 cagr +19% dd -81%  2014-26: Sh 0.86 cagr +42% dd -83%
+  MA200 journalière, dosée 40 %                2014-17 (neuf): Sh 1.66 cagr +71% dd -44%  2018-26: Sh 0.72 cagr +19% dd -41%  2014-26: Sh 1.05 cagr +33% dd -44%
+  FINAL (confluence + 4h + vente 0,25)         2014-17 (neuf): Sh 1.88 cagr +67% dd -22%  2018-26: Sh 1.27 cagr +34% dd -21%  2014-26: Sh 1.47 cagr +44% dd -22%
+
+== B4 : probabilité de surajustement (CSCV, 135 réglages, 16 blocs) ==
+  PBO = 17.4% (probabilité que le meilleur réglage d'une moitié de l'histoire soit sous la médiane dans l'autre moitié ; < 10 % = peu de surajustement)
+  rang médian hors échantillon du meilleur réglage : 76% des réglages battus
+  Sharpe 2012-2026 de la grille : min 1.41, médiane 1.73, max 1.98 ; FINAL 1.89 (rang 125/135)
+  Plateau (Sharpe 2012-2026, confirmation ema50/200, vol 0,4) — lignes : seuil ; colonnes : taille de la vente
+      0.00  0.25  0.50
+0.00  1.77  1.76  1.67
+0.15  1.81  1.82  1.75
+0.25  1.88  1.89  1.83
+0.35  1.82  1.85  1.80
+0.50  1.93  1.93  1.84
+  Par confirmation (médiane des Sharpe 2012-2026) : {'aucune': 1.71, 'ema50/200': 1.82, 'ema20/50': 1.67}
+  Par taille de vente (médiane) : {0.0: 1.77, 0.25: 1.74, 0.5: 1.62}
+
+== B5 : bootstrap par blocs de 20 jours (2 000 tirages, 2012-07 -> 2026-11) ==
+  FINAL (confluence + 4h + vente 0,25)     Sharpe 1.35 à 2.44 (90 %) ; pire baisse -48% à -26%
+  achat-conservation                       Sharpe 0.74 à 1.73 (90 %) ; pire baisse -94% à -69%
+  MA200 journalière, dosée 40 %            Sharpe 0.87 à 2.04 (90 %) ; pire baisse -68% à -37%
+  P(FINAL a un meilleur Sharpe que l'achat-conservation) = 100%
+  P(FINAL a un meilleur Sharpe que la MA200 dosée)        = 99%
+  P(FINAL a une pire baisse plus faible que l'achat-conservation) = 100%
+
+== B6 : départ chaque trimestre de 2013 à 2024, jusqu'au 2026-11 ==
+  FINAL meilleur Sharpe que l'achat-conservation : 100% des départs ; que la MA200 : 100% ; meilleur rendement que l'achat-conservation : 42% ; pire baisse plus faible : 100%
+ depart  sh_final  sh_bh  sh_ma200  cagr_final  cagr_bh  dd_final  dd_bh
+2013-01      1.88   1.19      1.44        0.65     0.84     -0.25  -0.85
+2014-01      1.47   0.85      1.05        0.44     0.42     -0.22  -0.83
+2015-01      1.54   1.00      1.21        0.48     0.56     -0.22  -0.83
+2016-01      1.52   1.03      1.20        0.47     0.58     -0.22  -0.83
+2017-01      1.49   0.97      1.09        0.45     0.53     -0.21  -0.83
+2018-01      1.27   0.59      0.72        0.34     0.19     -0.21  -0.81
+2019-01      1.35   0.90      0.90        0.39     0.44     -0.21  -0.77
+2020-01      1.18   0.84      0.86        0.31     0.37     -0.21  -0.77
+2021-01      0.91   0.52      0.60        0.21     0.14     -0.21  -0.77
+2022-01      0.94   0.39      0.79        0.21     0.07     -0.21  -0.67
+2023-01      1.11   0.98      0.88        0.28     0.42     -0.21  -0.53
+2024-01      1.08   0.54      0.61        0.27     0.16     -0.21  -0.53
+
+== B7 : frais × 0,5 / 1 / 2 / 3 (FINAL, 2012-2026 et 2018-2026) ==
+  frais × 0.5                                  2012-26: Sh 1.98 cagr +70% dd -24%  2018-26: Sh 1.33 cagr +37% dd -20%
+  frais × 1                                    2012-26: Sh 1.89 cagr +66% dd -25%  2018-26: Sh 1.27 cagr +34% dd -21%
+  frais × 2                                    2012-26: Sh 1.72 cagr +58% dd -28%  2018-26: Sh 1.13 cagr +30% dd -23%
+  frais × 3                                    2012-26: Sh 1.55 cagr +51% dd -33%  2018-26: Sh 0.99 cagr +25% dd -27%
+
+== B8 : audit anti-futur (40 instants au hasard) ==
+  40 instants comparés ; écart maximal de position = 0.00e+00 (AUCUN regard vers le futur)
