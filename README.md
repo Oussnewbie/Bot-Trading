@@ -6,24 +6,30 @@ l'année). **Nasdaq uniquement** : la stratégie ne gagne sur aucun autre symbol
 
 | Fichier | Rôle |
 |---|---|
-| `mt5/ORB-v5.mq5` | L'Expert Advisor MetaTrader 5 (version 5.10). |
+| `mt5/ORB-v5.mq5` | L'Expert Advisor MetaTrader 5 (version 5.11). |
 | `interface/`, `Etrave.bat` | **Étrave**, l'interface de l'EA : une page web locale (risque, levier, Telegram, suivi et clôture des trades, lancement de MetaTrader). |
 | `pine/ORB-v5.pine` | La même stratégie pour TradingView (Pine v6), avec alertes Telegram. |
+| `backtest/m1/` | Le simulateur à la minute qui refait les trades de référence de l'interface, et le rapport de la recherche du 17 novembre 2026. |
 
-Le 15 novembre 2026 le dépôt a été réduit à ces trois éléments. Le simulateur Python, les données Dukascopy, les études et
-l'audit restent dans l'historique git (dernier commit qui les contient : `afb79de`).
+Le 15 novembre 2026 le dépôt a été réduit à ces éléments. Les données Dukascopy, les anciennes études et l'audit restent
+dans l'historique git (dernier commit qui les contient : `afb79de`).
 
-## Ce que disait le test (avant le ménage)
+## Ce que dit le test
 
-Nasdaq CFD Dukascopy, M1 bid et ask, glissement de 0,1 point, 2018-01 → 2026-11 : 1 427 trades (161 par an),
-**+0,31R par trade, +438R**, pire baisse −25R, 13 pertes de suite au pire, 58 % de stops pleins, 9 années positives sur 9.
+Nasdaq CFD Dukascopy, M1 bid et ask rejoués minute par minute, glissement de 0,1 point, 2018-01 → 2026-11 : 1 391
+trades (156 par an), **+0,46R par trade, +643R**, pire baisse −23R, 15 pertes de suite au pire, 59 % de pertes pleines,
+9 années positives sur 9.
 
-- Période de choix (2018-05 → 2022-08) : +249R. Vérification (2022-09 → 2026-11) : +166R.
+- Période de choix (2018-05 → 2022-08) : +371R. Vérification (2022-09 → 2026-11) : +233R.
+- **Pyramide de 2 unités depuis l'EA 5.11** (17 novembre 2026). Avec un ajout d'une unité : +471R, pire baisse −22R ;
+  sans pyramide : +312R. Le détail, et tout ce qui a été essayé sans succès (placement du stop, autres entrées, flux
+  d'ordres du future NQ, sorties anticipées, règles de mise), est dans [backtest/m1/RAPPORT.md](backtest/m1/RAPPORT.md).
 - **Avant 2018 la stratégie perdait** : −55R sur 2015-2017, −33R sur 2013-2014. L'ancien test 2015-2026 a connu une baisse
-  de 74R.
-- Capital, gains réinvestis, 2018 → 2026 : 0,25 % par trade → +13 % par an, pire baisse −6 % ; 0,5 % → +26 %, −12 % ;
-  1 % → +55 %, −23 %.
-- Le résultat dépend du glissement : +385R avec 0,5 point par exécution, +304R avec 1 point.
+  de 76R avec la pyramide de 2 unités (74R avec une unité).
+- Capital, gains réinvestis, 2018 → 2026 : 0,25 % par trade → +19 % par an, pire baisse −6 % ; 0,5 % → +40 %, −11 % ;
+  1 % → +88 %, −22 %. Si une période comme 2015-2017 revenait : environ −17 % à 0,25 %, −32 % à 0,5 %, −53 % à 1 %.
+- Le résultat dépend du glissement : +565R avec 0,5 point par exécution, +455R avec 1 point.
+- Garde un risque fixe : réduire la mise après des pertes ou en période de baisse a fait moins bien dans le test.
 
 Ce n'est pas un conseil en investissement, et le passé ne garantit rien. Fais tourner l'EA en démo avant le réel, et
 choisis le risque en regardant la pire baisse.
@@ -37,8 +43,9 @@ choisis le risque en regardant la pire baisse.
    l'autre. Si un seul côté est permis et que l'autre est touché d'abord, pas de trade ce jour-là.
 4. **Stop** de l'autre côté du range. 1R = taille de départ × range.
 5. **Stop au prix d'entrée** dès +1,5R, décidé à la clôture d'une bougie après celle de l'entrée.
-6. **Pyramide** : quand une bougie clôture à +2R ou plus, une unité est ajoutée et le stop de l'ensemble monte à 1R sous
-   le prix de l'ajout. Un seul ajout par trade.
+6. **Pyramide** : quand une bougie clôture à +2R ou plus, deux unités sont ajoutées et le stop de l'ensemble monte à 1R
+   sous le prix de l'ajout. Le pire cas reste −1R : la première unité a au moins +1R d'acquis, les deux unités ajoutées
+   risquent 1R chacune. Un seul ajout par trade.
 7. **Sortie** à 15:50. Un seul trade par jour.
 8. **Jours fériés américains et demi-séances** (le marché ferme vers 13:00) : sortie à 12:45, plus de pyramide ensuite.
    Le calendrier est calculé par l'EA et par le script (jour de l'an, Martin Luther King, Presidents' Day, vendredi
@@ -66,8 +73,9 @@ choisis le risque en regardant la pire baisse.
   des trades, case du Nasdaq (décochée : plus de nouveau trade), bouton « Clôturer le trade ». Les blocs se replient d'un
   clic sur leur titre.
 - **Risque** : le seul réglage, de 0,05 % à 20 % du solde par trade, avec le levier de ton courtier. Pour la valeur
-  choisie, la page rejoue les 1 427 trades du test : gain par an, pire baisse, série de 13 pertes, part des trades que la
-  marge aurait obligé à réduire. Au-delà de 1 %, il faut taper le mot RISQUE.
+  choisie, la page rejoue les 1 391 trades du test : gain par an, pire baisse, série de 15 pertes, part des trades que la
+  marge aurait obligé à réduire (la marge doit porter 3 unités : à 1 % de risque avec un levier de 1:20, 8 % des trades
+  sont réduits ; à 0,5 %, 1 %). Au-delà de 1 %, il faut taper le mot RISQUE.
 - **Connexions** : Telegram (jeton, « Trouver ma discussion et tester », « Essai depuis MetaTrader » qui dit si
   MetaTrader bloque l'adresse) ; MetaTrader 5 (connexion à un compte, installation de l'EA, ouverture automatique de
   MetaTrader au démarrage d'Étrave, lancement d'Étrave à l'ouverture de la session Windows).
@@ -99,8 +107,7 @@ mêmes noms de fichiers, de clés et les mêmes bornes).
 Colle `pine/ORB-v5.pine` dans l'éditeur Pine, sur un graphique **M5** du NAS100 avec les bougies hors séance. Dans
 « Propriétés », ajoute une commission égale au spread de ton courtier. Alertes Telegram : une alerte sur la stratégie,
 condition « Uniquement les appels de la fonction alert() », webhook `https://api.telegram.org/bot<TOKEN>/sendMessage`.
-Son en-tête cite encore l'ancien test (1 915 trades, +373R sur 2015-2026). Après chaque mise à jour du script, supprime
-et recrée l'alerte.
+Après chaque mise à jour du script, supprime et recrée l'alerte.
 
 ## Ce que l'EA ne fait pas exactement comme le script TradingView
 
@@ -120,16 +127,20 @@ Ces écarts sont ceux du test d'origine, qui comptait le bid et l'ask : c'est lu
 
 ## Limites connues
 
-- **L'EA 5.10 n'a jamais été compilé ni exécuté** : il a été modifié sans MetaTrader. Compile-le, corrige ce que le
+- **L'EA 5.11 n'a jamais été compilé ni exécuté** : il a été modifié sans MetaTrader. Compile-le, corrige ce que le
   compilateur signale, et fais-le tourner en démo.
 - Le lancement de MetaTrader, la connexion à un compte, l'installation de l'EA depuis la page et le lancement au démarrage
   de Windows n'ont jamais été essayés sous Windows.
-- Le script TradingView a lui aussi été modifié le 15 novembre 2026 (sortie des jours fériés) sans pouvoir être
-  compilé : si l'éditeur Pine signale une erreur, renvoie-la.
+- Le script TradingView a lui aussi été modifié les 15 et 17 novembre 2026 (sortie des jours fériés, taille de l'ajout)
+  sans pouvoir être compilé : si l'éditeur Pine signale une erreur, renvoie-la. Ses réglages déjà enregistrés sur un
+  graphique gardent l'ancienne taille d'ajout : remets « Taille de l'ajout » à 2 ou réinitialise les paramètres.
 - Jours fériés : le calendrier a été contrôlé sur les fermetures de 2022 à 2025. Une fermeture exceptionnelle (deuil
   national, panne) n'y figure pas : ce jour-là la position passerait la fermeture. À l'inverse, environ deux fois par
   décennie il sort à 12:45 un jour normal (31 décembre quand le 1er janvier tombe un samedi).
 - EA lancé entre 9:35 et 9:40 avec le prix déjà au-delà du range : il entre au marché, quelle que soit la distance.
 - Après un plantage de MetaTrader, l'état de l'EA peut être ancien (stop de référence, pyramide).
+- **Mise à jour vers 5.11** : un EA déjà posé sur un graphique garde ses anciens réglages. Ouvre ses propriétés et mets
+  « Taille de l'ajout » (`InpPyrSize`) à 2, ou retire l'EA et repose-le. Tant que la valeur reste 1, l'EA signale que ses
+  règles ne sont pas celles du test.
 - Arrondi des lots faux si le pas de volume du courtier n'est pas 1, 0,1 ou 0,01.
 - Le journal des trades de l'interface commence avec la version 5.10.

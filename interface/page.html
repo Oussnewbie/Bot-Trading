@@ -212,8 +212,8 @@
     <details class="card" data-fold="tests">
       <summary><h2>Ce que disent les tests</h2></summary>
       <ul>
-        <li><b>Nasdaq, 2018 → novembre 2026 :</b> 1 427 trades, +0,31R par trade, +438R au total, pire baisse −25R, 13 pertes de suite au pire, 58 % de stops pleins.</li>
-        <li><b>Nasdaq avant 2018 :</b> la stratégie perdait (−55R sur 2015-2017, −33R sur 2013-2014). L’ancien test 2015-2026 a connu une baisse de 74R.</li>
+        <li><b>Nasdaq, 2018 → novembre 2026</b> (rejoué minute par minute, ajout de 2 unités) : 1 391 trades, +0,46R par trade, +643R au total, pire baisse −23R, 15 pertes de suite au pire, 59 % de pertes pleines. Avec un ajout d’une seule unité : +471R.</li>
+        <li><b>Nasdaq avant 2018 :</b> la stratégie perdait (−55R sur 2015-2017, −33R sur 2013-2014). L’ancien test 2015-2026 a connu une baisse de 76R.</li>
         <li><b>Autres symboles :</b> la stratégie ne gagne ni sur le Dow Jones, ni sur l’or, ni sur l’EUR/USD, ni sur le bitcoin. Elle ne se trade que sur le Nasdaq.</li>
         <li>Le passé ne garantit rien : choisis le risque en regardant la pire baisse, pas le gain par an.</li>
       </ul>
@@ -614,9 +614,9 @@ function renderSim() {
   host.replaceChildren(...tiles);
   const notes = [];
   if (s.levier && s.reduitsPct > 0) {
-    const needed = Math.ceil((s.risquePct / 100) * 2 / (0.9 * s.rangeMedianPct / 100));
+    const needed = Math.ceil((s.risquePct / 100) * s.unites / (0.9 * s.rangeMedianPct / 100));
     notes.push(el('div', { class: `banner${s.reduitsPct >= 50 ? ' bad' : ''}` }, el('b', {}, 'La marge manque certains jours. '),
-      `Avec un levier de 1:${s.levier}, ${pct(s.reduitsPct)} des trades du test n’auraient pas pu être ouverts à ${riskText(s.risquePct)} : l’EA réduit alors la taille pour garder de quoi ouvrir la pyramide (deux unités, 90 % de la marge libre au plus). Pour qu’un jour sur deux passe en entier, il faudrait environ 1:${needed}.`));
+      `Avec un levier de 1:${s.levier}, ${pct(s.reduitsPct)} des trades du test n’auraient pas pu être ouverts à ${riskText(s.risquePct)} : l’EA réduit alors la taille pour garder de quoi ouvrir la pyramide (${s.unites} unités en tout, 90 % de la marge libre au plus). Pour qu’un jour sur deux passe en entier, il faudrait environ 1:${needed}.`));
   }
   if (s.risquePct > bounds().risqueAConfirmer) notes.push(el('div', { class: 'banner bad' }, el('b', {}, 'Au-delà de ce que le test rend raisonnable. '), `À ${riskText(s.risquePct)} par trade, la pire série du test (${s.serie} pertes) coûte ${num(s.seriePct, 0)} % du compte, et une période comme 2015-2017 au moins ${num(s.ancienTestPct, 0)} %. Le gain par an affiché suppose qu’aucune de ces séries n’arrive plus tôt ou plus fort que dans le test.`));
   $('sim-notes').replaceChildren(...notes);

@@ -145,19 +145,19 @@ def test_journal_des_trades(dossier):
 
 
 # ───────────────────────── risque et marge ─────────────────────────
-@pytest.mark.parametrize("pct, par_an, baisse", [(0.25, 13, 6), (0.5, 26, 12), (1.0, 55, 23)])
+@pytest.mark.parametrize("pct, par_an, baisse", [(0.25, 19, 6), (0.5, 40, 11), (1.0, 88, 22)])
 def test_le_calcul_redonne_le_tableau_du_readme(pct, par_an, baisse):
     s = risque.simuler(pct)
-    assert s["trades"] == 1427
+    assert s["trades"] == 1391 and s["unites"] == 3.0
     assert round(s["parAnPct"]) == par_an and round(s["pireBaissePct"]) == baisse
     assert s["reduitsPct"] == 0
 
 
 def test_la_marge_reduit_la_taille_quand_le_levier_manque():
-    # range de 0,3 % du prix, levier 20, 90 % de la marge pour deux unités : 2,7 % de risque au plus
-    assert risque.risque_possible(20, 0.003) == pytest.approx(0.027)
+    # range de 0,3 % du prix, levier 20, 90 % de la marge pour trois unités (départ + ajout de 2) : 1,8 % de risque au plus
+    assert risque.risque_possible(20, 0.003) == pytest.approx(0.018)
     petit, grand = risque.simuler(1.0, levier=20), risque.simuler(20.0, levier=20)
-    assert 0 < petit["reduitsPct"] < 5                              # à 1 %, seuls les très petits ranges coincent
+    assert 0 < petit["reduitsPct"] < 10                             # à 1 %, seuls les petits ranges coincent
     assert grand["reduitsPct"] > 99 and grand["risqueMoyenPct"] < 5   # à 20 %, presque tous les jours sont réduits
     assert risque.simuler(20.0, levier=2000)["reduitsPct"] < 1
     assert grand["pireBaissePct"] < risque.simuler(20.0)["pireBaissePct"]
@@ -376,7 +376,7 @@ def test_memes_bornes_des_deux_cotes():
     assert definition("RISK_MIN") == pont.RISQUE_MIN and definition("RISK_MAX") == pont.RISQUE_MAX
     assert definition("LEVER_MAX") == pont.LEVIER_MAX
     assert definition("MARGIN_USE") == risque.PART_MARGE
-    assert risque.UNITES == 2.0 and "InpPyrSize   = 1.0" in EA       # une unité de départ + une unité de pyramide
+    assert risque.UNITES == 3.0 and "InpPyrSize   = 2.0" in EA       # une unité de départ + deux unités de pyramide
     assert definition("UI_PERIOD") * 5 < pont.EA_MUET_S              # l'EA écrit bien plus souvent que le délai de silence
 
 

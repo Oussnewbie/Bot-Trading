@@ -15,15 +15,17 @@
 //  5. Gestion  : à la clôture d'une bougie (après celle de l'entrée) qui a atteint +1,5R, stop au prix d'entrée.
 //                Sortie au marché à 15:50 NY (clôture de la bougie de 15:45) ; à 12:45 les jours fériés américains et
 //                les demi-séances, où le marché ferme vers 13:00.
-//  6. PYRAMIDE : quand une bougie M5 clôture à +2R ou plus, l'EA ajoute une unité au marché et met le stop de
-//                l'ensemble à 1R sous le prix de l'ajout (donc au moins à +1R). Après l'ajout, le pire cas est zéro :
-//                l'ajout perd 1R, la première unité gagne au moins 1R.
+//  6. PYRAMIDE : quand une bougie M5 clôture à +2R ou plus, l'EA ajoute DEUX unités au marché et met le stop de
+//                l'ensemble à 1R sous le prix de l'ajout (donc au moins à +1R pour la première unité). Après l'ajout,
+//                le pire cas reste -1R, comme au départ : l'ajout perd 2R, la première unité gagne au moins 1R.
+//                Un seul ajout par trade.
 //  7. R affiché = résultat net de tout le trade (ajout, commission et swap compris) ÷ somme risquée au départ.
 //
-// Test de référence (NAS100 CFD Dukascopy M1, spread réel), 2018-01 → 2026-11, 1 427 trades :
-//   2018-05 → 2022-08 (période de choix) : +0,34R par trade, +249R ; 2022-09 → 2026-11 (vérification) : +0,25R, +166R
-//   Tout : +0,31R par trade, +438R, pire baisse -25R. Avant 2018 l'ORB perdait (-55R sur 2015-2017) et l'ancien test
-//   2015-2026 a connu une baisse de 74R. Elle ne gagne sur aucun autre symbole testé (Dow Jones, or, EUR/USD,
+// Test de référence (NAS100 CFD Dukascopy, rejoué minute par minute, M1 bid et ask), 2018-01 → 2026-11, 1 391 trades :
+//   2018-05 → 2022-08 (période de choix) : +0,52R par trade, +371R ; 2022-09 → 2026-11 (vérification) : +0,37R, +233R
+//   Tout : +0,46R par trade, +643R, pire baisse -23R, 15 pertes de suite au pire (avec un ajout d'une seule unité :
+//   +471R, pire baisse -22R). Avant 2018 l'ORB perdait (-55R sur 2015-2017) et l'ancien test 2015-2026 a connu une
+//   baisse de 76R. Elle ne gagne sur aucun autre symbole testé (Dow Jones, or, EUR/USD,
 //   bitcoin) : ne la trade que sur le Nasdaq. Les données et le spread de ton broker donneront un résultat un peu
 //   différent : vérifie dans le testeur de stratégie (« Chaque tick basé sur des ticks réels »).
 //
@@ -36,7 +38,7 @@
 // juste), compte en mode « hedging » conseillé, et pour WhatsApp / Telegram autoriser l'adresse dans
 // Outils > Options > Expert Advisors > « Autoriser WebRequest pour les URL listées ».
 #property copyright   "Bot-Trading"
-#property version     "5.10"
+#property version     "5.11"
 #property description "ORB New York 5 min v5 : cassure du range de 9:30 dans le sens de l'élan de l'ouverture, avec une pyramide à +2R."
 
 #include <Trade\Trade.mqh>
@@ -74,7 +76,7 @@ input double       InpTgtR      = 0.0;          // Objectif (R), 0 = sortie en f
 input group "Pyramide — valeurs du test"
 input bool         InpUsePyr    = true;         // Pyramide sur gain
 input double       InpPyrR      = 2.0;          // Ajout quand une bougie M5 clôture à (R)
-input double       InpPyrSize   = 1.0;          // Taille de l'ajout (× la position de départ)
+input double       InpPyrSize   = 2.0;          // Taille de l'ajout (× la position de départ ; 2 = pire cas -1R)
 input double       InpPyrGap    = 1.0;          // Stop de l'ensemble : distance sous le prix de l'ajout (R)
 
 input group "Exécution"
@@ -947,7 +949,8 @@ void DoPyramid(double curR)
      }
    RaiseStop(lock, "Stop remonté");
    Notify(I_ADD + "PYRAMIDE : clôture à " + RTxt(curR) + "\nAjout de " + DoubleToString(lots, vd) + " lot" + (apx > 0 ? " à " + Px(apx) : "") +
-          "\nStop de l'ensemble : " + Px(lock) + " (" + RTxt(lockR) + ")");
+          "\nStop de l'ensemble : " + Px(lock) + " (" + RTxt(lockR) + ")" +
+          "\nPire cas du trade : " + RTxt(lockR - InpPyrSize * InpPyrGap));
    SaveState();
   }
 
@@ -1099,7 +1102,7 @@ bool TestRules()   // les règles saisies sont-elles celles du test ?
   {
    return InpOR == "09:30" && InpPre == "09:00" && InpLiveBars == 2 && InpFlat == "15:50" && InpUseRSI && InpRSILen == 14 && InpUseExt &&
           MathAbs(InpBeR - 1.5) < 1e-9 && InpTgtR == 0 && InpUsePyr && MathAbs(InpPyrR - 2.0) < 1e-9 &&
-          MathAbs(InpPyrSize - 1.0) < 1e-9 && MathAbs(InpPyrGap - 1.0) < 1e-9;
+          MathAbs(InpPyrSize - 2.0) < 1e-9 && MathAbs(InpPyrGap - 1.0) < 1e-9;
   }
 
 // Lit Etrave\reglages.txt. Une clé absente ou invalide laisse la valeur de MetaTrader ; un fichier illisible à cet
@@ -1272,7 +1275,7 @@ void WriteState()
    double m  = BrokerMarginPerLot();
    double pl = gIn ? OpenProfit() : 0;
    Kv(h, "version", "1");
-   Kv(h, "ea", "5.10");
+   Kv(h, "ea", "5.11");
    Kv(h, "symbole", gSymFile);
    Kv(h, "instrument", gInstr);
    Kv(h, "actif", gActive ? "1" : "0");
