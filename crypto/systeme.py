@@ -22,6 +22,7 @@ import numpy as np
 import pandas as pd
 from scipy.stats import norm, skew, kurtosis
 
+import donnees as DN
 import indicateurs as I
 import moteur as M
 import niveaux as N
@@ -124,6 +125,13 @@ def tableau_du_jour():
               f"(financement 7 j {P['f7'].iloc[-1] * 3 * 365:+.1%} par an)")
         print(f"  Prime perp {ctx['prime'].iloc[-1]:+.4%} ; prime Coinbase 24 h {ctx['prime_cb'].iloc[-1]:+.3%} ; DVOL "
               f"{ctx['dvol'].iloc[-1]:.0f}")
+        d4 = DN.bougies_m5(actif + "USDT", "4h")
+        c4 = d4.close; e50, e200 = I.ema(c4, 50), I.ema(c4, 200)
+        etat4 = "haussière" if (e50.iloc[-1] > e200.iloc[-1] and c4.iloc[-1] > e200.iloc[-1]) else \
+            ("baissière" if (e50.iloc[-1] < e200.iloc[-1] and c4.iloc[-1] < e200.iloc[-1]) else "neutre")
+        sc = P["score"].iloc[-1]
+        mtf = "ACHAT" if (sc >= SEUIL and etat4 == "haussière") else ("VENTE" if (sc <= -SEUIL and etat4 == "baissière") else "rien")
+        print(f"  Multi-unités (RAPPORT-3) : tendance 4h {etat4} (bougie {d4.index[-1]:%d/%m %H:%M} UTC) -> {mtf}")
         for nom, (dessous, dessus) in niveaux_proches(actif, c).items():
             print(f"  {nom:<34} dessous {', '.join(f'{x:,.0f}' for x in dessous) or '-':<22} dessus "
                   f"{', '.join(f'{x:,.0f}' for x in dessus) or '-'}")

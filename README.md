@@ -9,7 +9,7 @@ l'année). **Nasdaq uniquement** : la stratégie ne gagne sur aucun autre symbol
 | `mt5/ORB-v5.mq5` | L'Expert Advisor MetaTrader 5 (version 5.10). |
 | `interface/`, `Etrave.bat` | **Étrave**, l'interface de l'EA : une page web locale (risque, levier, Telegram, suivi et clôture des trades, lancement de MetaTrader). |
 | `pine/ORB-v5.pine` | La même stratégie pour TradingView (Pine v6), avec alertes Telegram. |
-| `crypto/` | Recherche bitcoin et Ethereum : `crypto/RAPPORT.md` (confluence de 9 outils), `crypto/RAPPORT-2.md` (ventes, supports et résistances, sentiment, apprentissage, cash-and-carry), `crypto/CATALOGUE.md` (toutes les stratégies et leur verdict). Tableau du jour : `python crypto/systeme.py --jour`. Pas encore de bot. |
+| `crypto/` | Recherche bitcoin et Ethereum : `crypto/RAPPORT.md` (confluence de 9 outils), `crypto/RAPPORT-2.md` (ventes, supports et résistances, sentiment, apprentissage, cash-and-carry), `crypto/RAPPORT-3.md` (retournements, M5 à H4, système multi-unités), `crypto/CATALOGUE.md` (toutes les stratégies et leur verdict). Tableau du jour : `python crypto/systeme.py --jour`. Pas encore de bot. |
 
 Le 15 novembre 2026 le dépôt a été réduit à ces trois éléments. Le simulateur Python, les données Dukascopy, les études et
 l'audit restent dans l'historique git (dernier commit qui les contient : `afb79de`).

@@ -96,6 +96,8 @@ Les détails sont dans `RAPPORT.md` et `RAPPORT-2.md`.
 | Rejet de la SMA20/SMA50 ou du nuage en tendance baissière (stops réels) | t ≈ 1 à 2, faible mais du bon côté |
 | Fibonacci 0,5-0,618 vendu en tendance baissière | Sharpe propre 0,5-0,8, peu de trades |
 | Vendre la cupidité, les pics de prime ou de financement, les chasses de liquidité | ❌ Perdants |
+| **Fond journalier baissier + tendance H4 baissière** (`RAPPORT-3.md`) | ✅ Sharpe propre BTC 0,41 / 0,24, ETH 0,71 / 0,50 : la seule vente positive sur les deux actifs et les deux périodes |
+| Détecteurs de retournement (divergences RSI/MACD/CVD, CHoCH, climax, englobante…) de M5 à 1d | ❌ Lift 0,87 à 1,06 : pas mieux que le hasard |
 
 ## Le croisement retenu
 

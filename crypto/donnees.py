@@ -61,7 +61,9 @@ def regrouper(d, tf, decalage=0):
         return d
     agg = {"open": "first", "high": "max", "low": "min", "close": "last", "volume": "sum", "quote_volume": "sum",
            "count": "sum", "taker_buy_base": "sum"}
-    regle = {"1d": "24h", "4h": "4h", "2h": "2h", "12h": "12h"}.get(tf, tf.replace("d", "D").replace("w", "W-MON"))
+    regle = {"1d": "24h", "4h": "4h", "2h": "2h", "12h": "12h", "1h": "1h"}.get(tf)
+    if regle is None:
+        regle = tf[:-1] + "min" if tf.endswith("m") else tf.replace("d", "D").replace("w", "W-MON")
     r = d.resample(regle, label="left", closed="left", origin="epoch",
                    offset=pd.Timedelta(hours=decalage)).agg(agg)
     return r.dropna(subset=["close"])
@@ -152,3 +154,17 @@ def journaliers_extra(actif):
     s = pd.read_csv(f"{X}/stablecoins.csv")
     st = pd.Series(s.usd.values, index=pd.to_datetime(s.t, unit="s", utc=True) + pd.Timedelta("2D")).sort_index()
     return dict(fng=fng[~fng.index.duplicated()], dvol=dvol[~dvol.index.duplicated()], stable=st[~st.index.duplicated()])
+
+
+def bougies_m5(sym, tf="5m"):
+    """Bougies Binance spot reconstruites à partir du 5 minutes (02_telecharger_m5.sh) : 5m, 15m, 30m, 1h, 4h, 1d."""
+    def f():
+        fs = sorted(glob.glob(f"{D}/binance/spot/monthly/klines/{sym}/5m/*.csv")) + \
+            sorted(glob.glob(f"{D}/binance/spot/daily/klines/{sym}/5m/*.csv"))
+        return _lire_klines(fs)
+    d = _cache(f"{sym}-spot-5m", f)
+    if tf != "5m":
+        d = regrouper(d, "60m" if tf == "1h" else tf)
+    d = d.copy()
+    d["delta"] = 2 * d.taker_buy_base - d.volume
+    return d
