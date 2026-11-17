@@ -15,8 +15,8 @@ risquent 1R chacune.
 | | 2018-05 → 2022-08 | 2022-09 → 2026-11 | Tout | Pire baisse | Pire série |
 |---|---|---|---|---|---|
 | Sans pyramide | +165R | +134R | +312R | −24R | 13 |
-| Ajout de 1 (v5 jusqu'ici) | +264R | +180R | +471R | −22R | 13 |
-| **Ajout de 2 (v5 depuis l'EA 5.11)** | **+371R** | **+233R** | **+643R** | **−23R** | **15** |
+| Ajout de 1 (v5) | +264R | +180R | +471R | −22R | 13 |
+| **Ajout de 2 (v6)** | **+371R** | **+233R** | **+643R** | **−23R** | **15** |
 | Ajout de 3 (pire cas −2R, écarté) | +479R | +286R | +814R | −27R | 15 |
 
 - Mieux chaque année de 2018 à 2026. Sur l'ancien test M5 de 2015-2017, quand la stratégie perdait (−55R), la taille

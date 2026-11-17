@@ -1,4 +1,4 @@
-"""Tests de l'interface Étrave et de son accord avec l'EA (mt5/ORB-v5.mq5) : `python -m pytest interface`.
+"""Tests de l'interface Étrave et de son accord avec l'EA (mt5/ORB-v6.mq5) : `python -m pytest interface`.
 
 L'EA ne peut pas être exécuté ici : ses fichiers sont fabriqués à la main dans le format qu'il écrit, et un test relit
 le code MQL5 pour vérifier que les noms de clés, les bornes et le format du journal sont les mêmes des deux côtés.
@@ -24,7 +24,7 @@ import risque  # noqa: E402
 import telegram  # noqa: E402
 
 JETON = "123456789:" + "A" * 35
-EA = open(os.path.join(RACINE, "mt5", "ORB-v5.mq5"), encoding="utf-8-sig").read()
+EA = open(os.path.join(RACINE, "mt5", "ORB-v6.mq5"), encoding="utf-8-sig").read()
 
 
 def faux_etat(dossier, symbole="NAS100", age=0.0, **cles):
@@ -256,15 +256,15 @@ def test_installation_de_l_ea_et_demarrage_avec_windows(tmp_path):
     exe = str(installation / "terminal64.exe")
     env = {"APPDATA": str(tmp_path / "AppData")}
     assert mt5.dossiers_de_donnees(env) == {os.path.normcase(os.path.normpath(str(installation))): str(donnees)}
-    source = os.path.join(RACINE, "mt5", "ORB-v5.mq5")
+    source = os.path.join(RACINE, "mt5", "ORB-v6.mq5")
 
     def compilateur(commande, timeout):
         cible = commande[1][len("/compile:"):]
         open(cible[:-4] + ".ex5", "wb").close()
-        open(commande[2][len("/log:"):], "w", encoding="utf-16").write("ORB-v5.mq5 : information: compiling\nResult: 0 errors, 1 warnings\n")
+        open(commande[2][len("/log:"):], "w", encoding="utf-16").write("ORB-v6.mq5 : information: compiling\nResult: 0 errors, 1 warnings\n")
     r = mt5.installer_ea(exe, [exe], source, env=env, systeme="win32", executer=compilateur)
     assert r["compile"] is True and r["journal"] == ["Result: 0 errors, 1 warnings"]
-    copie = donnees / "MQL5" / "Experts" / "Etrave" / "ORB-v5.mq5"
+    copie = donnees / "MQL5" / "Experts" / "Etrave" / "ORB-v6.mq5"
     assert copie.read_bytes() == open(source, "rb").read()
     rate = mt5.installer_ea(exe, [exe], source, env=env, systeme="win32", executer=lambda commande, timeout: None)
     assert rate["compile"] is False                                  # pas de nouveau programme : la compilation a échoué
@@ -424,7 +424,7 @@ def sans_textes(source):
 
 def test_l_ea_reste_lisible_par_metatrader():
     """Pas un test de compilation (impossible ici) : seulement les fautes que l'on peut voir sans compilateur."""
-    brut = open(os.path.join(RACINE, "mt5", "ORB-v5.mq5"), "rb").read()
+    brut = open(os.path.join(RACINE, "mt5", "ORB-v6.mq5"), "rb").read()
     assert brut.startswith(b"\xef\xbb\xbf")                           # UTF-8 signé : MetaEditor lit bien les accents
     code = sans_textes(EA)
     for ouvrant, fermant in ("{}", "()", "[]"):
@@ -442,7 +442,7 @@ def test_l_ea_reste_lisible_par_metatrader():
 def test_jours_feries_meme_regle_dans_l_ea_et_le_script():
     """Sortie avancée les jours fériés américains et les demi-séances : même heure et mêmes jours des deux côtés.
     (Les règles du calendrier ont été contrôlées à part sur les fermetures 2022-2025 de la Bourse de New York.)"""
-    pine = open(os.path.join(RACINE, "pine", "ORB-v5.pine"), encoding="utf-8").read()
+    pine = open(os.path.join(RACINE, "pine", "ORB-v6.pine"), encoding="utf-8").read()
     assert 'InpFlatShort = "12:45"' in EA and 'input.session("1240-1600"' in pine          # bougie de 12:40 = clôture à 12:45
     assert "NYMin(ny) >= FlatMin(ny)" in EA and "NYMin(ToNY(r[0].time)) < FlatMin(ToNY(r[0].time))" in EA
     assert "shortDay and not na(time(timeframe.period, flatShortS, TZ_NY))" in pine

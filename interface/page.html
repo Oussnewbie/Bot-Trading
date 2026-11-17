@@ -352,7 +352,7 @@ function renderHeader() {
   if (live.length) { ny.className = `pill ${live[0].horloge_ok ? '' : 'bad'}`; ny.lastChild.textContent = `New York ${String(live[0].heure_ny || '').slice(-5)}`; }
 
   const banners = [];
-  if (state.eas.length === 0) banners.push(el('div', { class: 'banner' }, el('b', {}, 'Aucun EA vu pour l’instant. '), 'Ouvre MetaTrader 5, pose l’EA ORB-v5 sur un graphique du Nasdaq et autorise le trading algorithmique. Tes réglages d’ici seront pris dès qu’il démarre.'));
+  if (state.eas.length === 0) banners.push(el('div', { class: 'banner' }, el('b', {}, 'Aucun EA vu pour l’instant. '), 'Ouvre MetaTrader 5, pose l’EA ORB-v6 sur un graphique du Nasdaq et autorise le trading algorithmique. Tes réglages d’ici seront pris dès qu’il démarre.'));
   else if (live.length === 0) banners.push(el('div', { class: 'banner bad' }, el('b', {}, 'L’EA ne répond plus. '), 'MetaTrader 5 est fermé, ou l’EA a été retiré du graphique. Tant qu’il est arrêté, seuls les stops posés chez le courtier protègent un trade ouvert.'));
   for (const e of live) {
     if (!e.connecte) banners.push(el('div', { class: 'banner bad' }, el('b', {}, `${e.symbole} : `), 'MetaTrader 5 n’est pas connecté au courtier.'));
@@ -411,7 +411,7 @@ function instrumentRow(key, label, eas) {
   const actions = el('div', {});
   row.append(actions);
   if (eas.length === 0) {
-    if (checked) row.append(el('dl', {}, el('dt', {}, 'EA'), el('dd', {}, 'Aucun EA sur un graphique de cet instrument : pose ORB-v5 sur son graphique dans MetaTrader 5.')));
+    if (checked) row.append(el('dl', {}, el('dt', {}, 'EA'), el('dd', {}, 'Aucun EA sur un graphique de cet instrument : pose ORB-v6 sur son graphique dans MetaTrader 5.')));
     return row;
   }
   for (const e of eas) {

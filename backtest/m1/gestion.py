@@ -55,7 +55,7 @@ def trade2(k, d, ent, stop, iend, be=1.5, be_lock=0.0, adds=((2.0, 1.0, 1.0),), 
 
 
 def jouer(D, sortie=None, **kw):
-    """sortie : minute NY de sortie forcée (ex. 720 = 12:00), sinon 15:50 / 12:45 comme la v5."""
+    """sortie : minute NY de sortie forcée (ex. 720 = 12:00), sinon 15:50 / 12:45 comme l'EA."""
     out = []
     mins = G["mins"]
     for r in D.itertuples():

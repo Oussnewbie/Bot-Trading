@@ -1,4 +1,4 @@
-# Étrave — ORB v5 sur le Nasdaq (MetaTrader 5, interface, TradingView)
+# Étrave — ORB v6 sur le Nasdaq (MetaTrader 5, interface, TradingView)
 
 Cassure du range d'ouverture de New York (bougie M5 de 9:30) sur le Nasdaq (NAS100), dans le sens de l'élan de
 l'ouverture, avec une pyramide sur les journées de tendance. Heures de New York (9:30 NY = 15:30 à Paris la plupart de
@@ -6,9 +6,9 @@ l'année). **Nasdaq uniquement** : la stratégie ne gagne sur aucun autre symbol
 
 | Fichier | Rôle |
 |---|---|
-| `mt5/ORB-v5.mq5` | L'Expert Advisor MetaTrader 5 (version 5.11). |
+| `mt5/ORB-v6.mq5` | L'Expert Advisor MetaTrader 5 (version 6.00). |
 | `interface/`, `Etrave.bat` | **Étrave**, l'interface de l'EA : une page web locale (risque, levier, Telegram, suivi et clôture des trades, lancement de MetaTrader). |
-| `pine/ORB-v5.pine` | La même stratégie pour TradingView (Pine v6), avec alertes Telegram. |
+| `pine/ORB-v6.pine` | La même stratégie pour TradingView (langage Pine v6), avec alertes Telegram. |
 | `backtest/m1/` | Le simulateur à la minute qui refait les trades de référence de l'interface, et le rapport de la recherche du 17 novembre 2026. |
 
 Le 15 novembre 2026 le dépôt a été réduit à ces éléments. Les données Dukascopy, les anciennes études et l'audit restent
@@ -21,9 +21,10 @@ trades (156 par an), **+0,46R par trade, +643R**, pire baisse −23R, 15 pertes 
 9 années positives sur 9.
 
 - Période de choix (2018-05 → 2022-08) : +371R. Vérification (2022-09 → 2026-11) : +233R.
-- **Pyramide de 2 unités depuis l'EA 5.11** (17 novembre 2026). Avec un ajout d'une unité : +471R, pire baisse −22R ;
-  sans pyramide : +312R. Le détail, et tout ce qui a été essayé sans succès (placement du stop, autres entrées, flux
-  d'ordres du future NQ, sorties anticipées, règles de mise), est dans [backtest/m1/RAPPORT.md](backtest/m1/RAPPORT.md).
+- **La v6 = les règles de la v5 avec une pyramide de 2 unités** (17 novembre 2026). Les fichiers v5 ont été retirés du
+  dépôt (ils restent dans l'historique git). Avec un ajout d'une unité : +471R, pire baisse −22R ; sans pyramide : +312R.
+  Le détail, et tout ce qui a été essayé sans succès (placement du stop, autres entrées, flux d'ordres du future NQ,
+  sorties anticipées, règles de mise), est dans [backtest/m1/RAPPORT.md](backtest/m1/RAPPORT.md).
 - **Avant 2018 la stratégie perdait** : −55R sur 2015-2017, −33R sur 2013-2014. L'ancien test 2015-2026 a connu une baisse
   de 76R avec la pyramide de 2 unités (74R avec une unité).
 - Capital, gains réinvestis, 2018 → 2026 : 0,25 % par trade → +19 % par an, pire baisse −6 % ; 0,5 % → +40 %, −11 % ;
@@ -58,7 +59,7 @@ choisis le risque en regardant la pire baisse.
 2. Double-clique sur `Etrave.bat` : la page s'ouvre sur `http://127.0.0.1:8788` (ailleurs que sous Windows :
    `python interface/etrave.py`).
 3. Onglet **Connexions** : « Installer ou mettre à jour l'EA » le copie dans `MQL5\Experts\Etrave` et le compile ; les
-   erreurs éventuelles s'affichent dans la page. À la main : copie `mt5/ORB-v5.mq5` dans `MQL5/Experts`, ouvre-le dans
+   erreurs éventuelles s'affichent dans la page. À la main : copie `mt5/ORB-v6.mq5` dans `MQL5/Experts`, ouvre-le dans
    MetaEditor, F7.
 4. Dans MetaTrader, glisse l'EA sur un graphique du Nasdaq (une seule fois, MetaTrader s'en souvient) et coche
    « Autoriser le trading algorithmique ».
@@ -104,7 +105,7 @@ mêmes noms de fichiers, de clés et les mêmes bornes).
 
 ## TradingView
 
-Colle `pine/ORB-v5.pine` dans l'éditeur Pine, sur un graphique **M5** du NAS100 avec les bougies hors séance. Dans
+Colle `pine/ORB-v6.pine` dans l'éditeur Pine, sur un graphique **M5** du NAS100 avec les bougies hors séance. Dans
 « Propriétés », ajoute une commission égale au spread de ton courtier. Alertes Telegram : une alerte sur la stratégie,
 condition « Uniquement les appels de la fonction alert() », webhook `https://api.telegram.org/bot<TOKEN>/sendMessage`.
 Après chaque mise à jour du script, supprime et recrée l'alerte.
@@ -127,7 +128,7 @@ Ces écarts sont ceux du test d'origine, qui comptait le bid et l'ask : c'est lu
 
 ## Limites connues
 
-- **L'EA 5.11 n'a jamais été compilé ni exécuté** : il a été modifié sans MetaTrader. Compile-le, corrige ce que le
+- **L'EA ORB-v6 n'a jamais été compilé ni exécuté** : il a été modifié sans MetaTrader. Compile-le, corrige ce que le
   compilateur signale, et fais-le tourner en démo.
 - Le lancement de MetaTrader, la connexion à un compte, l'installation de l'EA depuis la page et le lancement au démarrage
   de Windows n'ont jamais été essayés sous Windows.
@@ -139,8 +140,9 @@ Ces écarts sont ceux du test d'origine, qui comptait le bid et l'ask : c'est lu
   décennie il sort à 12:45 un jour normal (31 décembre quand le 1er janvier tombe un samedi).
 - EA lancé entre 9:35 et 9:40 avec le prix déjà au-delà du range : il entre au marché, quelle que soit la distance.
 - Après un plantage de MetaTrader, l'état de l'EA peut être ancien (stop de référence, pyramide).
-- **Mise à jour vers 5.11** : un EA déjà posé sur un graphique garde ses anciens réglages. Ouvre ses propriétés et mets
-  « Taille de l'ajout » (`InpPyrSize`) à 2, ou retire l'EA et repose-le. Tant que la valeur reste 1, l'EA signale que ses
-  règles ne sont pas celles du test.
+- **Passer de la v5 à la v6** : fais-le hors séance, sans trade ouvert (la v6 ne reprend pas l'état d'un trade de la
+  v5). Retire ORB-v5 de ses graphiques, supprime `ORB-v5.mq5` et `ORB-v5.ex5` de `MQL5\Experts\Etrave`, installe la v6
+  depuis Étrave (onglet Connexions) et pose ORB-v6 sur le graphique du Nasdaq. Sur TradingView, supprime l'ancien script
+  et son alerte, colle `pine/ORB-v6.pine` et recrée l'alerte.
 - Arrondi des lots faux si le pas de volume du courtier n'est pas 1, 0,1 ou 0,01.
-- Le journal des trades de l'interface commence avec la version 5.10.
+- Le journal des trades de l'interface commence avec la version 5.10 de l'EA ; la v6 continue le même journal.

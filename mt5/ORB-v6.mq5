@@ -1,7 +1,7 @@
 ﻿//+------------------------------------------------------------------+
-//| ORB-v5.mq5 — Cassure du range d'ouverture de New York (5 min)    |
+//| ORB-v6.mq5 — Cassure du range d'ouverture de New York (5 min)    |
 //| avec pyramide. Mêmes règles et mêmes paramètres que              |
-//| pine/ORB-v5.pine (différences : voir le README)                   |
+//| pine/ORB-v6.pine (différences : voir le README)                   |
 //+------------------------------------------------------------------+
 //
 // Règles (heure de New York, bougies M5 quel que soit l'horizon du graphique) :
@@ -38,8 +38,8 @@
 // juste), compte en mode « hedging » conseillé, et pour WhatsApp / Telegram autoriser l'adresse dans
 // Outils > Options > Expert Advisors > « Autoriser WebRequest pour les URL listées ».
 #property copyright   "Bot-Trading"
-#property version     "5.11"
-#property description "ORB New York 5 min v5 : cassure du range de 9:30 dans le sens de l'élan de l'ouverture, avec une pyramide à +2R."
+#property version     "6.00"
+#property description "ORB New York 5 min v6 : cassure du range de 9:30 dans le sens de l'élan de l'ouverture, avec une pyramide à +2R."
 
 #include <Trade\Trade.mqh>
 
@@ -61,7 +61,7 @@ input group "Heure du serveur du broker"
 input int          InpSrvGMT    = 2;            // Décalage GMT du serveur en hiver (heures)
 input ENUM_SRV_DST InpSrvDST    = SRV_DST_US;   // Heure d'été du serveur
 
-input group "Règles v5 (heure de New York) — valeurs du test"
+input group "Règles v6 (heure de New York) — valeurs du test"
 input string       InpOR        = "09:30";      // Bougie M5 du range
 input string       InpPre       = "09:00";      // Début de la fenêtre de l'élan (jusqu'au range)
 input int          InpLiveBars  = 2;            // Ordres valables (bougies M5 après le range)
@@ -82,7 +82,7 @@ input double       InpPyrGap    = 1.0;          // Stop de l'ensemble : distance
 input group "Exécution"
 input ulong        InpMagic     = 50930;        // Numéro magique
 input int          InpDeviation = 30;           // Glissement maximal (points)
-input string       InpComment   = "ORB v5";     // Commentaire des ordres
+input string       InpComment   = "ORB v6";     // Commentaire des ordres
 
 input group "Notifications"
 input bool         InpPush      = true;         // Notifications push MT5 (appli mobile MetaTrader 5)
@@ -1275,7 +1275,7 @@ void WriteState()
    double m  = BrokerMarginPerLot();
    double pl = gIn ? OpenProfit() : 0;
    Kv(h, "version", "1");
-   Kv(h, "ea", "5.11");
+   Kv(h, "ea", "6.00");
    Kv(h, "symbole", gSymFile);
    Kv(h, "instrument", gInstr);
    Kv(h, "actif", gActive ? "1" : "0");
@@ -1358,7 +1358,7 @@ void Panel()
    string live = "";
    if(gIn && gRiskMoney > 0)
       live = (gDir == 1 ? "Achat" : "Vente") + " en cours · " + RTxt(OpenProfit() / gRiskMoney) + (gPyr ? " · pyramide, stop à " + Px(gVStop) : gBE ? " · stop à l'entrée" : "");
-   string s = BOT + " · ORB v5 · " + _Symbol + " · " + RiskTxt(gRiskPct) + " par trade (" + (gRiskSrc == "interface" ? "interface" : "MetaTrader") + ")" +
+   string s = BOT + " · ORB v6 · " + _Symbol + " · " + RiskTxt(gRiskPct) + " par trade (" + (gRiskSrc == "interface" ? "interface" : "MetaTrader") + ")" +
               (gActive ? "" : " · DÉSACTIVÉ dans l'interface") + "\n" +
               "Heure NY : " + TimeToString(ny, TIME_DATE | TIME_MINUTES) + " (serveur " + TimeToString(TimeCurrent(), TIME_MINUTES) + ") — à vérifier\n" +
               "Range 9:30 : " + (gOrH > 0 ? Px(gOrL) + " – " + Px(gOrH) + " (" + Pts(gOrH - gOrL) + ")" : "—") + "\n" +
@@ -1378,12 +1378,12 @@ int OnInit()
    mFlatShort = ParseHM(InpFlatShort);
    if(mOR < 0 || mPre < 0 || mFlat < 0 || mPre >= mOR || mFlat <= mOR || mFlatShort <= mOR || mFlatShort > mFlat)
      {
-      Alert("ORB v5 : heures invalides (format HH:MM, début de l'élan < range < sortie des jours fériés <= sortie).");
+      Alert("ORB v6 : heures invalides (format HH:MM, début de l'élan < range < sortie des jours fériés <= sortie).");
       return INIT_PARAMETERS_INCORRECT;
      }
    if(InpUsePyr && (InpPyrGap <= 0 || InpPyrGap > InpPyrR || InpPyrSize <= 0))
      {
-      Alert("ORB v5 : pyramide invalide (la distance du stop doit être positive et ne pas dépasser le seuil d'ajout).");
+      Alert("ORB v6 : pyramide invalide (la distance du stop doit être positive et ne pas dépasser le seuil d'ajout).");
       return INIT_PARAMETERS_INCORRECT;
      }
    trade.SetExpertMagicNumber(InpMagic);
@@ -1392,7 +1392,7 @@ int OnInit()
    hRSI = iRSI(_Symbol, PERIOD_M5, InpRSILen, PRICE_CLOSE);
    if(hRSI == INVALID_HANDLE)
       return INIT_FAILED;
-   GV = "ORBv5_" + _Symbol + "_" + (string)InpMagic + "_";
+   GV = "ORBv6_" + _Symbol + "_" + (string)InpMagic + "_";
    gInstr   = InstrumentOf(_Symbol);
    gSymFile = SafeName(_Symbol);
    gRiskPct = InpRiskPct;
@@ -1404,10 +1404,10 @@ int OnInit()
       // contrôle du décalage horaire saisi
       long real = (long)(TimeTradeServer() - TimeGMT());
       if(MathAbs(real - ServerOffsetSec(TimeTradeServer())) > 1800)
-         Alert(StringFormat("ORB v5 : le serveur est à GMT%+.1f maintenant, les réglages donnent GMT%+.1f. Corrige « Décalage GMT du serveur » ou « Heure d'été », sinon les heures de New York seront fausses.",
+         Alert(StringFormat("ORB v6 : le serveur est à GMT%+.1f maintenant, les réglages donnent GMT%+.1f. Corrige « Décalage GMT du serveur » ou « Heure d'été », sinon les heures de New York seront fausses.",
                             real / 3600.0, ServerOffsetSec(TimeTradeServer()) / 3600.0));
       if((ENUM_ACCOUNT_MARGIN_MODE)AccountInfoInteger(ACCOUNT_MARGIN_MODE) != ACCOUNT_MARGIN_MODE_RETAIL_HEDGING)
-         Print("ORB v5 : compte en mode netting. L'EA fonctionne, mais n'ouvre rien d'autre sur ce symbole en même temps.");
+         Print("ORB v6 : compte en mode netting. L'EA fonctionne, mais n'ouvre rien d'autre sur ce symbole en même temps.");
      }
    gLastBar = 0;   // la première bougie est contrôlée tout de suite (EA lancé à 9:35 : le range du jour est pris)
    ReadSettings();

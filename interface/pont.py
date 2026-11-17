@@ -8,7 +8,7 @@ L'EA et l'interface ne se parlent que par des fichiers texte rangés dans le dos
     trades-<symbole>.csv  une ligne par trade clôturé, ajoutée par l'EA
 
 Format : une ligne `cle=valeur` par réglage. Une clé absente de reglages.txt laisse à l'EA la valeur saisie dans
-MetaTrader ; les noms de clés sont les mêmes dans mt5/ORB-v5.mq5 (interface/test_interface.py vérifie l'accord).
+MetaTrader ; les noms de clés sont les mêmes dans mt5/ORB-v6.mq5 (interface/test_interface.py vérifie l'accord).
 
 Règles reprises de Vigie :
  - tout est validé AVANT d'écrire quoi que ce soit ;

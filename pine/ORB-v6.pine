@@ -1,5 +1,5 @@
 //@version=6
-// ORB v5 — Cassure du range d'ouverture de New York (5 minutes), dans le sens de l'élan de l'ouverture,
+// ORB v6 — Cassure du range d'ouverture de New York (5 minutes), dans le sens de l'élan de l'ouverture,
 //          avec une pyramide sur les journées de tendance
 // Graphique M5. Toutes les heures sont en heure de New York (9:30 NY = 15:30 à Paris la plupart de l'année).
 //
@@ -21,13 +21,13 @@
 //  7. Un seul trade par jour. Le R affiché = résultat net de tout le trade (ajout compris) ÷ somme risquée au départ.
 //
 // Test sur NAS100 CFD (Dukascopy, M1 bid et ask rejoué minute par minute, spread compté), 2018-01 → 2026-11, 1 391 trades :
-//   2018-05 → 2022-08 (période où la v5 a été choisie) : +0,52R par trade, +371R
+//   2018-05 → 2022-08 (période où les règles ont été choisies) : +0,52R par trade, +371R
 //   2022-09 → 2026-11 (vérification)                   : +0,37R par trade, +233R
 //   Tout : +0,46R par trade, +643R, pire baisse -23R, 15 pertes de suite, 9 années sur 9 (ajout d'une unité : +471R ;
 //   sans pyramide : +312R). Avant 2018 l'ORB perdait : -55R sur 2015-2017, et l'ancien test 2015-2026 a baissé de 76R.
 // Compte sur moins en réel (glissement, spread de ton courtier), avec des années perdantes possibles. Le testeur de TradingView ne
 // compte pas le spread d'un CFD : ajoute une commission dans « Propriétés » pour un résultat réaliste.
-strategy("ORB New York 5 min (v5)", shorttitle = "ORB v5", overlay = true,
+strategy("ORB New York 5 min (v6)", shorttitle = "ORB v6", overlay = true,
      initial_capital = 10000, currency = currency.USD, pyramiding = 2,
      process_orders_on_close = true, margin_long = 0, margin_short = 0, slippage = 2,
      max_lines_count = 500, max_boxes_count = 500, max_labels_count = 500)
@@ -610,7 +610,7 @@ var table tb = table.new(tblPos, 2, 6, bgcolor = chart.bg_color, frame_color = c
      border_color = color.new(color.gray, 85), border_width = 1)
 if showTable and barstate.islast
     color fg = chart.fg_color
-    table.cell(tb, 0, 0, "ORB v5", text_color = fg, text_size = size.normal, text_halign = text.align_left)
+    table.cell(tb, 0, 0, "ORB v6", text_color = fg, text_size = size.normal, text_halign = text.align_left)
     table.cell(tb, 1, 0, "NY 9:30 · M5 · " + str.tostring(riskPct) + " % par trade", text_color = color.new(fg, 45), text_size = size.small, text_halign = text.align_right)
     cellRow(tb, 1, "Range 9:30", na(orH) ? "—" : fmt(orL) + " – " + fmt(orH) + " (" + distTxt(orH - orL) + ")", fg)
     cellRow(tb, 2, "Filtres", (useRSI or useExt) ? S.filtTxt : "désactivés", fg)

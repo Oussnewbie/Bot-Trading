@@ -1,4 +1,4 @@
-"""ORB v5 rejoué à la minute (M1 bid/ask). Les décisions de la v5 restent prises à la clôture des bougies M5
+"""ORB rejoué à la minute (M1 bid/ask). Les décisions de l'EA restent prises à la clôture des bougies M5
 (stop à l'entrée à +1,5R, pyramide à +2R), mais l'entrée et le stop sont vus minute par minute.
 
 Conventions (prudentes, comme l'ancien simulateur) :
