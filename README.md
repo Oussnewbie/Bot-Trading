@@ -6,7 +6,7 @@ l'année). **Nasdaq uniquement** : la stratégie ne gagne sur aucun autre symbol
 
 | Fichier | Rôle |
 |---|---|
-| `mt5/ORB-v6.mq5` | L'Expert Advisor MetaTrader 5 (version 6.00). |
+| `mt5/ORB-v6.mq5` | L'Expert Advisor MetaTrader 5 (version 6.10). |
 | `interface/`, `Etrave.bat` | **Étrave**, l'interface de l'EA : une page web locale (risque, levier, Telegram, suivi et clôture des trades, lancement de MetaTrader). |
 | `pine/ORB-v6.pine` | La même stratégie pour TradingView (langage Pine v6), avec alertes Telegram. |
 | `backtest/m1/` | Le simulateur à la minute qui refait les trades de référence de l'interface, et le rapport de la recherche du 17 novembre 2026. |
@@ -43,7 +43,9 @@ choisis le risque en regardant la pire baisse.
 2. **Filtres** : achat permis si le RSI14 M5 de cette bougie est au-dessus de 50 **et** si son high dépasse le plus haut de
    9:00-9:30 ; vente si le RSI est sous 50 et le low sous le plus bas de 9:00-9:30. Aucun côté permis : pas de trade.
 3. **Ordres** : achat sur le high et/ou vente sur le low, valables 2 bougies (jusqu'à 9:45). Le premier exécuté annule
-   l'autre. Si un seul côté est permis et que l'autre est touché d'abord, pas de trade ce jour-là.
+   l'autre. Si un seul côté est permis et que l'autre est touché d'abord, pas de trade ce jour-là. Depuis l'EA 6.10, ce
+   sont de vrais ordres Buy Stop / Sell Stop posés chez le courtier à 9:35 (avec leur stop) : son serveur les exécute
+   sans attendre l'EA, ce qui réduit le glissement.
 4. **Stop** de l'autre côté du range. 1R = taille de départ × range.
 5. **Stop au prix d'entrée** dès +1,5R, décidé à la clôture d'une bougie après celle de l'entrée.
 6. **Pyramide** : quand une bougie clôture à +2R ou plus, deux unités sont ajoutées et le stop de l'ensemble monte à 1R
@@ -102,7 +104,7 @@ son état et ses trades. L'interface ne passe aucun ordre ; on peut la fermer sa
 **Où faire tourner l'EA** : ton ordinateur pour la démo (sans mise en veille), un VPS Windows pour le réel. Le VPS intégré
 à MetaTrader n'a pas d'écran et ne lance aucun autre programme : l'EA y tourne, sans l'interface.
 
-Tests de l'interface : `python -m pytest interface` (26 tests ; ils vérifient aussi que l'EA et l'interface emploient les
+Tests de l'interface : `python -m pytest interface` (28 tests ; ils vérifient aussi que l'EA et l'interface emploient les
 mêmes noms de fichiers, de clés et les mêmes bornes).
 
 ## TradingView
@@ -118,7 +120,7 @@ Les règles sont les mêmes. Les écarts viennent du spread, que TradingView ne 
 
 | | Script TradingView | EA |
 |---|---|---|
-| Déclenchement d'un achat | quand le prix du graphique atteint le high | quand l'**ask** atteint le high (un spread plus tôt), exécution au marché |
+| Déclenchement d'un achat | quand le prix du graphique atteint le high | ordre Buy Stop chez le courtier : exécuté quand l'**ask** atteint le high (un spread plus tôt) |
 | Vente : seuils de +1,5R et de +2R, côté bloqué touché | mesurés sur le prix du graphique | mesurés sur l'**ask** (le prix auquel une vente se rachète) : un spread plus exigeants |
 | Stop de la pyramide | 1R sous la clôture de la bougie | 1R sous le prix réel de l'ajout, pris au premier tick de la bougie suivante |
 | Filtre d'élan | une bougie entre 9:00 et 9:30 suffit | il en faut au moins deux |
@@ -140,7 +142,12 @@ Ces écarts sont ceux du test d'origine, qui comptait le bid et l'ask : c'est lu
 - Jours fériés : le calendrier a été contrôlé sur les fermetures de 2022 à 2025. Une fermeture exceptionnelle (deuil
   national, panne) n'y figure pas : ce jour-là la position passerait la fermeture. À l'inverse, environ deux fois par
   décennie il sort à 12:45 un jour normal (31 décembre quand le 1er janvier tombe un samedi).
-- EA lancé entre 9:35 et 9:40 avec le prix déjà au-delà du range : il entre au marché, quelle que soit la distance.
+- EA lancé entre 9:35 et 9:40 avec le prix déjà au-delà du range : il entre au marché, quelle que soit la distance. Même
+  chose si le prix est trop près du niveau à 9:35 pour que le courtier accepte un ordre en attente : ce côté est alors
+  surveillé par l'EA, avec un ordre au marché (plus de glissement).
+- Ne supprime pas à la main les ordres Buy Stop / Sell Stop de l'EA (onglet Trading de MetaTrader) : 10 secondes après
+  leur disparition sans exécution, l'EA renonce au trade du jour. Le message « exécuté » donne le glissement de chaque
+  entrée : relève-le sur quelques semaines pour connaître le coût réel chez ton courtier.
 - Après un plantage de MetaTrader, l'état de l'EA peut être ancien (stop de référence, pyramide).
 - **Passer de la v5 à la v6** : fais-le hors séance, sans trade ouvert (la v6 ne reprend pas l'état d'un trade de la
   v5). Retire ORB-v5 de ses graphiques, supprime `ORB-v5.mq5` et `ORB-v5.ex5` de `MQL5\Experts\Etrave`, installe la v6

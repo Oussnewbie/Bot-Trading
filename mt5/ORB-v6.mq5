@@ -8,9 +8,11 @@
 //  1. Range    : high et low de la bougie M5 de 9:30.
 //  2. Filtres  : achat permis si le RSI14 M5 de 9:30 > 50 ET si le high de 9:30 dépasse le plus haut de 9:00-9:30 ;
 //                vente permise si le RSI < 50 ET si le low de 9:30 passe sous le plus bas de 9:00-9:30.
-//  3. Entrée   : achat quand l'ask atteint le high du range, vente quand le bid atteint le low (ordres gérés par l'EA),
-//                pendant les bougies de 9:35 et 9:40. Un seul trade par jour : le premier déclenché annule l'autre.
-//                Si un seul côté est permis et qu'une bougie close touche l'autre côté d'abord, plus de trade ce jour-là.
+//  3. Entrée   : à 9:35, ordres Buy Stop au high et Sell Stop au low posés CHEZ LE COURTIER, avec leur stop, valables
+//                jusqu'à 9:45 : son serveur les exécute dès que l'ask (achat) ou le bid (vente) atteint le niveau, sans
+//                attendre l'EA. Un côté dont le prix est déjà au niveau (ou trop près pour un ordre en attente) est
+//                surveillé par l'EA, qui entre au marché. Un seul trade par jour : le premier exécuté annule l'autre.
+//                Si un seul côté est permis et que le prix touche l'autre côté d'abord, plus de trade ce jour-là.
 //  4. Stop     : de l'autre côté du range, posé chez le broker dès l'entrée. 1R = somme perdue au stop (lots × range).
 //  5. Gestion  : à la clôture d'une bougie (après celle de l'entrée) qui a atteint +1,5R, stop au prix d'entrée.
 //                Sortie au marché à 15:50 NY (clôture de la bougie de 15:45) ; à 12:45 les jours fériés américains et
@@ -38,7 +40,7 @@
 // juste), compte en mode « hedging » conseillé, et pour WhatsApp / Telegram autoriser l'adresse dans
 // Outils > Options > Expert Advisors > « Autoriser WebRequest pour les URL listées ».
 #property copyright   "Bot-Trading"
-#property version     "6.00"
+#property version     "6.10"
 #property description "ORB New York 5 min v6 : cassure du range de 9:30 dans le sens de l'élan de l'ouverture, avec une pyramide à +2R."
 
 #include <Trade\Trade.mqh>
@@ -125,6 +127,10 @@ double   gOrH = 0, gOrL = 0;
 double   gLots      = 0;
 double   gRiskMoney = 0;        // somme risquée (lots × range), devise du compte
 int      gFails     = 0;
+bool     gSrvL      = false;    // ordre Buy Stop posé chez le courtier aujourd'hui (sinon l'EA surveille le côté achat)
+bool     gSrvS      = false;    // ordre Sell Stop posé chez le courtier aujourd'hui
+bool     gDelDue    = false;    // des ordres en attente restent à supprimer (refus du courtier : réessayé à chaque cotation)
+datetime gGoneAt    = 0;        // heure où les ordres posés ont disparu sans position (exécution en cours ou annulation)
 
 //--- position
 bool     gIn      = false;
@@ -447,6 +453,7 @@ void SaveState()
    if(MQLInfoInteger(MQL_TESTER))
       return;
    Sv("day", gDay); Sv("pend", gPend); Sv("pdir", gPendDir); Sv("ortime", (double)gOrTime);
+   Sv("srvl", gSrvL); Sv("srvs", gSrvS);
    Sv("orh", gOrH); Sv("orl", gOrL); Sv("lots", gLots); Sv("rm", gRiskMoney);
    Sv("in", gIn); Sv("pos", (double)gPos); Sv("posid", (double)gPosId); Sv("dir", gDir);
    Sv("entry", gEntry); Sv("sl", gSL); Sv("risk", gRisk); Sv("be", gBE); Sv("tpset", gTPset);
@@ -459,6 +466,7 @@ void SaveState()
 void LoadState()
   {
    gDay = (int)Ld("day", 0); gPend = Ld("pend", 0) != 0; gPendDir = (int)Ld("pdir", 0); gOrTime = (datetime)Ld("ortime", 0);
+   gSrvL = Ld("srvl", 0) != 0; gSrvS = Ld("srvs", 0) != 0;
    gOrH = Ld("orh", 0); gOrL = Ld("orl", 0); gLots = Ld("lots", 0); gRiskMoney = Ld("rm", 0);
    gIn = Ld("in", 0) != 0; gPos = (ulong)Ld("pos", 0); gPosId = (long)Ld("posid", 0); gDir = (int)Ld("dir", 0);
    gEntry = Ld("entry", 0); gSL = Ld("sl", 0); gRisk = Ld("risk", 0); gBE = Ld("be", 0) != 0; gTPset = Ld("tpset", 1) != 0;
@@ -542,6 +550,109 @@ ulong FindPos()
          return tk;
      }
    return 0;
+  }
+
+//+------------------------------------------------------------------+
+//| Ordres stop posés chez le courtier                                |
+//+------------------------------------------------------------------+
+bool MyOrder(ulong tk)   // ordre en attente de cet EA sur ce symbole (OrderGetTicket l'a déjà sélectionné)
+  {
+   return tk != 0 && OrderGetString(ORDER_SYMBOL) == _Symbol && (ulong)OrderGetInteger(ORDER_MAGIC) == InpMagic;
+  }
+
+bool HasPending(int d)   // l'ordre stop du côté d (1 achat, -1 vente) est-il encore posé chez le courtier ?
+  {
+   for(int i = OrdersTotal() - 1; i >= 0; i--)
+     {
+      ulong tk = OrderGetTicket(i);
+      if(!MyOrder(tk))
+         continue;
+      ENUM_ORDER_TYPE t = (ENUM_ORDER_TYPE)OrderGetInteger(ORDER_TYPE);
+      if((d == 1 && t == ORDER_TYPE_BUY_STOP) || (d == -1 && t == ORDER_TYPE_SELL_STOP))
+         return true;
+     }
+   return false;
+  }
+
+// Supprime les ordres stop de l'EA encore posés ; false si le courtier en a refusé une suppression (réessayé ensuite)
+bool DeletePendings()
+  {
+   bool ok = true;
+   for(int i = OrdersTotal() - 1; i >= 0; i--)
+     {
+      ulong tk = OrderGetTicket(i);
+      if(!MyOrder(tk))
+         continue;
+      ENUM_ORDER_TYPE t = (ENUM_ORDER_TYPE)OrderGetInteger(ORDER_TYPE);
+      if(t != ORDER_TYPE_BUY_STOP && t != ORDER_TYPE_SELL_STOP)
+         continue;
+      if(!trade.OrderDelete(tk))
+        {
+         ok = false;
+         PrintFormat("Suppression de l'ordre %I64u refusée (%d) : %s", tk, trade.ResultRetcode(), trade.ResultRetcodeDescription());
+        }
+     }
+   return ok;
+  }
+
+// Pose l'ordre stop du côté d chez le courtier (achat au high, vente au low), avec son stop de l'autre côté du range et
+// une expiration à la fin de validité. false = pas posé (prix déjà au niveau ou trop près, refus) : l'EA surveille
+// alors ce côté et entre au marché quand le prix l'atteint, comme les versions précédentes.
+bool PlaceStop(int d)
+  {
+   double price = NormalizeDouble(d == 1 ? gOrH : gOrL, _Digits);
+   double sl    = NormalizeDouble(d == 1 ? gOrL : gOrH, _Digits);
+   double ask   = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+   double bid   = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+   double gap   = MathMax(SymbolInfoInteger(_Symbol, SYMBOL_TRADE_STOPS_LEVEL), SymbolInfoInteger(_Symbol, SYMBOL_TRADE_FREEZE_LEVEL)) * _Point;
+   if(d == 1 ? price - ask <= gap : bid - price <= gap)
+      return false;
+   int em = (int)SymbolInfoInteger(_Symbol, SYMBOL_EXPIRATION_MODE);
+   ENUM_ORDER_TYPE_TIME tt = (em & SYMBOL_EXPIRATION_SPECIFIED) != 0 ? ORDER_TIME_SPECIFIED : (em & SYMBOL_EXPIRATION_GTC) != 0 ? ORDER_TIME_GTC : ORDER_TIME_DAY;
+   datetime exp = tt == ORDER_TIME_SPECIFIED ? gOrTime + (InpLiveBars + 1) * BAR : 0;   // l'EA annule de toute façon à cette heure
+   bool placed = false;
+   for(int k = 0; k < 2 && !placed; k++)
+     {
+      bool ok = d == 1 ? trade.BuyStop(gLots, price, _Symbol, sl, 0, tt, exp, InpComment) : trade.SellStop(gLots, price, _Symbol, sl, 0, tt, exp, InpComment);
+      uint rc = trade.ResultRetcode();
+      placed = ok && (rc == TRADE_RETCODE_DONE || rc == TRADE_RETCODE_PLACED);
+      if(placed)
+         break;
+      PrintFormat("Ordre %s refusé (%d) : %s", d == 1 ? "Buy Stop" : "Sell Stop", rc, trade.ResultRetcodeDescription());
+      if(rc != TRADE_RETCODE_INVALID_FILL)
+         break;
+      trade.SetTypeFilling(ORDER_FILLING_RETURN);   // certains courtiers n'acceptent que ce mode pour un ordre en attente
+     }
+   trade.SetTypeFillingBySymbol(_Symbol);
+   return placed;
+  }
+
+// Plus de trade aujourd'hui : ordres supprimés chez le courtier, dessins effacés, message
+void CancelDay(string why, string title)
+  {
+   gPend = false;
+   gDelDue = !DeletePendings();
+   DropDayDraw();
+   gDayTxt = "Pas de trade : " + why;
+   Notify(title + "\n" + why);
+   SaveState();
+  }
+
+// Compte hedging : si les deux ordres ont été exécutés avant que l'EA supprime le second, la position de sens contraire
+// est fermée au marché (règle : le premier exécuté annule l'autre).
+void CloseOpposite()
+  {
+   for(int i = PositionsTotal() - 1; i >= 0; i--)
+     {
+      ulong tk = PositionGetTicket(i);
+      if(tk == 0 || PositionGetString(POSITION_SYMBOL) != _Symbol || (ulong)PositionGetInteger(POSITION_MAGIC) != InpMagic)
+         continue;
+      int dir = PositionGetInteger(POSITION_TYPE) == POSITION_TYPE_BUY ? 1 : -1;
+      if(dir == gDir || PositionGetInteger(POSITION_IDENTIFIER) == gPosId2)
+         continue;
+      if(trade.PositionClose(tk, InpDeviation))
+         Notify(I_WARN + "Les deux ordres ont été exécutés : la position " + (dir == 1 ? "d'achat" : "de vente") + " en trop est fermée au marché");
+     }
   }
 
 void ClosePos(string why)   // ferme l'unité de départ et l'ajout
@@ -673,11 +784,15 @@ void SyncPosition()
       gVStop   = 0;
       gTPset   = InpTgtR <= 0;
       gPend    = false;
+      gDelDue  = !DeletePendings();   // le premier exécuté annule l'autre
+      gGoneAt  = 0;
       gCloseWhy = "";
       gBalStart = AccountInfoDouble(ACCOUNT_BALANCE);
       DropPendingDraw();
       string id = gDir == 1 ? I_BUY + "ACHAT exécuté" : I_SELL + "VENTE exécutée";
-      Notify(id + " à " + Px(gEntry) + "\nStop : " + Px(gSL) + " (" + Money(-gRiskMoney) + ")" +
+      double lvlIn = gDir == 1 ? gOrH : gOrL;
+      Notify(id + " à " + Px(gEntry) + " (glissement " + Pts((gEntry - lvlIn) * gDir) + " par rapport au niveau " + Px(lvlIn) + ")" +
+             "\nStop : " + Px(gSL) + " (" + Money(-gRiskMoney) + ")" +
              (InpBeR > 0 ? "\nStop au prix d'entrée dès " + Px(gEntry + gDir * InpBeR * gRisk) + " (+" + DoubleToString(InpBeR, 1) + "R)" : "") +
              (InpUsePyr ? "\nPyramide : ajout si une bougie clôture à " + Px(gEntry + gDir * InpPyrR * gRisk) + " (" + RTxt(InpPyrR) + "), stop de l'ensemble " + DoubleToString(InpPyrGap, 1) + "R sous l'ajout" : "") +
              (InpTgtR > 0 ? "\nObjectif : " + Px(gEntry + gDir * InpTgtR * gRisk) : "") +
@@ -805,6 +920,11 @@ bool Setup()   // true = terminé (trade préparé ou pas de trade), false = don
    gRiskMoney = lots * perLot;
    gPend      = true;
    gFails     = 0;
+   gGoneAt    = 0;
+   // ordres stop posés chez le courtier : exécutés par son serveur dès que le prix touche le niveau. Mesuré sur le future
+   // NQ (2018-2026) : un ordre au marché envoyé 250 ms après la cassure coûtait environ 150R de plus sur le test.
+   gSrvL = gPendDir != -1 && PlaceStop(1);
+   gSrvS = gPendDir != 1 && PlaceStop(-1);
 
    datetime xEnd = gOrTime + (InpLiveBars + 1) * BAR;
    if(InpUseExt && preOk)
@@ -836,13 +956,15 @@ bool Setup()   // true = terminé (trade préparé ou pas de trade), false = don
           (gPendDir != 1 ? "\nVente stop : " + Px(gOrL) + " · stop " + Px(gOrH) : "\nVente bloquée (" + whyS + ")") +
           "\nTaille : " + DoubleToString(lots, vd) + " lot · " + DoubleToString(gRiskMoney, 2) + " " + ccy + " risqués (" + RiskTxt(realPct) + ")" +
           (cut ? "\n" + I_WARN + "Taille réduite par la marge : " + RiskTxt(gRiskPct) + " demandés, il aurait fallu " + DoubleToString(want, vd) + " lot" : "") +
-          "\nValables jusqu'à " + endT + " NY." + (gPendDir == 0 ? " Le premier déclenché annule l'autre." : " Annulé si le côté bloqué est touché d'abord."));
+          "\nValables jusqu'à " + endT + " NY." + (gPendDir == 0 ? " Le premier déclenché annule l'autre." : " Annulé si le côté bloqué est touché d'abord.") +
+          ((gPendDir != -1 && !gSrvL) || (gPendDir != 1 && !gSrvS) ? "\n" + I_WARN + "Prix déjà au niveau ou trop près pour un ordre en attente : ce côté est surveillé par l'EA (entrée au marché)" :
+           "\nOrdres posés chez le courtier"));
    SaveState();
    return true;
   }
 
 //+------------------------------------------------------------------+
-//| Entrée quand le prix atteint le niveau (comme un ordre stop)      |
+//| Entrées : ordres posés chez le courtier, ou côté surveillé        |
 //+------------------------------------------------------------------+
 void CheckEntries()
   {
@@ -850,10 +972,32 @@ void CheckEntries()
       return;
    double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
    double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+   // côté bloqué touché avant toute entrée : plus de trade aujourd'hui (vérifié à chaque cotation, comme le test à la minute)
+   if((gPendDir == 1 && bid <= gOrL) || (gPendDir == -1 && ask >= gOrH))
+     {
+      CancelDay("l'autre côté du range a été touché d'abord", I_NONE + "ORDRES ANNULÉS");
+      return;
+     }
+   if(!gActive)
+     {
+      CancelDay("instrument désactivé dans l'interface", I_NONE + "ORDRES ANNULÉS");
+      return;
+     }
+   // ordres posés disparus sans position (refus à l'exécution, suppression à la main) : après 10 s, plus de trade
+   bool live = (gSrvL && HasPending(1)) || (gSrvS && HasPending(-1));
+   bool watch = (gPendDir != -1 && !gSrvL) || (gPendDir != 1 && !gSrvS);
+   if((gSrvL || gSrvS) && !live && !watch)
+     {
+      if(gGoneAt == 0)
+         gGoneAt = TimeCurrent();
+      else if(TimeCurrent() - gGoneAt > 10)
+         CancelDay("l'ordre posé chez le courtier a disparu sans exécution", I_WARN + "ORDRE DISPARU");
+      return;
+     }
    int d = 0;
-   if(gPendDir != -1 && ask >= gOrH)
+   if(gPendDir != -1 && !gSrvL && ask >= gOrH)
       d = 1;
-   else if(gPendDir != 1 && bid <= gOrL)
+   else if(gPendDir != 1 && !gSrvS && bid <= gOrL)
       d = -1;
    if(d == 0)
       return;
@@ -871,6 +1015,7 @@ void CheckEntries()
    if(gFails >= 3)
      {
       gPend = false;
+      gDelDue = !DeletePendings();
       DropPendingDraw();
       gDayTxt = "Pas de trade : entrée refusée par le broker";
       Notify(I_WARN + "ENTRÉE REFUSÉE par le courtier\n" + trade.ResultRetcodeDescription());
@@ -1000,14 +1145,7 @@ void OnNewBar()
       bool late = r[0].time >= gOrTime + (InpLiveBars + 1) * BAR;
       bool opp  = gPendDir == 1 ? r[1].low <= gOrL : gPendDir == -1 ? r[1].high + r[1].spread * _Point >= gOrH : false;
       if(late || opp)
-        {
-         gPend = false;
-         DropDayDraw();
-         string why = opp ? "l'autre côté du range a été touché d'abord" : "pas de cassure avant " + TimeToString(ToNY(r[0].time), TIME_MINUTES) + " NY";
-         gDayTxt = "Pas de trade : " + why;
-         Notify(I_NONE + "ORDRES ANNULÉS\n" + why);
-         SaveState();
-        }
+         CancelDay(opp ? "l'autre côté du range a été touché d'abord" : "pas de cassure avant " + TimeToString(ToNY(r[0].time), TIME_MINUTES) + " NY", I_NONE + "ORDRES ANNULÉS");
      }
 
    // 3. la bougie qui vient de clôturer est celle du range
@@ -1232,13 +1370,7 @@ void UiClose()
       ClosePos("Fermeture depuis l'interface");
      }
    else if(gPend)
-     {
-      gPend = false;
-      DropDayDraw();
-      gDayTxt = "Pas de trade : ordres annulés depuis l'interface";
-      Notify(I_HAND + "ORDRES ANNULÉS depuis l'interface\nPas de trade aujourd'hui");
-      SaveState();
-     }
+      CancelDay("ordres annulés depuis l'interface", I_HAND + "ORDRES ANNULÉS depuis l'interface");
   }
 
 // L'heure du serveur correspond-elle toujours aux réglages ? (contrôlé au lancement, puis en continu : un mauvais
@@ -1275,7 +1407,7 @@ void WriteState()
    double m  = BrokerMarginPerLot();
    double pl = gIn ? OpenProfit() : 0;
    Kv(h, "version", "1");
-   Kv(h, "ea", "6.00");
+   Kv(h, "ea", "6.10");
    Kv(h, "symbole", gSymFile);
    Kv(h, "instrument", gInstr);
    Kv(h, "actif", gActive ? "1" : "0");
@@ -1462,9 +1594,13 @@ void OnTick()
    if(gSetupDue && Setup())
       gSetupDue = false;
 
-   // 3. entrée quand le prix atteint le niveau
+   // 3. entrée : ordres posés chez le courtier, ou côté surveillé par l'EA ; ordres à supprimer encore posés
+   if(gDelDue && !gPend)
+      gDelDue = !DeletePendings();
    CheckEntries();
    SyncPosition();
+   if(gIn)
+      CloseOpposite();
 
    // 4. trade ouvert : stop à l'entrée géré par l'EA si le broker l'a refusé, sortie de fin de journée
    if(gIn)

@@ -439,6 +439,18 @@ def test_l_ea_reste_lisible_par_metatrader():
     assert EA.index("CheckEntries();\n   SyncPosition();") < EA.index("   FlushNotifs();\n   Panel();")
 
 
+def test_les_ordres_d_entree_sont_poses_chez_le_courtier():
+    """Depuis l'EA 6.10 : Buy Stop / Sell Stop posés chez le courtier, l'autre supprimé dès qu'une position existe."""
+    code = sans_textes(EA)
+    assert "trade.BuyStop(" in code and "trade.SellStop(" in code
+    for fonction in ("PlaceStop", "DeletePendings", "CancelDay", "HasPending", "CloseOpposite"):
+        assert re.search(rf"^(void|bool)\s+{fonction}\(", code, re.M), f"{fonction} manquante"
+    sync = re.search(r"void SyncPosition\(\)(.*?)\n  }\n", code, re.S).group(1)
+    assert "DeletePendings()" in sync                                     # le premier exécuté annule l'autre
+    entrees = re.search(r"void CheckEntries\(\)(.*?)\n  }\n", code, re.S).group(1)
+    assert "!gSrvL && ask >= gOrH" in entrees and "!gSrvS && bid <= gOrL" in entrees   # pas d'ordre au marché en double
+
+
 def test_jours_feries_meme_regle_dans_l_ea_et_le_script():
     """Sortie avancée les jours fériés américains et les demi-séances : même heure et mêmes jours des deux côtés.
     (Les règles du calendrier ont été contrôlées à part sur les fermetures 2022-2025 de la Bourse de New York.)"""
