@@ -1,0 +1,15 @@
+Corrélation des rendements journaliers (2018-2026) :
+       P1    P2    P3   BTC
+P1   1.00  0.67  0.68  0.33
+P2   0.67  1.00  0.77  0.35
+P3   0.68  0.77  1.00  0.37
+BTC  0.33  0.35  0.37  1.00
+
+  BTC acheté et gardé                R: Sh 0.43 cagr +4% dd -81%  V: Sh 0.99 cagr +42% dd -53%  T: Sh 0.60 cagr +19% dd -81%
+  P1 seul (système BTC+ETH)          R: Sh 1.50 cagr +39% dd -18%  V: Sh 1.17 cagr +26% dd -21%  T: Sh 1.36 cagr +33% dd -21%
+  P2 seul                            R: Sh 1.44 cagr +52% dd -25%  V: Sh 1.00 cagr +27% dd -32%  T: Sh 1.26 cagr +41% dd -32%
+  P3 seul                            R: Sh 1.45 cagr +32% dd -21%  V: Sh 0.87 cagr +18% dd -30%  T: Sh 1.18 cagr +26% dd -30%
+  P1 50 % + P2 50 %                  R: Sh 1.60 cagr +47% dd -19%  V: Sh 1.18 cagr +27% dd -24%  T: Sh 1.42 cagr +38% dd -24%
+  P1 50 % + P3 50 %                  R: Sh 1.62 cagr +36% dd -17%  V: Sh 1.10 cagr +22% dd -25%  T: Sh 1.39 cagr +30% dd -25%
+  P1 + P2 + P3 (un tiers chacun)     R: Sh 1.62 cagr +42% dd -20%  V: Sh 1.12 cagr +24% dd -26%  T: Sh 1.41 cagr +34% dd -26%
+  P1 50 % + P2 25 % + P3 25 %        R: Sh 1.64 cagr +41% dd -18%  V: Sh 1.17 cagr +25% dd -24%  T: Sh 1.44 cagr +34% dd -24%
