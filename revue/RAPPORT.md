@@ -6,8 +6,8 @@ Revue du 17 novembre 2026, sur la branche `claude/cool-galileo-hzgjdo`. Le code 
 
 | Bot | Avantage après coûts | Pourquoi |
 |---|---|---|
-| **ORB v6, Nasdaq** | **Douteux** | Positif sur 2018-2026 tant que le glissement reste sous ~2 points par ordre stop. Mais le seul test hors échantillon dont on ait trace (avant 2018, chiffres du développeur, non vérifiés ici) est **négatif**. Le gain repose sur ~2 % des trades, et il disparaît vers 5 points de glissement. |
-| **Bot BTC ×1** | **Douteux, plutôt plausible** | Il bat nettement achat-et-garde et MA200 en risque (pire baisse −22 % contre −81 % et −68 %). Mais ce gain vient du suivi de tendance et du dosage par la volatilité, pas des 9 votes : une simple EMA50/200 4h dosée fait presque aussi bien (Sharpe 1,12 contre 1,25, écart non significatif). Le réglage est 4e sur 135 de sa propre grille. |
+| **ORB v6, Nasdaq** | **Douteux** | Positif sur 2018-2026 tant que le glissement reste sous ~2 à 3 points par ordre stop. Mais le seul test hors échantillon dont on ait trace (avant 2018, chiffres du développeur, non vérifiés ici) est **négatif**. Le gain repose sur ~2 % des trades, et il disparaît vers 5 points de glissement. |
+| **Bot BTC ×1** | **Douteux, plutôt plausible** pour la stratégie ; **le code d'exécution n'est pas prêt** | Il bat nettement achat-et-garde et MA200 en risque (pire baisse −22 % contre −81 % et −68 %). Mais ce gain vient du suivi de tendance et du dosage par la volatilité, pas des 9 votes : une simple EMA50/200 4h dosée fait presque aussi bien (Sharpe 1,12 contre 1,25, écart non significatif). Le réglage est 4e sur 135 de sa propre grille. **Avec la version actuelle de ccxt, le transfert vers les futures est mal formé** : la vente ne peut jamais s'ouvrir, et le testnet décrit dans LISEZMOI est impossible (partie A4). |
 | **Bot BTC ×2 à ×10** | **Absent en pratique** | Les chiffres de levier affichés (`profils.json`) ignorent le coupe-circuit à −40 % du bot. Avec lui, ×2 lancé en 2018 s'arrête pour toujours en février 2020, et ×3 et au-delà encore plus tôt. |
 
 Hors échantillon après le 13 novembre 2026 :
@@ -46,7 +46,104 @@ Hors échantillon après le 13 novembre 2026 :
 
 ## A. Revue du code
 
-__REVUE_CODE__
+### Méthode
+
+- **Lecture.** Six lecteurs indépendants, un par domaine :
+  - l'EA comparé aux règles ;
+  - l'EA, compilation et exécution ;
+  - le script Pine ;
+  - la stratégie BTC et son backtest ;
+  - l'exécution du bot BTC chez Binance ;
+  - Étrave.
+- **Vérification.** Un vérificateur par domaine devait **réfuter** chaque constat en relisant le code. Résultat :
+  - 135 constats : 115 confirmés, 19 plausibles, **1 seul réfuté** ;
+  - 24 oublis ajoutés par les vérificateurs.
+- **Contrôles à la main.** J'ai refait moi-même les points marqués ★, dans le code et dans ccxt 4.5.93, la version actuelle.
+- **La liste complète**, avec les preuves, est dans [revue_code_complete.md](revue_code_complete.md).
+
+Les **62 tests du dépôt passent** (`python -m pytest`, avec les données que j'ai téléchargées). Mais :
+- aucun ne fait d'appel ccxt réel ;
+- l'un d'eux exige un Sharpe supérieur à 1 sur la période déjà vue (`bitcoin/test_bot.py`).
+
+Un test qui passe ne prouve donc ni que l'exécution marche, ni que la stratégie a un avantage.
+
+### A1. Regards vers le futur
+
+**Nasdaq : aucun trouvé dans les règles ni dans l'EA.**
+- Le range, le RSI (bougie de 9:30 clôturée) et la fenêtre de l'élan sont tous connus à 9:35.
+- Mes deux backtests indépendants et `reference.json` donnent les mêmes 1 391 jours de trade.
+- Un risque d'exécution est **plausible** (EA-04, non prouvé) : au premier tick de 9:35, le RSI est lu sans vérifier que l'indicateur a fini de calculer la bougie. Il pourrait alors lire le RSI de 9:25.
+
+**BTC : pas de décalage des prix vers le futur.**
+- `btc.caler` et `btc.tronquer` décalent correctement les données.
+- Le score journalier n'est même utilisé qu'avec 4 heures de retard.
+
+Deux sources d'écart avec le réel :
+- **Coin Metrics** (BTC-01). Le fichier historique contient des flux révisés. Le bot, lui, reçoit des valeurs « flash » : j'ai vu le statut `flash` sur les données de novembre 2026. L'effet est probablement borné, puisque retirer complètement ce vote ne fait passer le Sharpe que de 1,25 à 1,19.
+- **Bitstamp contre Binance.** Même sens dans 98,5 % des cas (voir partie C).
+
+### A2. Écarts entre l'EA, le script Pine et les règles écrites
+
+| Point | Règle (README) | EA | Script Pine |
+|---|---|---|---|
+| Achat | sur le high du range | ask ≥ high bid : 4,9 % des jours, l'ask est déjà au-dessus à 9:35, d'où un achat au marché immédiat ; 2,6 % des jours, des trades que le prix bid ne déclenche jamais (EA-05). Inclus dans mon backtest, qui modélise l'EA. | prix du graphique |
+| Côté bloqué et cassure dans la même bougie | pas de trade | contrôlé tick par tick | **non respecté** : le côté bloqué n'est vu qu'à la clôture (PINE-02) |
+| Élan | « dépasse » (>) | `>=` | `>=`. Effet nul sur 2018-2026 dans mon test. |
+| Stop à l'entrée à +1,5R | à la clôture d'une bougie après l'entrée | mesuré sur l'ask pour une vente | sur le plus haut ou le plus bas, exécuté au prix de clôture (optimiste) |
+| Pyramide | +2R à la clôture | ajout au tick suivant, stop sans plancher : le pire cas −1R n'est **pas garanti** (EA-07, EA-10) | ajout au prix de clôture qui l'a déclenchée (optimiste), possible sur la bougie d'entrée |
+| Jours fériés | calendrier de la NYSE | Juneteenth appliqué avant 2022, plus 31/12/2021, 02/07/2020 et 02/07/2026 : **7 jours de séance normale** sortis à 12:45. Deuils nationaux absents. | identique |
+| Fériés pleins | « sortie à 12:45 » | trade le range de 9:30 de contrats à terme sans ouverture au comptant | identique |
+| Coûts du backtest | — | — | glissement de 2 ticks, pas de commission par défaut (PINE-01). L'historique M5 de TradingView ne couvre que quelques mois. **Un backtest Pine ne peut pas valider la stratégie.** |
+
+### A3. L'EA en réel (jamais compilé)
+
+**Compilation.** Aucune erreur certaine n'a été trouvée, seulement quelques points à surveiller (EA-25 : une variable `exp`, `char[]` contre `uchar[]`, des conversions implicites). **Non vérifié sans MetaEditor.**
+
+Les risques d'exécution les plus graves, tous **confirmés** à la relecture :
+1. **Heure du serveur.** Un mauvais réglage d'heure d'été n'est que signalé : l'EA continue à trader. Avec SRV_DST_US sur un serveur à l'heure d'été européenne, environ 18 trades par an se font sur la bougie de 10:30 (EA-01).
+2. **Ordres stop sans expiration fiable.** L'EA préfère GTC à DAY et ne supprime pas ses ordres quand il s'arrête. Un plantage à 9:38 peut laisser un ordre exécuté l'après-midi ou le lendemain. Au redémarrage, toute position portant le numéro magique est adoptée (EA-01, EA-03 d'exécution).
+3. **Sortie de 15:50, stop à l'entrée refusé, stop virtuel** : ils n'existent que si l'EA tourne et reçoit des cotations. **Un VPS est indispensable.**
+4. **Redémarrage en plein trade** : avec un état périmé, une seconde pyramide ou une clôture immédiate sont possibles (EA-03).
+5. **Envois Telegram et WhatsApp synchrones** : jusqu'à 5 s par message et par canal, et jusqu'à 200 s si 20 messages échouent, sans aucun contrôle de prix pendant ce temps (EA-08).
+6. **Entrée au marché « quelle que soit la distance »** (lancement tardif, niveau trop proche du prix) : le risque n'est pas borné (EA-06).
+7. **Arrondi des lots.** Avec un pas de volume de 0,5, 0,25 ou 0,05, `NormalizeDouble(lots, round(-log10(pas)))` peut **arrondir vers le haut** : 0,5 lot devient 1, ce qui double le risque (EA-04, relu).
+8. **Deux instances sur le même compte, et dossier commun partagé.** Un compte démo et un compte réel sur la même machine partagent `reglages.txt` : même risque, même case Nasdaq, et une demande « Clôturer » ferme aussi le trade de l'autre terminal (ET-04 et l'oubli « dossier commun » du domaine EA).
+
+### A4. Le bot BTC chez Binance (jamais exécuté)
+
+**En l'état, le bot ne peut pas tourner correctement en réel.**
+
+**Critiques**
+1. **★ Le transfert spot ↔ futures est mal formé** avec ccxt 4.5.93 (`courtier.py`, `executer`, `transfer('USDT', m, 'spot', 'future')`).
+   - ccxt ne connaît plus `future` et envoie `type=MAIN_ISOLATED_MARGIN&toSymbol=FUTURE` (requête capturée sans l'envoyer).
+   - **La vente et tout le montage à levier ne peuvent pas être financés.**
+   - En ×1, le plan vend d'abord le BTC, puis échoue au transfert. Le bot se retrouve donc à plat au lieu de vendeur, avec une alerte d'erreur toutes les 5 minutes.
+   - Sur le rendement, l'effet est faible : sans vente, Sharpe 1,22 contre 1,25.
+2. **★ Le stop de protection n'est jamais annulé.** ccxt envoie le STOP_MARKET vers l'API des ordres conditionnels (algo) de Binance. Mais `annuler_stop` appelle `fetch_open_orders` sans `trigger=True` et ne le voit donc pas. Les stops s'empilent, ou sont refusés, à chaque cycle (leviers ×2 et plus).
+3. **★ Le coupe-circuit peut laisser la position ouverte et bloquer le bot.** `etat['arrete']` est posé *avant* la fermeture. Si un ordre échoue, ou si PAUSE est actif, le bot reste « arrêté » avec la position ouverte (`bot.py`, `cycle`).
+4. **★ Passer du papier au réel garde `etat.json`.** Le plus haut du compte papier (`pic`), par exemple 10 000 $, est repris tel quel. Avec un capital réel inférieur à 60 % de ce montant, le coupe-circuit se déclenche au premier cycle réel : **il vend tout et arrête le bot**.
+5. **Un deuxième bot peut être lancé** depuis Étrave pendant un cycle long. Le battement n'est écrit qu'avant et après le cycle, Étrave déclare le bot mort après 60 s, et un cycle avec des ordres limites dure plusieurs minutes. Le risque est de doubler les ordres (ET-01). La reproduction faite par le vérificateur montre que « Démarrer » est accepté.
+
+**Majeurs**
+- **★ Le testnet est impossible tel quel.** ccxt refuse le bac à sable des futures (« not supported for futures anymore… use demo trading »). Les transferts n'ont pas de testnet, et les deux testnets demandent deux paires de clés. **La « première étape : testnet » de LISEZMOI ne peut pas être faite.**
+- **Erreurs avalées sans contrôle :**
+  - ordres limites dont les erreurs sont ignorées, sans identifiant client ni nettoyage, ce qui peut doubler une position ;
+  - réglages de marge et de levier dont les erreurs sont ignorées ;
+  - mode Hedge du compte jamais vérifié.
+- **Marge à 100 % exactement** : un refus « Margin is insufficient » est plausible.
+- **« Arrêter » est sans effet** sous systemd ou `lancer_bot.bat` : le bot redémarre.
+- **Réponse 451 (« restricted location »)** au démarrage : le bot plante en boucle sans alerte.
+- **La clé décrite dans LISEZMOI n'a pas la permission « Universal Transfer »**, nécessaire aux transferts.
+- **Le capital compté** inclut tout l'USDT et tout le BTC du compte spot, même ce qui n'est pas au bot.
+
+### A5. Étrave
+
+- **`reglages.txt`** : écrit sans verrou, et une lecture ratée efface les autres clés à l'écriture suivante, ce qui peut réactiver la case Nasdaq (ET-02, ET-03).
+- **Réglages du bot BTC changés en marche** : ils n'ont aucun effet avant un redémarrage, y compris l'effacement de la clé (ET-06).
+- **« Arrêter »** tue le bot au milieu d'un ordre, ce qui peut laisser un ordre limite chez Binance (ET-07).
+- **Clé Binance** rangée dans le dossier commun de MetaTrader, lisible par tout programme MQL5 (ET-08, plausible).
+
+Sur la sécurité, le serveur n'écoute que sur 127.0.0.1, avec un jeton : rien de grave n'a été trouvé de ce côté.
 
 ---
 
@@ -363,12 +460,23 @@ Les chiffres de la page Risque (0,1 point de glissement) surestiment le gain d'a
 
 ### Classement de ce qui est le plus fragile
 
-1. **Le Nasdaq avant 2018** : selon les textes du dépôt, la stratégie y perdait, et je n'ai pas pu le vérifier.
-2. **Le glissement réel des ordres stop à 9:35-9:45**, et l'écart de spread entre Dukascopy (~1,3 point, presque constant) et ton courtier.
-3. **La dépendance du Nasdaq à quelques journées de tendance**, via la pyramide.
-4. **Le levier du bot BTC, présenté sans le coupe-circuit.**
-5. **L'EA jamais compilé ni exécuté.** Voir la partie A (heure du serveur, envois Telegram bloquants, reprise après plantage, arrondi des lots).
-6. **Le bot BTC jamais passé chez Binance**, même en testnet. Voir la partie A (ccxt, transferts, marge, stop).
+1. **L'exécution du bot BTC.** Ce n'est pas un risque mais un défaut certain, constaté dans ccxt 4.5.93 (partie A4) :
+   - transfert vers les futures mal formé ;
+   - stop de protection jamais annulé ;
+   - coupe-circuit qui peut laisser la position ouverte ;
+   - passage papier → réel qui déclenche le coupe-circuit ;
+   - second processus possible.
+2. **Le Nasdaq avant 2018** : selon les textes du dépôt, la stratégie y perdait (−55 R sur 2015-2017, −33 R sur 2013-2014), et je n'ai pas pu le vérifier.
+3. **Le glissement réel des ordres stop à 9:35-9:45**, et l'écart de spread entre Dukascopy (~1,3 point, presque constant) et ton courtier. Le point mort est vers 5 points par ordre stop.
+4. **La dépendance du Nasdaq à quelques journées de tendance**, via la pyramide. Sans les 2 % meilleurs trades, il ne reste rien à 1 point de glissement.
+5. **Le levier du bot BTC, présenté sans le coupe-circuit.**
+6. **L'EA jamais compilé ni exécuté** (partie A3) :
+   - heure du serveur seulement signalée ;
+   - ordres GTC ;
+   - envois Telegram bloquants ;
+   - reprise après plantage ;
+   - arrondi des lots qui peut doubler le risque ;
+   - dossier commun partagé entre démo et réel.
 7. **La sélection du réglage BTC** (4e sur 135) et les données Coin Metrics : valeurs « flash » en direct, valeurs révisées dans l'historique.
 
 ### Ce qu'il faut vérifier en démo avant l'argent réel
@@ -383,8 +491,16 @@ Les chiffres de la page Risque (0,1 point de glissement) surestiment le gain d'a
    - que la sortie de 15:50 a lieu même si Telegram est lent ;
    - qu'un redémarrage de MetaTrader en plein trade est bien repris.
 
-**BTC (testnet, puis réel minuscule)**
-1. Faire tourner `--une-fois` en testnet sur chaque type de transition : ouvrir un achat, réduire, passer en vente, fermer. Lire le journal ligne par ligne et vérifier, après chaque transition :
+**BTC.** Le testnet tel que décrit est impossible (partie A4). Il faut d'abord corriger :
+- le transfert ;
+- l'annulation du stop ;
+- l'ordre de pose du drapeau `arrete` ;
+- la remise à zéro de `etat.json` au changement de mode ;
+- le verrou contre un second processus.
+
+Je ne l'ai pas fait : tu m'as demandé de ne pas modifier les bots sans ton accord. Ensuite, utiliser le « trading démo » de Binance (pris en charge par ccxt avec `enable_demo_trading`) ou un compte réel minuscule.
+
+1. Faire tourner `--une-fois` en démo sur chaque type de transition : ouvrir un achat, réduire, passer en vente, fermer. Lire le journal ligne par ligne et vérifier, après chaque transition :
    - les soldes, spot et futures ;
    - la marge isolée et le levier 1 ;
    - le transfert de marge.
