@@ -1,6 +1,6 @@
 # Le bot BTC
 
-Il exécute la stratégie de `recherches/crypto/RAPPORT-BTC.md` sur Binance, sans intervention, et prévient sur Telegram. C'est un
+Il exécute la stratégie BTC (rapport de recherche `recherches/crypto/RAPPORT-BTC.md`, retiré du dépôt : historique git, commit `39b5b77`) sur Binance, sans intervention, et prévient sur Telegram. C'est un
 **programme à part** de l'EA MetaTrader : il se pilote depuis **Étrave, espace « ₿ Bitcoin »** (démarrer, arrêter,
 pause, tout fermer, levier, clé API), ou à la main en ligne de commande.
 
@@ -92,7 +92,7 @@ marché.
 | `prudent` (par défaut) | 40 % | 1,89 | +34 % | −25 % |
 | `equilibre` | 60 % | 1,80 | +40 % | −32 % |
 
-`"vente": 0` dans la configuration désactive la vente (neutre sur l'historique long, voir le rapport).
+`"vente": 0` dans la configuration désactive la vente (neutre sur l'historique long, voir le rapport de recherche, commit `39b5b77`).
 
 ## Installation
 
@@ -185,6 +185,12 @@ python -m pytest bitcoin -q
 - levier : montage perpétuel, retournement de position, stop de protection (placé et touché), cible multipliée ;
 - ordres limites, puis le reste au marché (avec un faux exchange), et des frais plus bas qu'au marché ;
 - commande « maintenant », secrets lus dans le fichier d'Étrave.
+
+Les tests marqués « historiques » (décisions identiques au backtest, rejeu 2018-2026, concordance des prix) ont besoin
+des données locales dans `donnees/crypto/` ; sans elles ils sont sautés. Les scripts qui les téléchargent ont été
+retirés du dépôt avec les recherches (historique git, commit `39b5b77`) :
+`git archive 39b5b77 recherches/crypto | tar -x`, puis `bash recherches/crypto/00_telecharger.sh` et
+`python recherches/crypto/05_telecharger_btc_historique.py`.
 
 Côté Étrave, `python -m pytest etrave` (34 tests) couvre l'espace Bitcoin :
 - réglages et leurs bornes ;

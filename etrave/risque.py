@@ -3,7 +3,7 @@
 Les trades viennent de etrave/reference.json : les 1 391 trades de la v6 (ajout de 2 unités à +2R) rejouée le
 17 novembre 2026 minute par minute sur le Nasdaq CFD de Dukascopy (M1 bid et ask, 2018-01 -> 2026-11, glissement
 0,1 point), avec pour chacun sa date, son résultat en R, la largeur du range rapportée au prix et si la pyramide s'est
-déclenchée. Le fichier est refait par recherches/nasdaq/reference.py. Le capital est composé trade après trade, avec en plus la marge :
+déclenchée. Le fichier était refait par recherches/nasdaq/reference.py (retiré du dépôt, historique git, commit 39b5b77). Le capital est composé trade après trade, avec en plus la marge :
 
     taille de la position = solde × risque ÷ range        (règle 4 de la v6)
     marge demandée        = valeur de la position ÷ levier

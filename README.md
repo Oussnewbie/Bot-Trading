@@ -4,21 +4,18 @@ Cassure du range d'ouverture de New York (bougie M5 de 9:30) sur le Nasdaq (NAS1
 l'ouverture, avec une pyramide sur les journées de tendance. Heures de New York (9:30 NY = 15:30 à Paris la plupart de
 l'année). **Nasdaq uniquement** : la stratégie ne gagne sur aucun autre symbole testé (Dow Jones, or, EUR/USD, bitcoin).
 
-Le dépôt a quatre dossiers :
+Le dépôt ne contient que les deux bots et leur interface :
 
 | Dossier | Contenu |
 |---|---|
-| `nasdaq/` | La stratégie ORB v6 : `ORB-v6.mq5`, l'Expert Advisor MetaTrader 5 (version 6.10), et `ORB-v6.pine`, la même stratégie pour TradingView (Pine v6), avec alertes Telegram. |
-| `bitcoin/` | Le bot BTC (Binance) : voir [bitcoin/LISEZMOI.md](bitcoin/LISEZMOI.md). Il contient aussi le code de la stratégie (`btc.py`, `indicateurs.py`, `donnees.py`) : c'est le même code que le backtest, et la recherche l'importe d'ici. |
+| `nasdaq/` | La stratégie ORB v6 : `ORB-v6.mq5`, l'Expert Advisor MetaTrader 5 (version 6.10), et `ORB-v6.pine`, la même stratégie pour TradingView (Pine v6), avec alertes Telegram et calcul du lot. |
+| `bitcoin/` | Le bot BTC (Binance) : voir [bitcoin/LISEZMOI.md](bitcoin/LISEZMOI.md). Avec le code de sa stratégie (`btc.py`, `indicateurs.py`, `donnees.py`). |
 | `etrave/` | **Étrave**, la page web locale qui pilote les deux : **⛵ Nasdaq** (l'EA : risque, levier, Telegram, suivi et clôture des trades, lancement de MetaTrader) et **₿ Bitcoin** (le bot : tableau de bord, 9 votes, levier ×1 à ×10, clé API Binance, démarrer / arrêter / tout fermer). On la lance avec `etrave/Etrave.bat`. |
-| `recherches/` | Toutes les hypothèses et tous les tests. **`recherches/nasdaq/`** : le simulateur à la minute qui refait les trades de référence d'Étrave, et le rapport [recherches/nasdaq/RAPPORT.md](recherches/nasdaq/RAPPORT.md) (stops, entrées, flux d'ordres, gestion, coûts réels, stop à l'entrée plus tôt et objectif). **`recherches/crypto/`** : bitcoin et Ethereum. Le rapport principal est `RAPPORT-BTC.md` : la stratégie BTC une fois les biais corrigés. Le tableau du jour se lance avec `python recherches/crypto/btc_jour.py`. `RAPPORT.md` : confluence de 9 outils. `RAPPORT-2.md` : ventes, supports et résistances, sentiment, apprentissage, cash-and-carry. `RAPPORT-3.md` : retournements, M5 à H4, système multi-unités. `RAPPORT-4.md` : vue d'ensemble, optimisations, portefeuille de cryptos. `CATALOGUE.md` : toutes les stratégies et leur verdict. |
 
-Les données téléchargées (Dukascopy, Binance, Coin Metrics…) vont dans `donnees/` à la racine, hors git : `donnees/nas100/`
-pour le Nasdaq, `donnees/crypto/` pour les cryptos.
-
-Le 15 novembre 2026 le dépôt a été réduit à ces éléments. Les données Dukascopy, les anciennes études et l'audit restent
-dans l'historique git (dernier commit qui les contient : `afb79de`). Le 17 novembre 2026 il a été rangé dans ces quatre
-dossiers (voir « Mettre à jour depuis l'ancienne organisation » plus bas).
+**Recherches retirées le 17 novembre 2026.** Les rapports, les simulateurs, les hypothèses testées et les scripts de
+téléchargement des données ne sont plus dans le dépôt. Ils restent dans l'historique git : dernier commit qui les
+contient, `39b5b77` (dossier `recherches/`). Pour les relire sans les remettre dans le dépôt :
+`git show 39b5b77:recherches/nasdaq/RAPPORT.md`, ou `git archive 39b5b77 recherches | tar -x` pour tout récupérer.
 
 ## Ce que dit le test
 
@@ -30,14 +27,14 @@ trades (156 par an), **+0,46R par trade, +643R**, pire baisse −23R, 15 pertes 
 - **La v6 = les règles de la v5 avec une pyramide de 2 unités** (17 novembre 2026). Les fichiers v5 ont été retirés du
   dépôt (ils restent dans l'historique git). Avec un ajout d'une unité : +471R, pire baisse −22R ; sans pyramide : +312R.
   Le détail, et tout ce qui a été essayé sans succès (placement du stop, autres entrées, flux d'ordres du future NQ,
-  sorties anticipées, règles de mise), est dans [recherches/nasdaq/RAPPORT.md](recherches/nasdaq/RAPPORT.md).
+  sorties anticipées, règles de mise), est dans le rapport de recherche (historique git, commit `39b5b77`).
 - **Avant 2018 la stratégie perdait** : −55R sur 2015-2017, −33R sur 2013-2014. L'ancien test 2015-2026 a connu une baisse
   de 76R avec la pyramide de 2 unités (74R avec une unité).
 - Capital, gains réinvestis, 2018 → 2026 : 0,25 % par trade → +19 % par an, pire baisse −6 % ; 0,5 % → +40 %, −11 % ;
   1 % → +88 %, −22 %. Si une période comme 2015-2017 revenait : environ −17 % à 0,25 %, −32 % à 0,5 %, −53 % à 1 %.
 - Le résultat dépend du glissement : +565R avec 0,5 point par exécution, +455R avec 1 point. Mesuré sur le future NQ, le
   glissement réel d'un ordre stop natif donne environ +500R (CFD ou futures), et un ordre au marché envoyé 250 ms après le
-  déclenchement +352R : voir [recherches/nasdaq/RAPPORT.md](recherches/nasdaq/RAPPORT.md).
+  déclenchement +352R : voir le rapport de recherche (historique git, commit `39b5b77`).
 - Garde un risque fixe : réduire la mise après des pertes ou en période de baisse a fait moins bien dans le test.
 
 Ce n'est pas un conseil en investissement, et le passé ne garantit rien. Fais tourner l'EA en démo avant le réel, et

@@ -5,4 +5,3 @@ __pycache__/
 donnees/
 bitcoin/etat/
 bitcoin/config.json
-recherches/nasdaq/cache.npz
