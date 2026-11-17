@@ -152,6 +152,60 @@ La journée donne le sens (score de confluence connu à la clôture de la veille
 tendance 4h baissière sur BTC et ETH : **VENTE** selon le système multi-unités, alors que la confluence journalière seule
 dit « hors marché ».
 
+## 4. Doser la vente (`dosage_vente.py`)
+
+La partie achat reste fixe (fond haussier + tendance H4). La vente est testée sous 20 formes, toutes écrites avant de
+lancer :
+- taille de 0 à 1 × celle de l'achat ;
+- volatilité cible plus basse ;
+- taille proportionnelle au score ;
+- seuil plus strict ;
+- pas de vente en peur extrême ;
+- pas de vente quand le financement est négatif ;
+- sortie plus rapide ;
+- durée maximale de 30 jours ;
+- frein quand la vente perd 15 % ;
+- quelques combinaisons.
+
+**Règle écrite avant** : meilleur Sharpe du système sur BTC 2018-2022. **Elle désigne la vente à quart de taille.**
+
+| Système complet, Sharpe (2018-2022 / 2023-2026 / 2018-2026) | BTC | ETH | Portefeuille 50/50 BTC-ETH |
+|---|---|---|---|
+| Achat seul | 1,35 / 1,03 / 1,21 | 1,13 / 0,84 / 1,01 | 1,39 / 1,09 / 1,26 |
+| **Vente à 0,25** (choisie) | **1,41 / 1,06 / 1,26** | **1,27 / 0,93 / 1,13** | **1,50 / 1,17 / 1,36** |
+| Vente à 0,5 | 1,36 / 1,04 / 1,23 | 1,33 / 0,97 / 1,18 | 1,50 / 1,17 / 1,37 |
+| Vente à 1 (pleine taille) | 1,17 / 0,92 / 1,07 | 1,30 / 0,95 / 1,15 | 1,35 / 1,08 / 1,24 |
+
+| 2018-2026 | Gain par an (BTC / ETH / 50-50) | Pire baisse (BTC / ETH / 50-50) |
+|---|---|---|
+| Achat seul | +31 % / +26 % / +29 % | −23 % / −34 % / −22 % |
+| **Vente à 0,25** | +34 % / +31 % / +33 % | −22 % / −31 % / −21 % |
+| Vente à 0,5 | +36 % / +35 % / +37 % | −22 % / −31 % / −24 % |
+| Vente à 1 | +39 % / +43 % / +43 % | −33 % / −41 % / −36 % |
+
+- **La vente à quart de taille améliore tout, sur les échantillons qui n'ont pas servi à la choisir** : Sharpe plus
+  haut, rendement plus haut, pire baisse égale ou plus faible, sur BTC 2023-2026, sur l'ETH et sur le portefeuille.
+  La vente rapporte quand l'achat est dehors : elle remplit les années baissières sans ajouter de risque, tant
+  qu'elle reste petite.
+- **À demi-taille**, c'est presque pareil, avec 3 à 4 % de rendement en plus par an et un peu plus de pire baisse.
+  C'est l'alternative raisonnable.
+- **À pleine taille**, la vente dégrade le BTC. Ses pertes dans les rebonds violents (−43 % de pire baisse à elle
+  seule) pèsent plus que ses gains.
+- **Ce qui n'aide pas** :
+  - Taille proportionnelle au score, sortie rapide à l'EMA20, frein après une perte de 15 % : moins bien.
+  - Ne pas vendre en peur extrême (F&G < 20) : **moins bien**. Les baisses continuent souvent en pleine peur ; les
+    rebonds violents viennent plus tard.
+  - Filtre de financement négatif : ne change rien (il ne se déclenche presque jamais en même temps que le reste).
+- **Combinaisons trouvées après coup** : « 0,5 + seuil −0,5 » donne 1,39 sur le portefeuille, mais elle n'a pas été
+  choisie par la règle. Elle n'est pas retenue.
+
+**Système retenu** :
+- **Achat** à la taille pleine du dosage (40 % ÷ volatilité 30 j) quand le fond journalier est haussier et le H4
+  aussi.
+- **Vente** au quart de cette taille, en perpétuel, quand le fond journalier est baissier et le H4 aussi.
+- Sur un portefeuille 50/50 BTC-ETH, 2018-2026 : Sharpe 1,36, +33 % par an, pire baisse −21 %. L'achat-conservation
+  fait 0,60, +19 % et −81 % sur le BTC.
+
 ## Ce que ça change pour l'outil
 
 1. **Ne pas chercher à attraper le sommet** : aucun indicateur ne le fait mieux que le hasard, ni en M5 ni en
@@ -160,7 +214,7 @@ dit « hors marché ».
 3. **Rester en H4 ou au-dessus**, sauf à trader en ordres limites et avec un avantage par trade bien supérieur à
    4 pb, ce qu'aucun signal testé n'a.
 4. **Les ventes existent, mais seulement quand le journalier et le H4 sont baissiers tous les deux.** Jamais contre la
-   tendance de fond.
+   tendance de fond. Et petites : un quart de la taille d'un achat.
 
 ## Refaire
 
@@ -169,4 +223,5 @@ bash crypto/02_telecharger_m5.sh       # 30 s : bougies 5 minutes BTC et ETH (28
 python crypto/petites_tf.py 4          # 41 signaux × 6 unités × 3 filtres × achat/vente (≈ 10 min)
 python crypto/retournements.py 4       # 16 détecteurs × 6 unités × 3 filtres (≈ 5 min)
 python crypto/multi_tf.py              # le système multi-unités
+python crypto/dosage_vente.py          # 20 façons de doser la vente
 ```

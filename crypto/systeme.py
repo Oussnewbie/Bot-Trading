@@ -31,6 +31,7 @@ from confluence import votes_a_priori, dosage_vol
 from recherche import PERIODES, OUT
 
 SEUIL, VOL = 0.25, 0.4
+VENTE_TAILLE = 0.25        # dosage de la vente du système multi-unités (dosage_vente.py)
 
 
 def positions(ctx):
@@ -130,7 +131,13 @@ def tableau_du_jour():
         etat4 = "haussière" if (e50.iloc[-1] > e200.iloc[-1] and c4.iloc[-1] > e200.iloc[-1]) else \
             ("baissière" if (e50.iloc[-1] < e200.iloc[-1] and c4.iloc[-1] < e200.iloc[-1]) else "neutre")
         sc = P["score"].iloc[-1]
-        mtf = "ACHAT" if (sc >= SEUIL and etat4 == "haussière") else ("VENTE" if (sc <= -SEUIL and etat4 == "baissière") else "rien")
+        dz = P["dose"].iloc[-1]
+        if sc >= SEUIL and etat4 == "haussière":
+            mtf = f"ACHAT {dz:.0%} du capital"
+        elif sc <= -SEUIL and etat4 == "baissière":
+            mtf = f"VENTE {VENTE_TAILLE * dz:.0%} du capital (quart de taille, perpétuel)"
+        else:
+            mtf = "rien"
         print(f"  Multi-unités (RAPPORT-3) : tendance 4h {etat4} (bougie {d4.index[-1]:%d/%m %H:%M} UTC) -> {mtf}")
         for nom, (dessous, dessus) in niveaux_proches(actif, c).items():
             print(f"  {nom:<34} dessous {', '.join(f'{x:,.0f}' for x in dessous) or '-':<22} dessus "
