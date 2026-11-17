@@ -1,6 +1,8 @@
 # Le bot BTC
 
-Il exécute la stratégie de `crypto/RAPPORT-BTC.md` sur Binance, sans intervention, et prévient sur Telegram.
+Il exécute la stratégie de `crypto/RAPPORT-BTC.md` sur Binance, sans intervention, et prévient sur Telegram. C'est un
+**programme à part** de l'EA MetaTrader : il se pilote depuis **Étrave, espace « ₿ Bitcoin »** (démarrer, arrêter,
+pause, tout fermer, levier, clé API), ou à la main en ligne de commande.
 
 Ce n'est pas un conseil en investissement. Commence en mode **papier**, puis **testnet**, et passe en **réel** avec un
 petit capital seulement après plusieurs semaines conformes au test.
@@ -43,15 +45,45 @@ petit capital seulement après plusieurs semaines conformes au test.
 
 ## Le montage chez Binance (choisi par le test)
 
+**Levier ×1 (montage « comptant », recommandé)** :
+
 | Position | Où | Pourquoi |
 |---|---|---|
 | **Achat** | BTC au comptant (spot) | Pas de financement à payer. Faire les achats en perpétuel aurait coûté 6 à 10 % par an. Aucune liquidation possible |
 | **Vente** | Perpétuel USDⓈ-M BTCUSDT, marge isolée, levier 1 | La marge déposée = la taille de la vente : liquidation seulement si le BTC double |
 | Le reste | USDT au comptant | — |
 
-**Pas de levier dans cette version.** Avec des portefeuilles spot et futures séparés, un levier de 2× mettrait la
-liquidation à environ −20 %, ce qu'un krach du BTC atteint en une journée. Le profil « dynamique » du rapport viendra
-plus tard, avec le mode multi-actifs de Binance (le BTC sert alors de garantie), après la démo.
+**Levier ×2 à ×10 (montage « perpétuel »)** : la position du profil est multipliée par le levier. Tout passe en
+perpétuel USDⓈ-M BTCUSDT, marge croisée, tout le capital en USDT sur le portefeuille futures. Les achats paient
+alors le financement. Un **stop de protection** (stop au marché sur le prix de marque, qui ferme toute la position)
+est posé chez Binance à mi-chemin de la liquidation, et replacé à chaque cycle : sans lui, le test liquide le compte
+dès ×4.
+
+## Le levier : ce que dit le test (`profils.py`, `profils.json`)
+
+Tableau calculé sur 2012-2026, bougies 4h Bitstamp, avec frais, financement, stops et liquidations :
+
+| Levier | Gain par an 2018-2026 | Pire baisse 2018-2026 | Pire baisse 2012-2026 | Sharpe 2012-2026 |
+|---|---|---|---|---|
+| **×1** | +35 % | −21 % | −25 % | 1,91 |
+| ×2 | +62 % | −42 % | −65 % | 1,72 |
+| ×3 | +88 % | −59 % | −71 % | 1,72 |
+| ×4 | +107 % | −72 % | −82 % | 1,63 |
+| ×5 | +77 % | −92 % | −96 % | 1,56 |
+| ×6 à ×8 | +62 % à +17 % | −95 % à −99 % | −96 % à −99 % | 1,44 |
+| ×9 | −13 % | −100 % | −100 % | 1,39 |
+| ×10 | −46 % | −100 % | −100 % | 1,32 |
+
+- Au-delà de ×4, le gain **baisse** : les frais, le financement, les stops et l'usure due à la volatilité dévorent
+  tout. À ×9 et ×10, le test perd de l'argent.
+- Étrave demande de taper LEVIER pour dépasser ×3.
+
+## Ordres limites
+
+Par défaut, chaque ordre est d'abord un **ordre limite « post-only »** au meilleur prix du carnet, re-placé jusqu'à
+8 fois (environ 2 minutes). Le reste part au marché. En perpétuel, les frais tombent de 0,05 % à 0,02 %. Au comptant,
+les frais Binance sont les mêmes, mais on évite l'écart achat-vente. `"ordres": "marche"` revient aux ordres au
+marché.
 
 ## Profils
 
@@ -76,12 +108,16 @@ plus tard, avec le mode multi-actifs de Binance (le BTC sert alors de garantie),
    |---|---|---|
    | `mode` | `papier` (compte fictif), `testnet` (Binance de test), `reel` | `papier` |
    | `profil` | `prudent`, `equilibre` | `prudent` |
+| `levier` | 1 à 10 | `1` |
+| `ordres` | `limite`, `marche` | `limite` |
    | `vente` | taille de la vente (`0` = pas de vente, `null` = celle du profil) | `null` |
    | `bande` | ajustement minimal | `0.05` |
    | `perte_max` | coupe-circuit | `0.40` |
    | `capital_papier` | capital du mode papier | `10000` |
 
-3. **Clés Binance** (modes `testnet` et `reel`), **dans l'environnement, jamais dans un fichier du dépôt** :
+3. **Clés Binance** (modes `testnet` et `reel`). Le plus simple : **Étrave, espace Bitcoin, onglet « Connexion
+   Binance »**. La clé est rangée dans `btc-secrets.json` du dossier d'Étrave (hors dépôt, jamais renvoyée à la page).
+   Sinon, dans l'environnement, jamais dans un fichier du dépôt :
 
    ```bash
    export BINANCE_API_KEY="..."
@@ -107,9 +143,18 @@ python crypto/bot/bot.py --une-fois    # un cycle complet, puis arrêt
 python crypto/bot/bot.py               # la boucle : un cycle toutes les 4 h
 ```
 
-**Arrêts** (dans `crypto/bot/etat/`) :
+**Depuis Étrave** (espace Bitcoin) :
+- Démarrer, Arrêter ;
+- Analyser maintenant ;
+- Pause, Reprendre ;
+- Tout fermer (mot FERMER) ;
+- Réarmer après un coupe-circuit.
+
+**À la main**, dans `crypto/bot/etat/` :
 - créer un fichier `PAUSE` : plus aucun ordre, le bot continue d'analyser et d'alerter ;
-- créer un fichier `FERMER` : tout est fermé au prochain cycle, puis pause.
+- créer un fichier `FERMER` : tout est fermé au prochain cycle, puis pause ;
+- créer un fichier `MAINTENANT` : un cycle tout de suite, vu en moins de 15 secondes ;
+- créer un fichier `REARMER` : repartir après un coupe-circuit.
 
 Supprime le fichier pour reprendre. Après un coupe-circuit, il faut retirer `"arrete"` de `etat/etat.json` pour
 relancer.
@@ -129,14 +174,24 @@ python -m pip install pytest
 python -m pytest crypto/bot -q
 ```
 
-15 tests :
+25 tests :
 - plan d'ordres ;
 - comptabilité du compte papier, y compris le gain d'une vente quand le prix baisse ;
 - PAUSE, FERMER, coupe-circuit, données en retard ;
 - **décisions identiques au backtest** sur 20 instants tirés au hasard ;
 - **rejeu 2018-2026** de l'exécution (frais, glissement, bande, marge) : Sharpe 1,36, comme le backtest (1,36),
   +37 % par an, pire baisse −23 % ;
-- concordance des prix Binance et Bitstamp : même sens de position 98,5 % du temps.
+- concordance des prix Binance et Bitstamp : même sens de position 98,5 % du temps ;
+- levier : montage perpétuel, retournement de position, stop de protection (placé et touché), cible multipliée ;
+- ordres limites, puis le reste au marché (avec un faux exchange), et des frais plus bas qu'au marché ;
+- commande « maintenant », secrets lus dans le fichier d'Étrave.
+
+Côté Étrave, `python -m pytest interface` (34 tests) couvre l'espace Bitcoin :
+- réglages et leurs bornes ;
+- mots de confirmation REEL, LEVIER et FERMER ;
+- clé en écriture seule : jamais renvoyée, même par le serveur HTTP ;
+- démarrer, arrêter, pause, fermer, réarmer ;
+- un bot muet depuis plus d'une minute est vu comme arrêté.
 
 ## Ce qui n'a PAS encore été vérifié
 
@@ -146,7 +201,8 @@ python -m pytest crypto/bot -q
   **Première étape : le testnet**, puis lire le journal ligne par ligne.
 - Le testnet spot de Binance est séparé de celui des futures. Si l'un des deux manque, le bot s'arrête sur une erreur
   et alerte : il ne passe pas d'ordre à moitié.
-- Ordres au marché (preneur, 0,10 % spot, 0,05 % futures) : c'est l'hypothèse du test. Des ordres limites
-  économiseraient un peu, à faire plus tard.
+- Ordres limites post-only : la logique (re-placement, annulation, reste au marché) est testée avec un faux exchange,
+  pas encore contre Binance.
+- Le stop de protection (STOP_MARKET, closePosition, prix de marque) n'a pas encore été posé chez Binance.
 - Si un ordre échoue au milieu d'un rééquilibrage, le cycle s'arrête avec une alerte. Le cycle suivant repart de
   l'état réel du compte : le plan est toujours calculé à partir des soldes lus chez Binance, jamais de mémoire.

@@ -21,6 +21,7 @@
     --good: #006300; --warning: #8a5a00; --critical: #d03b3b; --critical-fill: #d03b3b;
   }
   * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
   body { margin: 0; background: var(--page); color: var(--ink); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
   button, input, select { font: inherit; color: inherit; }
   .wrap { max-width: 1080px; margin: 0 auto; padding: 0 16px 48px; }
@@ -135,9 +136,85 @@
   dialog h3 { margin: 0 0 8px; } dialog p { color: var(--ink-2); margin: 0 0 12px; }
   dialog .actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 14px; }
   #toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: var(--raised); border: 1px solid var(--border); border-radius: 10px; padding: 10px 16px; display: none; z-index: 5; max-width: calc(100% - 32px); }
+
+  /* ───────── Deux espaces : Nasdaq (bleu) et Bitcoin (orange) ───────── */
+  body { background: radial-gradient(1200px 500px at 15% -10%, var(--accent-wash), transparent 60%), var(--page); min-height: 100vh; }
+  body[data-space="bitcoin"] { --accent: #f7931a; --accent-wash: rgba(247,147,26,.13); }
+  :root[data-theme="light"] body[data-space="bitcoin"] { --accent: #c96e00; --accent-wash: rgba(201,110,0,.10); }
+  .spaces { display: inline-flex; gap: 4px; padding: 4px; border-radius: 14px; background: var(--surface); border: 1px solid var(--border); }
+  .spaces button { display: inline-flex; align-items: center; gap: 9px; border: 0; background: transparent; border-radius: 10px; padding: 8px 14px; cursor: pointer; text-align: left; color: var(--ink-2); }
+  .spaces button .ico { width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center; background: var(--raised); font-size: 17px; font-weight: 800; flex: none; }
+  .spaces button[data-space="nasdaq"] .ico { color: #3987e5; } .spaces button[data-space="bitcoin"] .ico { color: #f7931a; }
+  .spaces button b { display: block; font-size: 14px; color: var(--ink); line-height: 1.1; } .spaces button small { color: var(--muted); font-size: 11px; }
+  .spaces button[aria-selected="true"] { background: var(--raised); box-shadow: inset 0 0 0 1px var(--border); }
+  .spaces button[aria-selected="true"][data-space="nasdaq"] .ico { background: rgba(57,135,229,.18); }
+  .spaces button[aria-selected="true"][data-space="bitcoin"] .ico { background: rgba(247,147,26,.2); }
+  .spaces .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); margin-left: 4px; box-shadow: 0 0 0 3px var(--surface); }
+  .spaces .dot.on { background: var(--good); box-shadow: 0 0 0 3px rgba(12,163,12,.18); }
+  nav { gap: 6px; border-bottom: 0; padding: 4px; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; }
+  nav button { display: inline-flex; align-items: center; gap: 7px; border-radius: 8px; border-bottom: 0; padding: 8px 12px; }
+  nav button svg { width: 16px; height: 16px; opacity: .8; }
+  nav button[aria-selected="true"] { background: var(--accent-wash); color: var(--ink); box-shadow: inset 0 0 0 1px var(--accent); }
+  nav[hidden] { display: none; }
+  body[data-space="bitcoin"] #pill-ea, body[data-space="bitcoin"] #pill-compte, body[data-space="bitcoin"] #pill-ny, body[data-space="bitcoin"] #banner { display: none !important; }
+  .card, .tile { box-shadow: 0 1px 0 rgba(255,255,255,.02), 0 8px 24px rgba(0,0,0,.12); }
+  :root[data-theme="light"] .card, :root[data-theme="light"] .tile { box-shadow: 0 1px 2px rgba(0,0,0,.04), 0 6px 18px rgba(0,0,0,.05); }
+  .tile .label { display: flex; align-items: center; gap: 6px; } .tile .label .i { font-size: 13px; }
+
+  /* ───────── Bitcoin ───────── */
+  .badge { display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px; border-radius: 999px; font-size: 12px; font-weight: 700; border: 1px solid var(--border); background: var(--raised); white-space: nowrap; }
+  .badge.vert { color: var(--good); border-color: rgba(12,163,12,.45); background: rgba(12,163,12,.10); }
+  .badge.rouge { color: var(--critical); border-color: rgba(230,103,103,.5); background: rgba(230,103,103,.10); }
+  .badge.jaune { color: var(--warning); border-color: rgba(250,178,25,.5); background: rgba(250,178,25,.10); }
+  .badge.bleu { color: #3987e5; border-color: rgba(57,135,229,.5); background: rgba(57,135,229,.10); }
+  .badge.violet { color: #a57cf0; border-color: rgba(165,124,240,.5); background: rgba(165,124,240,.10); }
+  .badge.orange { color: #f7931a; border-color: rgba(247,147,26,.5); background: rgba(247,147,26,.10); }
+  .controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .controls .btns { display: flex; gap: 8px; flex-wrap: wrap; }
+  .controls .etat { display: flex; align-items: center; gap: 10px; margin-right: auto; flex-wrap: wrap; }
+  .pulse { width: 12px; height: 12px; border-radius: 50%; background: var(--muted); flex: none; }
+  .pulse.on { background: var(--good); animation: pulse 2s infinite; }
+  @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(12,163,12,.55); } 70% { box-shadow: 0 0 0 10px rgba(12,163,12,0); } 100% { box-shadow: 0 0 0 0 rgba(12,163,12,0); } }
+  .btn.ok { background: var(--good); border-color: transparent; color: #fff; }
+  .btn .ic { display: inline-block; width: 1.2em; text-align: center; }
+  .decision { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 18px; align-items: center; border-radius: 16px; padding: 18px 20px; margin-bottom: 16px; border: 1px solid var(--border); background: var(--surface); }
+  .decision .sym { width: 64px; height: 64px; border-radius: 18px; display: grid; place-items: center; font-size: 30px; font-weight: 800; background: var(--raised); color: var(--muted); }
+  .decision h3 { margin: 0; font-size: 26px; letter-spacing: .04em; } .decision p { margin: 4px 0 0; color: var(--ink-2); }
+  .decision .taille { text-align: right; } .decision .taille b { font-size: 28px; display: block; } .decision .taille span { color: var(--muted); font-size: 12px; }
+  .decision.achat { border-color: rgba(12,163,12,.55); background: linear-gradient(90deg, rgba(12,163,12,.14), var(--surface) 55%); }
+  .decision.achat .sym { background: rgba(12,163,12,.2); color: var(--good); } .decision.achat h3 { color: var(--good); }
+  .decision.vente { border-color: rgba(230,103,103,.6); background: linear-gradient(90deg, rgba(230,103,103,.14), var(--surface) 55%); }
+  .decision.vente .sym { background: rgba(230,103,103,.2); color: var(--critical); } .decision.vente h3 { color: var(--critical); }
+  @media (max-width: 620px) { .decision { grid-template-columns: auto minmax(0, 1fr); } .decision .taille { grid-column: 1 / -1; text-align: left; } }
+  .votes { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; margin-top: 14px; }
+  .vote { display: flex; align-items: center; gap: 10px; padding: 9px 11px; border-radius: 10px; background: var(--raised); border-left: 4px solid var(--muted); }
+  .vote .v { font-size: 18px; font-weight: 800; width: 18px; text-align: center; }
+  .vote b { display: block; font-size: 13px; } .vote span { color: var(--muted); font-size: 11px; }
+  .vote.haut { border-left-color: var(--good); } .vote.haut .v { color: var(--good); }
+  .vote.bas { border-left-color: var(--critical-fill); } .vote.bas .v { color: var(--critical); }
+  .vote.neutre .v { color: var(--muted); } .vote.absent { opacity: .55; }
+  .gauge { margin: 6px 0 2px; } .gauge svg { width: 100%; display: block; overflow: visible; } .gauge text { font-size: 11px; fill: var(--muted); }
+  .leviers { display: grid; grid-template-columns: repeat(10, minmax(0, 1fr)); gap: 6px; margin: 10px 0 14px; }
+  .leviers button { border-radius: 10px; border: 2px solid transparent; padding: 10px 0; font-weight: 800; font-size: 15px; cursor: pointer; color: #111; }
+  .leviers button[aria-pressed="true"] { border-color: var(--ink); transform: translateY(-2px); box-shadow: 0 6px 16px rgba(0,0,0,.3); }
+  @media (max-width: 620px) { .leviers { grid-template-columns: repeat(5, minmax(0, 1fr)); } }
+  .choix { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; margin: 8px 0 4px; }
+  .choix button { text-align: left; border-radius: 12px; border: 1px solid var(--border); background: var(--raised); padding: 12px 14px; cursor: pointer; }
+  .choix button b { display: flex; align-items: center; gap: 8px; font-size: 14px; } .choix button span { display: block; color: var(--muted); font-size: 12px; margin-top: 4px; }
+  .choix button[aria-pressed="true"] { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); background: var(--accent-wash); }
+  .reglage { padding: 14px 0; border-top: 1px solid var(--grid); } .reglage:first-of-type { border-top: 0; padding-top: 4px; }
+  .reglage > h3 { margin: 0 0 2px; font-size: 14px; display: flex; align-items: center; gap: 8px; } .reglage > .hint { margin-bottom: 6px; }
+  .verdict { border-radius: 10px; padding: 10px 12px; margin-top: 10px; font-size: 13px; border: 1px solid var(--border); }
+  .verdict.vert { background: rgba(12,163,12,.08); border-color: rgba(12,163,12,.4); } .verdict.jaune { background: rgba(250,178,25,.08); border-color: rgba(250,178,25,.45); }
+  .verdict.rouge { background: rgba(230,103,103,.10); border-color: rgba(230,103,103,.5); }
+  .bar { height: 8px; border-radius: 99px; background: var(--raised); overflow: hidden; margin-top: 8px; position: relative; }
+  .bar > i { position: absolute; top: 0; bottom: 0; border-radius: 99px; }
+  .log { font: 12px/1.5 ui-monospace, SFMono-Regular, Consolas, monospace; background: var(--page); border: 1px solid var(--border); border-radius: 8px; padding: 10px; max-height: 320px; overflow: auto; white-space: pre-wrap; color: var(--ink-2); }
+  .check { display: flex; gap: 10px; align-items: flex-start; padding: 6px 0; color: var(--ink-2); } .check .c { color: var(--good); font-weight: 800; }
+  .reel-strip { background: repeating-linear-gradient(45deg, rgba(208,59,59,.22), rgba(208,59,59,.22) 12px, rgba(208,59,59,.12) 12px, rgba(208,59,59,.12) 24px); border: 1px solid var(--critical-fill); color: var(--critical); font-weight: 800; letter-spacing: .08em; text-align: center; border-radius: 10px; padding: 6px; margin-bottom: 12px; }
 </style>
 </head>
-<body>
+<body data-space="nasdaq">
 <div class="wrap">
   <header>
     <div class="brand">
@@ -146,7 +223,11 @@
         <path d="M20 5v27"/>
         <path d="M3 33c2.800-2.300 5.700-2.300 8.500 0M28.500 33c2.800-2.300 5.700-2.300 8.500 0" opacity=".55"/>
       </svg>
-      <div><div class="name">__NOM__</div><div class="tagline">__SLOGAN__</div></div>
+      <div><div class="name">__NOM__</div><div class="tagline" id="tagline">__SLOGAN__</div></div>
+    </div>
+    <div class="spaces" role="tablist" aria-label="Espace">
+      <button role="tab" data-space="nasdaq" aria-selected="true"><span class="ico">⛵</span><span><b>Nasdaq</b><small>MetaTrader 5 · ORB</small></span><span class="dot" id="dot-nasdaq"></span></button>
+      <button role="tab" data-space="bitcoin" aria-selected="false"><span class="ico">₿</span><span><b>Bitcoin</b><small>Binance · confluence</small></span><span class="dot" id="dot-btc"></span></button>
     </div>
     <div class="pills">
       <span class="pill" id="pill-ea"><span class="dot"></span><span>…</span></span>
@@ -156,10 +237,15 @@
     </div>
   </header>
 
-  <nav role="tablist">
-    <button role="tab" data-tab="overview" aria-selected="true">Vue d’ensemble</button>
-    <button role="tab" data-tab="risk" aria-selected="false">Risque</button>
-    <button role="tab" data-tab="connections" aria-selected="false">Connexions</button>
+  <nav role="tablist" data-space="nasdaq" aria-label="Nasdaq">
+    <button role="tab" data-tab="overview" aria-selected="true"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="2.5" y="2.5" width="6" height="6" rx="1.5"/><rect x="11.5" y="2.5" width="6" height="6" rx="1.5"/><rect x="2.5" y="11.5" width="6" height="6" rx="1.5"/><rect x="11.5" y="11.5" width="6" height="6" rx="1.5"/></svg>Vue d’ensemble</button>
+    <button role="tab" data-tab="risk" aria-selected="false"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M10 2.5 17.5 16h-15Z"/><path d="M10 8v3.5M10 13.8v.2"/></svg>Risque</button>
+    <button role="tab" data-tab="connections" aria-selected="false"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M8 12 12 8M7 9.5 5 11.5a2.5 2.5 0 0 0 3.5 3.5l2-2M13 10.5l2-2A2.5 2.5 0 0 0 11.5 5l-2 2"/></svg>Connexions</button>
+  </nav>
+  <nav role="tablist" data-space="bitcoin" aria-label="Bitcoin" hidden>
+    <button role="tab" data-tab="btc" aria-selected="false"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M2.5 15.5 7 10l3 3 7.5-8.5"/><path d="M13 4.5h4.5V9"/></svg>Tableau de bord</button>
+    <button role="tab" data-tab="btc-reglages" aria-selected="false"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M3 5.5h8M15 5.5h2M3 14.5h2M9 14.5h8"/><circle cx="13" cy="5.5" r="2"/><circle cx="7" cy="14.5" r="2"/></svg>Réglages &amp; levier</button>
+    <button role="tab" data-tab="btc-connexion" aria-selected="false"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="7" cy="12.5" r="3.5"/><path d="M9.5 10 16 3.5M13.5 6l2 2M12 7.5l1.5 1.5"/></svg>Connexion Binance</button>
   </nav>
 
   <div id="banner"></div>
@@ -223,6 +309,10 @@
   <section id="tab-connections" hidden>
     <div id="connections"></div>
   </section>
+
+  <section id="tab-btc" hidden><div id="btc-dash"><div class="empty">Chargement…</div></div></section>
+  <section id="tab-btc-reglages" hidden><div id="btc-reglages"></div></section>
+  <section id="tab-btc-connexion" hidden><div id="btc-connexion"></div></section>
 </div>
 
 <dialog id="dlg-risk">
@@ -238,6 +328,13 @@
   <label for="close-word">Tape <b>CLOTURER</b> pour confirmer :</label>
   <input type="text" id="close-word" autocomplete="off" style="width:100%;margin-top:6px">
   <div class="actions"><button class="btn" id="close-cancel">Annuler</button><button class="btn danger" id="close-ok" disabled>Clôturer</button></div>
+</dialog>
+<dialog id="dlg-mot">
+  <h3 id="mot-titre"></h3>
+  <p id="mot-texte"></p>
+  <label for="mot-saisie">Tape <b id="mot-attendu"></b> pour confirmer :</label>
+  <input type="text" id="mot-saisie" autocomplete="off" style="width:100%;margin-top:6px">
+  <div class="actions"><button class="btn" id="mot-annuler">Annuler</button><button class="btn danger" id="mot-ok" disabled>Confirmer</button></div>
 </dialog>
 <div id="toast" role="status"></div>
 
@@ -801,10 +898,362 @@ function renderConnections() {
   host.replaceChildren(telegram, mt5, note);
 }
 
+// ================================================================ BITCOIN (bot BTC, programme à part de l'EA)
+let btc = null;          // /api/btc/etat
+let btcDraft = null;     // réglages en cours de saisie
+let btcTest = null;      // résultat du dernier « Tester la connexion »
+const VOTES = {
+  ma200: ['MA200', 'tendance de fond'], ichimoku: ['Ichimoku', 'nuage 9-26-52'], macd: ['MACD', '12-26-9'],
+  rsi: ['RSI 14', 'au-dessus de 50 ?'], vwap: ['VWAP du mois', 'prix moyen pondéré'], fibonacci: ['Fibonacci', 'jambe de 90 jours'],
+  orderflow: ['Order flow', 'acheteurs agressifs 7 j'], onchain: ['On-chain', 'flux des exchanges'], ethbtc: ['ETH/BTC', 'appétit pour le risque'],
+};
+const MODES = {
+  papier: ['🧪', 'Papier', 'bleu', 'Compte fictif, prix réels. Aucun ordre chez Binance.'],
+  testnet: ['🧭', 'Testnet', 'violet', 'Le Binance de test, avec du faux argent : pour vérifier les ordres.'],
+  reel: ['💶', 'Réel', 'rouge', 'Ton argent, chez Binance. Après plusieurs semaines de papier et de testnet.'],
+};
+const COULEUR_LEVIER = ['#2fbf71', '#9bd14b', '#f2c037', '#f59e3b', '#ef7a35', '#e8602f', '#de4a2c', '#cf3a2a', '#bf2e2a', '#a8232a'];
+const usd = (v, d = 0) => money(v, 'USD', d);
+const modeBadge = (m) => el('span', { class: `badge ${MODES[m][2]}` }, `${MODES[m][0]} ${MODES[m][1]}`);
+const heureUtc = (t) => (t ? `${String(t).slice(8, 10)}/${String(t).slice(5, 7)} ${String(t).slice(11, 16)} UTC` : '—');
+function dans(iso) {
+  if (!iso) return '';
+  const min = Math.round((new Date(String(iso).replace(' ', 'T')) - new Date()) / 60000);
+  if (min <= 0) return 'imminente';
+  return min >= 60 ? `dans ${Math.floor(min / 60)} h ${String(min % 60).padStart(2, '0')}` : `dans ${min} min`;
+}
+function banner(kind, titre, texte, ...actions) {
+  return el('div', { class: `banner ${kind}`, style: 'display:flex;align-items:center;gap:12px;flex-wrap:wrap' },
+    el('div', { style: 'flex:1;min-width:220px' }, el('b', {}, titre), ' ', texte), ...actions);
+}
+/** Demande un mot de confirmation (REEL, LEVIER, FERMER) : renvoie true si l'utilisateur l'a tapé. */
+function motDialog(titre, texte, mot) {
+  return new Promise((resolve) => {
+    const d = $('dlg-mot');
+    $('mot-titre').textContent = titre; $('mot-texte').textContent = texte; $('mot-attendu').textContent = mot;
+    $('mot-saisie').value = ''; $('mot-ok').disabled = true;
+    const fin = (ok) => { d.close(); $('mot-ok').onclick = $('mot-annuler').onclick = $('mot-saisie').oninput = null; resolve(ok); };
+    $('mot-saisie').oninput = () => ($('mot-ok').disabled = $('mot-saisie').value.trim().toUpperCase() !== mot);
+    $('mot-ok').onclick = () => fin(true); $('mot-annuler').onclick = () => fin(false);
+    d.showModal();
+  });
+}
+async function btcAction(chemin, corps, message) {
+  try { const r = await api(chemin, corps || {}); if (message) toast(message); await loadBtc(); return r; }
+  catch (error) { toast(error.message); return null; }
+}
+
+// ---------------------------------------------------------------- tableau de bord
+function jauge(score) {
+  const W = Math.max(300, ($('btc-dash').clientWidth || 900) - 34), H = 58, x = (v) => 12 + ((v + 1) / 2) * (W - 24);
+  const root = svg('svg', { viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': `Score ${score}` });
+  const zones = [[-1, -0.25, 'rgba(230,103,103,.55)'], [-0.25, 0.25, 'rgba(137,135,129,.35)'], [0.25, 1, 'rgba(12,163,12,.55)']];
+  for (const [a, b, c] of zones) root.append(svg('rect', { x: x(a), y: 18, width: x(b) - x(a), height: 12, fill: c, rx: 3 }));
+  for (const [v, t] of [[-1, '−1'], [-0.25, '−0,25'], [0, '0'], [0.25, '+0,25'], [1, '+1']]) {
+    const tx = svg('text', { x: x(v), y: 46, 'text-anchor': 'middle' }); tx.textContent = t; root.append(tx);
+  }
+  for (const [v, t, a] of [[-0.62, 'zone de VENTE', 'middle'], [0, 'rien', 'middle'], [0.62, 'zone d’ACHAT', 'middle']]) {
+    const tx = svg('text', { x: x(v), y: 12, 'text-anchor': a, style: 'font-weight:600' }); tx.textContent = t; root.append(tx);
+  }
+  if (score != null) {
+    const s = Math.max(-1, Math.min(1, score));
+    root.append(svg('path', { d: `M${x(s) - 8},${14} L${x(s) + 8},${14} L${x(s)},${26} Z`, fill: 'var(--ink)' }));
+    root.append(svg('rect', { x: x(s) - 2, y: 16, width: 4, height: 16, fill: 'var(--ink)', rx: 2 }));
+  }
+  return el('div', { class: 'gauge' }, root);
+}
+function courbeCapital(journal) {
+  const host = el('div', { class: 'chart' });
+  if (journal.length < 2) return el('div', { class: 'empty' }, 'La courbe apparaîtra après quelques cycles du bot (un toutes les 4 heures).');
+  const W = Math.max(320, ($('btc-dash').clientWidth || 900) - 40), H = W > 520 ? 260 : 210, m = { l: 70, r: 84, t: 12, b: 26 };
+  const t = journal.map((j) => new Date(j.heure.replace(' ', 'T') + 'Z').getTime());
+  const v = journal.map((j) => j.capital);
+  const ticks = niceTicks(Math.min(...v), Math.max(...v), 4);
+  const y0 = ticks[0], y1 = ticks[ticks.length - 1];
+  const x = (i) => m.l + ((t[i] - t[0]) / Math.max(1, t[t.length - 1] - t[0])) * (W - m.l - m.r);
+  const y = (val) => m.t + (1 - (val - y0) / (y1 - y0 || 1)) * (H - m.t - m.b);
+  const root = svg('svg', { viewBox: `0 0 ${W} ${H}`, height: H, role: 'img', 'aria-label': 'Capital du bot' });
+  for (const tick of ticks) {
+    root.append(svg('line', { x1: m.l, x2: W - m.r, y1: y(tick), y2: y(tick), stroke: 'var(--grid)' }));
+    const lb = svg('text', { x: m.l - 8, y: y(tick) + 4, 'text-anchor': 'end' }); lb.textContent = usd(tick); root.append(lb);
+  }
+  const ligne = v.map((val, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(val).toFixed(1)}`).join(' ');
+  root.append(svg('path', { d: `${ligne} L${x(v.length - 1)},${H - m.b} L${x(0)},${H - m.b} Z`, fill: 'var(--accent-wash)' }));
+  root.append(svg('path', { d: ligne, fill: 'none', stroke: 'var(--accent)', 'stroke-width': 2.2, 'stroke-linejoin': 'round' }));
+  const n = v.length - 1;
+  root.append(svg('circle', { cx: x(n), cy: y(v[n]), r: 4.5, fill: 'var(--accent)', stroke: 'var(--surface)', 'stroke-width': 2 }));
+  const fin = svg('text', { x: x(n) + 9, y: y(v[n]) + 4, style: 'fill:var(--ink);font-weight:600' }); fin.textContent = usd(v[n]); root.append(fin);
+  for (const [i, a] of [[0, 'start'], [n, 'end']]) { const lb = svg('text', { x: x(i), y: H - 6, 'text-anchor': a }); lb.textContent = heureUtc(journal[i].heure).slice(0, 5); root.append(lb); }
+  const tip = el('div', { class: 'tip', hidden: true });
+  const dot = svg('circle', { r: 4.5, fill: 'var(--accent)', stroke: 'var(--surface)', 'stroke-width': 2, visibility: 'hidden' });
+  root.append(dot);
+  root.addEventListener('pointerleave', () => { tip.hidden = true; dot.setAttribute('visibility', 'hidden'); });
+  root.addEventListener('pointermove', (event) => {
+    const box = root.getBoundingClientRect(), px = ((event.clientX - box.left) / box.width) * W;
+    let best = 0; for (let i = 0; i <= n; i++) if (Math.abs(x(i) - px) < Math.abs(x(best) - px)) best = i;
+    const j = journal[best];
+    dot.setAttribute('cx', x(best)); dot.setAttribute('cy', y(j.capital)); dot.setAttribute('visibility', 'visible');
+    tip.replaceChildren(el('b', {}, usd(j.capital, 2)), el('span', {}, heureUtc(j.heure)), el('span', {}, `BTC ${usd(j.prix)} · score ${j.score >= 0 ? '+' : '−'}${num(j.score, 2)} · cible ${pctSigned(j.cible * 100, 0)}`));
+    tip.hidden = false;
+    tip.style.left = `${Math.min(Math.max(0, (x(best) / W) * box.width + 12), box.width - tip.offsetWidth)}px`;
+    tip.style.top = `${Math.max(0, (y(j.capital) / H) * box.height - tip.offsetHeight - 10)}px`;
+  });
+  host.append(root, tip);
+  return host;
+}
+function renderBtcDash() {
+  const host = $('btc-dash');
+  if (!btc) return host.replaceChildren(el('div', { class: 'empty' }, 'Chargement…'));
+  if (document.querySelector('dialog[open]')) return;
+  const b = btc, p = b.processus, r = b.reglages, d = b.decision, c = b.compte;
+  const blocs = [];
+  if (r.mode === 'reel') blocs.push(el('div', { class: 'reel-strip' }, '⚠  ARGENT RÉEL · BINANCE  ⚠'));
+  if (!b.dependances.pandas || !b.dependances.numpy) blocs.push(banner('bad', '🧩 Programmes manquants.', 'Dans une fenêtre de commande, tape : pip install pandas numpy ccxt'));
+  if (r.mode !== 'papier' && !b.cles.renseignees) blocs.push(banner('bad', '🔑 Pas de clé Binance.', `Le mode ${MODES[r.mode][1]} en a besoin : onglet Connexion Binance.`, el('button', { class: 'btn small', onclick: () => showTab('btc-connexion') }, 'Ajouter la clé')));
+  if (b.arrete) blocs.push(banner('bad', '🛑 Coupe-circuit déclenché :', `${b.arrete}. Le bot a tout fermé et ne passe plus d’ordre.`, el('button', { class: 'btn small', onclick: () => btcAction('/api/btc/rearmer', {}, 'Bot réarmé : il repart au prochain cycle.') }, 'Réarmer')));
+  if (b.erreur && b.erreur.message) blocs.push(banner('', '⚠️ Dernière erreur', `(${heureUtc(b.erreur.heure)}) : ${b.erreur.message}`));
+  if (b.drapeaux.fermer) blocs.push(banner('bad', '✖ Fermeture demandée :', 'le bot ferme tout au prochain cycle, puis se met en pause.'));
+  else if (b.drapeaux.pause) blocs.push(banner('', '⏸ En pause :', 'le bot analyse et t’alerte, mais ne passe aucun ordre.', el('button', { class: 'btn small', onclick: () => btcAction('/api/btc/pause', { pause: false }, 'Reprise : les ordres reprennent au prochain cycle.') }, '▶ Reprendre')));
+
+  // barre de commande
+  const boutons = p.en_marche ? [
+    el('button', { class: 'btn', onclick: () => btcAction('/api/btc/analyser', {}, 'Analyse demandée : résultat dans moins de 30 secondes.') }, el('span', { class: 'ic' }, '⟳'), 'Analyser maintenant'),
+    b.drapeaux.pause
+      ? el('button', { class: 'btn', onclick: () => btcAction('/api/btc/pause', { pause: false }, 'Reprise.') }, el('span', { class: 'ic' }, '▶'), 'Reprendre')
+      : el('button', { class: 'btn', onclick: () => btcAction('/api/btc/pause', { pause: true }, 'Pause : plus aucun ordre.') }, el('span', { class: 'ic' }, '⏸'), 'Pause'),
+    el('button', { class: 'btn', onclick: () => btcAction('/api/btc/arreter', {}, 'Bot arrêté. Les positions restent ouvertes chez Binance.') }, el('span', { class: 'ic' }, '■'), 'Arrêter'),
+  ] : [el('button', { class: 'btn ok', onclick: () => btcAction('/api/btc/demarrer', {}, 'Bot démarré : première analyse dans quelques secondes.') }, el('span', { class: 'ic' }, '▶'), 'Démarrer le bot')];
+  boutons.push(el('button', { class: 'btn danger', onclick: async () => {
+    if (await motDialog('Tout fermer', 'Le bot va fermer toutes les positions BTC (comptant et perpétuel) au prochain cycle, puis se mettre en pause.', 'FERMER')) btcAction('/api/btc/fermer', { confirmation: 'FERMER' }, 'Fermeture demandée.');
+  } }, el('span', { class: 'ic' }, '✖'), 'Tout fermer'));
+  blocs.push(el('div', { class: 'card controls' },
+    el('div', { class: 'etat' }, el('span', { class: `pulse${p.en_marche ? ' on' : ''}` }), el('b', {}, p.en_marche ? 'Bot en marche' : 'Bot arrêté'),
+      modeBadge(r.mode), el('span', { class: `badge ${r.levier === 1 ? 'vert' : r.levier <= 3 ? 'jaune' : 'rouge'}` }, `⚡ levier ×${r.levier}`),
+      el('span', { class: 'badge' }, r.ordres === 'limite' ? '🎯 ordres limites' : '⚡ ordres au marché'),
+      p.en_marche && p.prochain_cycle ? el('span', { class: 'badge' }, `⏱ prochaine analyse ${dans(p.prochain_cycle)}`) : null),
+    el('div', { class: 'btns' }, ...boutons)));
+
+  // la décision
+  if (d) {
+    const sens = d.sens === 'ACHAT' ? 'achat' : d.sens === 'VENTE' ? 'vente' : '';
+    const cible = d.cible_appliquee != null ? d.cible_appliquee : d.cible;
+    blocs.push(el('div', { class: `decision ${sens}` },
+      el('div', { class: 'sym' }, sens === 'achat' ? '▲' : sens === 'vente' ? '▼' : '●'),
+      el('div', {}, el('h3', {}, sens === 'achat' ? 'ACHAT' : sens === 'vente' ? 'VENTE' : 'HORS MARCHÉ'),
+        el('p', {}, `Score ${d.score >= 0 ? '+' : '−'}${num(d.score, 2)} · tendance 4h ${d.tendance_4h} · bougie 4h de ${heureUtc(d.bougie_4h)}`),
+        el('p', {}, sens ? (r.levier > 1 ? `En perpétuel, levier ×${r.levier}, avec un stop de protection.` : sens === 'achat' ? 'BTC acheté au comptant : rien à payer pour le garder, aucune liquidation possible.' : 'Vente en perpétuel, couverte à 100 % : liquidation seulement si le BTC double.')
+          : 'Le capital reste en USDT : le score et la tendance 4h ne sont pas d’accord pour agir.')),
+      el('div', { class: 'taille' }, el('b', {}, pct(Math.abs(cible) * 100, 0)), el('span', {}, 'du capital'))));
+  } else {
+    blocs.push(el('div', { class: 'decision' }, el('div', { class: 'sym' }, '₿'), el('div', {}, el('h3', {}, 'En attente'), el('p', {}, 'Pas encore de décision : démarre le bot. Commence en mode Papier, sans argent réel.'))));
+  }
+
+  // tuiles
+  const j = b.journal;
+  const depart = j.length ? j[0].capital : null;
+  const tiles = [];
+  if (c) {
+    const res = depart ? c.capital / depart - 1 : null;
+    tiles.push(tile(el('span', {}, el('span', { class: 'i' }, '💰'), ' Capital'), usd(c.capital, 2), res != null ? delta(res, `${pctSigned(res * 100)} depuis le départ`) : '', 'hero'));
+    const expo = c.exposition;
+    tiles.push(tile(el('span', {}, el('span', { class: 'i' }, '📊'), ' Exposition'), delta(expo, pctSigned(expo * 100, 0)),
+      el('div', { class: 'bar' }, el('i', { style: `left:50%;width:${Math.min(50, Math.abs(expo) * 50 / Math.max(1, r.levier))}%;${expo < 0 ? 'transform:translateX(-100%);' : ''}background:${expo >= 0 ? 'var(--good)' : 'var(--critical-fill)'}` }))));
+    const dd = b.pic ? c.capital / b.pic - 1 : 0;
+    tiles.push(tile(el('span', {}, el('span', { class: 'i' }, '📉'), ' Depuis le plus haut'), dd < -0.0005 ? delta(dd, pctSigned(dd * 100, 1)) : '0 %', `coupe-circuit à −${pct(r.perte_max * 100, 0)}`, dd <= -r.perte_max * 0.75 ? 'alert' : ''));
+  }
+  if (d) tiles.push(tile(el('span', {}, el('span', { class: 'i' }, '₿'), ' Prix du BTC'), usd(d.prix), `clôture 4h de ${heureUtc(d.bougie_4h).slice(6)}`));
+  tiles.push(tile(el('span', {}, el('span', { class: 'i' }, '🛡'), ' Stop de protection'), b.stop ? usd(b.stop) : 'aucun', r.levier > 1 ? 'posé chez Binance, à mi-chemin de la liquidation' : 'inutile à ×1 (aucune liquidation possible)'));
+  if (tiles.length) blocs.push(el('div', { class: 'tiles main' }, ...tiles));
+
+  // les votes
+  if (d) {
+    const cartes = Object.entries(VOTES).map(([k, [nom, aide]]) => {
+      const v = d.votes ? d.votes[k] : null;
+      const cls = v == null ? 'absent' : v > 0 ? 'haut' : v < 0 ? 'bas' : 'neutre';
+      return el('div', { class: `vote ${cls}` }, el('span', { class: 'v' }, v == null ? '?' : v > 0 ? '▲' : v < 0 ? '▼' : '●'), el('div', {}, el('b', {}, nom), el('span', {}, v == null ? 'donnée absente' : aide)));
+    });
+    const t4 = d.tendance_4h;
+    cartes.push(el('div', { class: `vote ${t4 === 'haussière' ? 'haut' : t4 === 'baissière' ? 'bas' : 'neutre'}`, style: 'outline:1px dashed var(--border)' },
+      el('span', { class: 'v' }, t4 === 'haussière' ? '▲' : t4 === 'baissière' ? '▼' : '●'), el('div', {}, el('b', {}, 'Tendance 4h'), el('span', {}, 'EMA50 / EMA200 : le feu vert'))));
+    const nh = Object.values(d.votes || {}).filter((v) => v > 0).length, nb = Object.values(d.votes || {}).filter((v) => v < 0).length;
+    blocs.push(el('div', { class: 'card' },
+      el('div', { class: 'head-row' }, el('div', {}, el('h2', {}, 'Les 9 votes et le score'), el('div', { class: 'hint' }, `${nh} haussier${nh > 1 ? 's' : ''} ▲ · ${nb} baissier${nb > 1 ? 's' : ''} ▼ · score = moyenne. Achat si score ≥ +0,25 ET tendance 4h haussière ; vente si ≤ −0,25 ET 4h baissière.`)),
+        el('span', { class: `badge ${d.score >= 0.25 ? 'vert' : d.score <= -0.25 ? 'rouge' : ''}`, style: 'font-size:15px' }, `score ${d.score >= 0 ? '+' : '−'}${num(d.score, 2)}`)),
+      jauge(d.score), el('div', { class: 'votes' }, ...cartes)));
+  }
+
+  // courbe et journal
+  blocs.push(el('div', { class: 'card' }, el('h2', {}, '📈 Capital du bot'), el('div', { class: 'hint' }, 'Une valeur par cycle (toutes les 4 heures). En mode Papier, c’est le compte fictif.'), courbeCapital(j)));
+  const lignes = j.slice().reverse().slice(0, 40).map((x) => el('tr', {},
+    el('td', {}, heureUtc(x.heure).slice(0, 11)),
+    el('td', { class: 'num' }, usd(x.prix)),
+    el('td', { class: 'num' }, el('span', { class: `badge ${x.score >= 0.25 ? 'vert' : x.score <= -0.25 ? 'rouge' : ''}` }, `${x.score >= 0 ? '+' : '−'}${num(x.score, 2)}`)),
+    el('td', { class: 'opt' }, x.tendance === 'haussière' ? '▲ haussière' : x.tendance === 'baissière' ? '▼ baissière' : '● neutre'),
+    el('td', { class: 'num' }, delta(x.cible, pctSigned(x.cible * 100, 0))),
+    el('td', { class: 'num' }, usd(x.capital, 2)),
+    el('td', { class: 'opt' }, x.ordres ? x.ordres.split(';').map((o) => o.split(':')[0].replace('_', ' ')).join(', ') : (x.motif || '—'))));
+  const det = el('details', { class: 'card' }, el('summary', {}, el('h2', {}, `🧾 Journal des cycles `, el('small', {}, String(j.length)))),
+    j.length ? el('div', { class: 'scroll' }, el('table', {}, el('thead', {}, el('tr', {}, el('th', {}, 'Bougie'), el('th', { class: 'num' }, 'Prix'), el('th', { class: 'num' }, 'Score'), el('th', { class: 'opt' }, 'Tendance 4h'), el('th', { class: 'num' }, 'Cible'), el('th', { class: 'num' }, 'Capital'), el('th', { class: 'opt' }, 'Ordres'))), el('tbody', {}, ...lignes))) : el('div', { class: 'empty' }, 'Aucun cycle pour l’instant.'));
+  det.open = foldOpen('btc-journal', false); det.addEventListener('toggle', () => rememberFold('btc-journal', det.open));
+  const log = el('details', { class: 'card' }, el('summary', {}, el('h2', {}, '🔧 Ce que fait le bot (journal technique)')), b.log.length ? el('div', { class: 'log' }, b.log.join('\n')) : el('div', { class: 'empty' }, 'Vide.'));
+  log.open = foldOpen('btc-log', false); log.addEventListener('toggle', () => rememberFold('btc-log', log.open));
+  blocs.push(det, log);
+  host.replaceChildren(...blocs);
+}
+
+// ---------------------------------------------------------------- réglages et levier
+function profilLevier(L) { return ((btc && btc.profils && btc.profils.leviers) || []).find((x) => x.levier === L); }
+function graphiqueBaisses(L) {
+  const lv = (btc && btc.profils && btc.profils.leviers) || [];
+  if (!lv.length) return el('div', {});
+  const W = Math.max(300, ($('btc-reglages').clientWidth || 900) - 34), H = 170, m = { l: 44, r: 8, t: 14, b: 24 }, bw = (W - m.l - m.r) / lv.length;
+  const root = svg('svg', { viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': 'Pire baisse selon le levier' });
+  for (const t of [0, 25, 50, 75, 100]) {
+    const y = m.t + (t / 100) * (H - m.t - m.b);
+    root.append(svg('line', { x1: m.l, x2: W - m.r, y1: y, y2: y, stroke: 'var(--grid)' }));
+    const tx = svg('text', { x: m.l - 6, y: y + 4, 'text-anchor': 'end' }); tx.textContent = t ? `−${t}%` : '0'; root.append(tx);
+  }
+  lv.forEach((x, i) => {
+    const mdd = Math.abs((x['2018-2026'] || {}).mdd || 1) * 100;
+    const h = (mdd / 100) * (H - m.t - m.b);
+    root.append(svg('rect', { x: m.l + i * bw + 4, y: m.t, width: bw - 8, height: h, rx: 4, fill: COULEUR_LEVIER[i], opacity: x.levier === L ? 1 : 0.45, stroke: x.levier === L ? 'var(--ink)' : 'none', 'stroke-width': 2 }));
+    const tx = svg('text', { x: m.l + i * bw + bw / 2, y: H - 6, 'text-anchor': 'middle', style: x.levier === L ? 'fill:var(--ink);font-weight:700' : '' }); tx.textContent = `×${x.levier}`; root.append(tx);
+  });
+  return el('div', { class: 'gauge' }, root);
+}
+function renderBtcReglages() {
+  const host = $('btc-reglages');
+  if (!btc) return host.replaceChildren(el('div', { class: 'empty' }, 'Chargement…'));
+  if (!btcDraft) btcDraft = { ...btc.reglages };
+  const R = btcDraft, avant = btc.reglages;
+  const set = (k, v) => { R[k] = v; renderBtcReglages(); };
+  const choix = (k, options) => el('div', { class: 'choix' }, ...options.map(([v, ico, titre, texte]) =>
+    el('button', { 'aria-pressed': String(R[k] === v), onclick: () => set(k, v) }, el('b', {}, el('span', {}, ico), titre), el('span', {}, texte))));
+
+  // levier
+  const P = profilLevier(R.levier) || {};
+  const a = P['2018-2026'] || {}, t = P['2012-2026'] || {};
+  const verdict = R.levier === 1 ? ['vert', '✅ Recommandé. Le meilleur rapport gain / risque du test, sans aucune liquidation possible.']
+    : R.levier === 2 ? ['jaune', '⚠️ Possible. Rapporte presque deux fois plus, mais la pire baisse double. Seulement après plusieurs semaines en papier.']
+    : R.levier === 3 ? ['jaune', '⚠️ Agressif. Une baisse de 59 % depuis 2018 dans le test : il faut pouvoir la supporter sans tout arrêter au pire moment.']
+    : R.levier <= 5 ? ['rouge', '🛑 Dangereux. Pire baisse de 72 à 96 % dans le test : un mauvais enchaînement suffit à vider le compte.']
+    : ['rouge', '☠️ Ne le fais pas. Au-delà de ×5, le test perd presque tout : les frais, le financement et les stops dévorent le capital. À ×9-×10, le gain est même négatif.'];
+  const leviers = el('div', { class: 'leviers' }, ...Array.from({ length: 10 }, (_, i) => el('button', {
+    style: `background:${COULEUR_LEVIER[i]}`, 'aria-pressed': String(R.levier === i + 1), onclick: () => set('levier', i + 1), title: `levier ×${i + 1}` }, `×${i + 1}`)));
+  const fmtR = (x) => (x && x.ruine ? 'ruiné' : x && x.cagr != null ? pctSigned(x.cagr * 100, 0) : '—');
+  const fmtD = (x) => (x && x.mdd != null ? pctSigned(x.mdd * 100, 0) : '—');
+  const chiffres = el('div', { class: 'tiles sim' },
+    tile('Gain par an, 2018-2026', fmtR(a), 'frais et financement compris'),
+    tile('Pire baisse, 2018-2026', el('span', { class: 'down' }, fmtD(a)), `2012-2026 : ${fmtD(t)}`, Math.abs(a.mdd || 0) > 0.5 ? 'alert' : ''),
+    tile('Qualité (Sharpe)', a.sharpe != null ? num(a.sharpe, 2) : '—', `exposition moyenne ${P.expo_moyenne != null ? pct(P.expo_moyenne * 100, 0) : '—'}, max ×${P.expo_max != null ? num(P.expo_max, 1) : '—'}`));
+
+  // coupe-circuit conseillé selon le levier
+  const conseil = R.levier === 1 ? 0.4 : Math.min(0.7, Math.max(0.4, Math.round(Math.abs(a.mdd || 0.3) * 1.3 * 20) / 20));
+  const sections = [
+    el('div', { class: 'reglage' }, el('h3', {}, '🧪 Mode'), el('div', { class: 'hint' }, 'Commence en Papier quelques semaines, puis Testnet pour vérifier les vrais ordres, puis Réel avec un petit capital.'),
+      choix('mode', Object.entries(MODES).map(([k, [ico, nom, , texte]]) => [k, ico, nom, texte]))),
+    el('div', { class: 'reglage' }, el('h3', {}, '⚡ Levier ', el('span', { class: 'badge', style: `background:${COULEUR_LEVIER[R.levier - 1]};color:#111;border-color:transparent` }, `×${R.levier}`)),
+      el('div', { class: 'hint' }, 'Le levier multiplie la position du profil. ×1 : achat au comptant. ×2 et plus : tout passe en perpétuel, avec un stop de protection posé chez Binance à mi-chemin de la liquidation.'),
+      leviers, chiffres, el('div', { class: `verdict ${verdict[0]}` }, verdict[1]),
+      el('h3', { style: 'margin:16px 0 0;font-size:13px;color:var(--ink-2)' }, 'Pire baisse du test (2018-2026) selon le levier'), graphiqueBaisses(R.levier)),
+    el('div', { class: 'reglage' }, el('h3', {}, '🎚 Profil'),
+      choix('profil', [['prudent', '🟢', 'Prudent', 'Volatilité visée 40 %. Sharpe 1,89, pire baisse −25 % (2012-2026). Recommandé.'], ['equilibre', '🟡', 'Équilibré', 'Volatilité visée 60 %. Un peu plus de gain (+40 %/an), pire baisse −32 %.']])),
+    el('div', { class: 'reglage' }, el('h3', {}, '▼ Vente quand la tendance est baissière'),
+      choix('vente', [[0, '⛔', 'Désactivée', 'Hors marché pendant les baisses. Neutre sur l’historique long.'], [0.25, '¼', 'Quart de taille', 'Recommandé : rapporte un peu pendant les baisses sans ajouter de risque.'], [0.5, '½', 'Demi-taille', 'Un peu plus de gain, un peu plus de secousses.']])),
+    el('div', { class: 'reglage' }, el('h3', {}, '🎯 Ordres'),
+      choix('ordres', [['limite', '🎯', 'Limites', 'Recommandé. Placés au meilleur prix pendant 2 minutes (frais réduits en perpétuel : 0,02 % au lieu de 0,05 %), puis le reste au marché.'], ['marche', '⚡', 'Au marché', 'Exécution immédiate, un peu plus chère.']])),
+    el('div', { class: 'reglage' }, el('h3', {}, '🛑 Coupe-circuit'),
+      el('div', { class: 'hint' }, `Si le capital tombe de plus de ce pourcentage sous son plus haut, le bot ferme tout et s’arrête. Conseillé à ×${R.levier} : −${pct(conseil * 100, 0)}.`),
+      el('div', { class: 'risk-row' }, el('div', { class: 'big' }, el('input', { type: 'number', min: 10, max: 90, step: 5, value: Math.round(R.perte_max * 100), oninput: (e) => { R.perte_max = Number(e.target.value) / 100; } }), el('span', {}, '% de baisse')),
+        el('button', { class: 'btn small', onclick: () => set('perte_max', conseil) }, `Mettre la valeur conseillée (${pct(conseil * 100, 0)})`))),
+  ];
+  if (R.mode === 'papier') sections.push(el('div', { class: 'reglage' }, el('h3', {}, '💵 Capital du compte papier'),
+    el('div', { class: 'risk-row' }, el('div', { class: 'big' }, el('input', { type: 'number', min: 100, step: 100, style: 'width:170px', value: R.capital_papier, oninput: (e) => { R.capital_papier = Number(e.target.value); } }), el('span', {}, '$')))));
+  const change = Object.keys(R).filter((k) => R[k] !== avant[k]);
+  const msg = el('div', { class: 'msg' }, change.length ? `${change.length} changement${change.length > 1 ? 's' : ''} à enregistrer.` : 'Réglages enregistrés.');
+  const enregistrer = async () => {
+    const valeurs = {}; for (const k of Object.keys(R)) if (R[k] !== avant[k]) valeurs[k] = R[k];
+    if (!Object.keys(valeurs).length) return;
+    let confirmation = '';
+    if (valeurs.mode === 'reel') {
+      if (!(await motDialog('Passer en argent réel', 'Le bot passera de vrais ordres avec ton argent chez Binance, au prochain démarrage. Fais-le après plusieurs semaines en Papier et en Testnet, avec un petit capital.', 'REEL'))) return;
+      confirmation = 'REEL';
+    }
+    if (valeurs.levier > 3 && valeurs.levier > avant.levier) {
+      if (!(await motDialog(`Levier ×${valeurs.levier}`, `Dans le test, ×${valeurs.levier} a une pire baisse de ${fmtD(a)} depuis 2018 (${fmtD(t)} depuis 2012). Ce n’est pas recommandé.`, 'LEVIER'))) return;
+      confirmation = confirmation ? confirmation : 'LEVIER';
+      if (valeurs.mode === 'reel') { await btcAction('/api/btc/reglages', { valeurs: { mode: 'reel' }, confirmation: 'REEL' }); delete valeurs.mode; confirmation = 'LEVIER'; }
+    }
+    try {
+      await api('/api/btc/reglages', { valeurs, confirmation });
+      await loadBtc(); btcDraft = null; renderBtcReglages();
+      toast(btc.processus.en_marche ? 'Enregistré. Redémarre le bot pour l’appliquer.' : 'Enregistré.');
+    } catch (error) { msg.textContent = error.message; msg.className = 'msg err'; }
+  };
+  host.replaceChildren(
+    btc.processus.en_marche ? banner('', 'ℹ️ Le bot tourne.', 'Les changements s’appliquent quand tu le redémarres.', el('button', { class: 'btn small', onclick: async () => { await btcAction('/api/btc/arreter', {}); await btcAction('/api/btc/demarrer', {}, 'Bot redémarré avec les nouveaux réglages.'); } }, '⟳ Redémarrer le bot')) : el('span', {}),
+    el('div', { class: 'card' }, el('h2', {}, 'Réglages du bot BTC'), el('div', { class: 'hint' }, 'Tous les chiffres viennent du test 2012-2026 (prix Bitstamp, frais, financement et stops compris). Le passé ne garantit rien.'), ...sections,
+      el('div', { class: 'savebar' }, el('button', { class: 'btn primary', disabled: !change.length, onclick: enregistrer }, 'Enregistrer'),
+        el('button', { class: 'btn', disabled: !change.length, onclick: () => { btcDraft = null; renderBtcReglages(); } }, 'Annuler'), msg)));
+}
+
+// ---------------------------------------------------------------- connexion Binance
+function renderBtcConnexion() {
+  const host = $('btc-connexion');
+  if (!btc) return host.replaceChildren(el('div', { class: 'empty' }, 'Chargement…'));
+  if (host.contains(document.activeElement) && document.activeElement.tagName === 'INPUT') return;
+  const k = btc.cles, dep = btc.dependances;
+  const cle = el('input', { type: 'password', placeholder: 'Clé API (API Key)', autocomplete: 'off', spellcheck: false });
+  const secret = el('input', { type: 'password', placeholder: 'Clé secrète (Secret Key)', autocomplete: 'off', spellcheck: false });
+  const resultat = btcTest ? (btcTest.ok
+    ? el('div', { class: 'tiles sim', style: 'margin-top:12px' }, tile('USDT au comptant', usd(btcTest.usdt_spot, 2), btcTest.testnet ? 'testnet' : 'compte réel'), tile('BTC au comptant', `${num(btcTest.btc_spot, 6)} ₿`), tile('USDT sur les futures', usd(btcTest.usdt_futures, 2)))
+    : el('div', { class: 'verdict rouge' }, `❌ ${btcTest.error}`)) : null;
+  host.replaceChildren(
+    el('div', { class: 'card' },
+      el('h2', {}, '🔑 Clé API Binance'),
+      el('div', { class: `status${k.renseignees ? ' on' : ''}` }, el('span', { class: 'dot' }), k.renseignees ? `Clé enregistrée (…${k.fin})` : 'Aucune clé enregistrée'),
+      el('div', { class: 'hint' }, 'Nécessaire pour les modes Testnet et Réel. Une fois enregistrée, la clé n’est plus jamais affichée ni renvoyée à cette page.'),
+      el('div', { class: 'secret-row' }, cle), el('div', { class: 'secret-row' }, secret),
+      el('div', { class: 'savebar' },
+        el('button', { class: 'btn primary', onclick: async () => {
+          try { await api('/api/btc/cles', { cle: cle.value, secret: secret.value }); toast('Clé enregistrée.'); btcTest = null; await loadBtc(); renderBtcConnexion(); } catch (error) { toast(error.message); }
+        } }, '💾 Enregistrer'),
+        el('button', { class: 'btn', disabled: !k.renseignees, onclick: async () => {
+          btcTest = { ok: false, error: 'Test en cours…' }; renderBtcConnexion();
+          try { btcTest = { ok: true, ...(await api('/api/btc/tester', {})) }; } catch (error) { btcTest = { ok: false, error: error.message }; }
+          renderBtcConnexion();
+        } }, '🔌 Tester la connexion'),
+        el('button', { class: 'btn danger', disabled: !k.renseignees, onclick: async () => { await btcAction('/api/btc/cles/effacer', {}, 'Clé effacée : retour en mode Papier.'); btcTest = null; renderBtcConnexion(); } }, '🗑 Effacer')),
+      resultat),
+    el('div', { class: 'card' }, el('h2', {}, '🛡 Créer la clé sans risque'), el('div', { class: 'hint' }, 'Binance > Profil > Gestion des API > Créer une API (type « générée par le système »).'),
+      ...[['Lecture', 'activée'], ['Trading spot et marge', 'activé'], ['Futures', 'activé (et les futures USDⓈ-M ouverts sur ton compte)'], ['Retraits', 'DÉSACTIVÉS : même volée, la clé ne peut pas sortir ton argent'], ['Accès', 'limité à l’adresse IP de la machine du bot']]
+        .map(([a, b]) => el('div', { class: 'check' }, el('span', { class: 'c' }, '✓'), el('div', {}, el('b', {}, a), ` : ${b}`)))),
+    el('div', { class: 'card' }, el('h2', {}, '✈️ Alertes Telegram'),
+      el('div', { class: `status${k.telegram ? ' on' : ''}` }, el('span', { class: 'dot' }), k.telegram ? 'Le bot utilise le Telegram d’Étrave' : 'Telegram pas encore réglé'),
+      el('p', {}, 'Le bot BTC envoie ses alertes au même Telegram que l’EA : un message à chaque ordre, changement de sens, stop touché, erreur ou coupe-circuit.'),
+      el('button', { class: 'btn', onclick: () => showTab('connections') }, 'Régler Telegram (Nasdaq › Connexions)')),
+    el('div', { class: 'card' }, el('h2', {}, '🧩 Programmes nécessaires'),
+      el('div', { class: 'chips', style: 'margin-bottom:10px' }, ...Object.entries(dep).map(([m, ok]) => el('span', { class: `badge ${ok ? 'vert' : 'rouge'}` }, `${ok ? '✓' : '✗'} ${m}`))),
+      Object.values(dep).every(Boolean) ? el('p', {}, 'Tout est installé.') : el('p', {}, 'Dans une fenêtre de commande : ', el('code', {}, 'pip install pandas numpy ccxt'))),
+    el('div', { class: 'card' }, el('h2', {}, '📁 Où sont rangées les choses'),
+      el('p', {}, 'Les réglages vont dans crypto/bot/config.json. La clé et le secret Binance vont dans un fichier à part du dossier d’Étrave (btc-secrets.json, lisible par toi seul), jamais dans le dépôt. Le bot est un programme distinct de l’EA MetaTrader : il tourne même si MetaTrader est fermé, et l’arrêter ne touche pas à l’EA.')));
+}
+
+// ---------------------------------------------------------------- chargement Bitcoin
+async function loadBtc() {
+  try { btc = await api('/api/btc/etat'); } catch (error) { btc = null; }
+  const dot = $('dot-btc');
+  if (dot) dot.className = `dot${btc && btc.processus.en_marche ? ' on' : ''}`;
+  if (!$('tab-btc').hidden) renderBtcDash();
+  if (!$('tab-btc-connexion').hidden) renderBtcConnexion();
+}
+
 // ---------------------------------------------------------------- chargement
 async function loadState() {
   try { state = await api('/api/etat'); } catch (error) { state = null; }
   renderHeader();
+  const dn = $('dot-nasdaq');
+  if (dn) dn.className = `dot${state && state.eas.some((e) => e.en_marche) ? ' on' : ''}`;
   if (!state) return;
   if (!$('tab-overview').hidden) renderOverview();
   if (!$('tab-risk').hidden) renderRisk('poll');
@@ -814,14 +1263,31 @@ async function loadTrades() {
   try { trades = (await api('/api/trades')).trades; } catch (error) { return; }
   if (!$('tab-overview').hidden && state) renderOverview();
 }
+const ESPACES = { nasdaq: ['overview', 'risk', 'connections'], bitcoin: ['btc', 'btc-reglages', 'btc-connexion'] };
+const dernierOnglet = { nasdaq: 'overview', bitcoin: 'btc' };
 function showTab(name) {
+  const espace = ESPACES.bitcoin.includes(name) ? 'bitcoin' : 'nasdaq';
+  dernierOnglet[espace] = name;
+  document.body.dataset.space = espace;
+  for (const b of document.querySelectorAll('.spaces button')) b.setAttribute('aria-selected', String(b.dataset.space === espace));
+  for (const n of document.querySelectorAll('nav[data-space]')) n.hidden = n.dataset.space !== espace;
   for (const button of document.querySelectorAll('nav button')) button.setAttribute('aria-selected', String(button.dataset.tab === name));
-  for (const id of ['overview', 'risk', 'connections']) $(`tab-${id}`).hidden = id !== name;
+  for (const id of [...ESPACES.nasdaq, ...ESPACES.bitcoin]) $(`tab-${id}`).hidden = id !== name;
+  $('tagline').textContent = espace === 'bitcoin' ? 'le bitcoin en confluence · journalier + 4h' : '__SLOGAN__';
+  try { localStorage.setItem('onglet', name); } catch (error) { /* sans gravité */ }
+  if (espace === 'bitcoin') {
+    if (name === 'btc') renderBtcDash();
+    if (name === 'btc-reglages') { btcDraft = null; renderBtcReglages(); }
+    if (name === 'btc-connexion') renderBtcConnexion();
+    loadBtc();
+    return;
+  }
   if (!state) return;
   if (name === 'overview') renderOverview();
   if (name === 'risk') { renderRisk(); loadSim(); }
   if (name === 'connections') { renderConnections.drawn = false; renderConnections(); }
 }
+document.querySelectorAll('.spaces button').forEach((b) => b.addEventListener('click', () => showTab(dernierOnglet[b.dataset.space])));
 
 document.querySelectorAll('nav button').forEach((button) => button.addEventListener('click', () => showTab(button.dataset.tab)));
 $('risk-input').addEventListener('input', () => { draft.risque = Number(String($('risk-input').value).replace(',', '.')); renderRisk('number'); loadSim(); });
@@ -852,12 +1318,16 @@ $('btn-theme').addEventListener('click', () => {
   try { localStorage.setItem('theme', next); } catch (error) { /* stockage indisponible : sans gravité */ }
 });
 try { const saved = localStorage.getItem('theme'); if (saved) document.documentElement.dataset.theme = saved; } catch (error) { /* idem */ }
-window.addEventListener('resize', () => { if (!$('tab-overview').hidden && state) renderCurve(); });
+window.addEventListener('resize', () => { if (!$('tab-overview').hidden && state) renderCurve(); if (!$('tab-btc').hidden) renderBtcDash(); });
 
 (async () => {
-  await Promise.all([loadState(), loadTrades()]);
+  await Promise.all([loadState(), loadTrades(), loadBtc()]);
   setInterval(loadState, 2000);
   setInterval(loadTrades, 10000);
+  setInterval(() => { if (document.body.dataset.space === 'bitcoin' || Date.now() % 15000 < 3000) loadBtc(); }, 3000);
+  let onglet = 'overview';
+  try { onglet = localStorage.getItem('onglet') || 'overview'; } catch (error) { /* idem */ }
+  showTab([...ESPACES.nasdaq, ...ESPACES.bitcoin].includes(onglet) ? onglet : 'overview');
 })();
 </script>
 </body>

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Étrave : l'interface de l'EA ORB v5 — une page web servie sur cet ordinateur uniquement.
+"""Étrave : l'interface de l'EA ORB v5 (Nasdaq) et du bot BTC (Binance) — une page web servie sur cet ordinateur uniquement.
 
     python interface/etrave.py                 démarre et ouvre la page dans le navigateur
     python interface/etrave.py --port 8790     autre port (8788 par défaut)
@@ -30,6 +30,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+import bitcoin  # noqa: E402
 import mt5  # noqa: E402
 import pont  # noqa: E402
 import risque  # noqa: E402
@@ -54,8 +55,10 @@ class Erreur(Exception):
 class Application:
     """Les routes de l'interface, sans le transport HTTP (les tests l'appellent directement)."""
 
-    def __init__(self, dossier, appel_telegram=None, mt5_ouvert=None, mt5_lancer=None, mt5_installer=None, mt5_demarrage=None, journal=None):
+    def __init__(self, dossier, appel_telegram=None, mt5_ouvert=None, mt5_lancer=None, mt5_installer=None, mt5_demarrage=None, journal=None,
+                 btc=None):
         self.dossier = dossier
+        self.btc = btc or bitcoin.Bitcoin(dossier)
         self.appel_telegram = appel_telegram or telegram.appeler
         self._mt5_ouvert = mt5_ouvert or mt5.est_ouvert
         self._mt5_lancer = mt5_lancer or mt5.lancer
@@ -171,6 +174,39 @@ class Application:
             if isinstance(corps.get("demarrageWindows"), bool):
                 demarrage = self._mt5_demarrage(corps["demarrageWindows"], RACINE)
             return {"ok": True, "reglages": pont.reglages_publics(self.dossier), "demarrageWindows": demarrage}
+        if chemin.startswith("/api/btc/"):
+            return self.traiter_btc(route, corps)
+        raise Erreur(404, "Route inconnue")
+
+    def traiter_btc(self, route, corps):
+        """L'onglet Bitcoin : le bot BTC (crypto/bot), un programme à part de l'EA."""
+        b = self.btc
+        if route == "GET /api/btc/etat":
+            return b.etat()
+        if route == "POST /api/btc/reglages":
+            changees = b.regler(corps.get("valeurs"), corps.get("confirmation", ""))
+            if changees:
+                self.journal(f"bot BTC, réglages modifiés : {', '.join(changees)}")
+            return {"ok": True, "changees": changees, "reglages": b.reglages_publics()}
+        if route == "POST /api/btc/cles":
+            resultat = b.enregistrer_cles(corps.get("cle"), corps.get("secret"))
+            self.journal("bot BTC, clé Binance enregistrée")
+            return {"ok": True, "cles": resultat}
+        if route == "POST /api/btc/cles/effacer":
+            self.journal("bot BTC, clé Binance effacée")
+            return {"ok": True, "cles": b.effacer_cles()}
+        actions = {"POST /api/btc/tester": b.tester, "POST /api/btc/demarrer": b.demarrer, "POST /api/btc/arreter": b.arreter,
+                   "POST /api/btc/analyser": b.analyser, "POST /api/btc/rearmer": b.rearmer}
+        if route in actions:
+            resultat = actions[route]()
+            self.journal(f"bot BTC : {route.rsplit('/', 1)[-1]}")
+            return {"ok": True, **resultat}
+        if route == "POST /api/btc/pause":
+            return b.pause(bool(corps.get("pause")))
+        if route == "POST /api/btc/fermer":
+            resultat = b.fermer(corps.get("confirmation", ""))
+            self.journal("bot BTC : fermeture de toutes les positions demandée")
+            return resultat
         raise Erreur(404, "Route inconnue")
 
 
@@ -291,7 +327,7 @@ def main(arguments=None):
             return 0
         print(f"Le port {options.port} est pris par un autre programme. Essaie : python interface/etrave.py --port {options.port + 1}")
         return 1
-    print(f"{pont.NOM} — interface de l'EA ORB v5")
+    print(f"{pont.NOM} — l'EA ORB v5 (Nasdaq) et le bot BTC (Binance)")
     print(f"  page     : {serveur.url}   (cet ordinateur uniquement)")
     print(f"  dossier  : {dossier}")
     print("  Laisse cette fenêtre ouverte tant que tu utilises la page. La fermer n'arrête ni l'EA ni ses alertes.")

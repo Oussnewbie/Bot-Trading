@@ -1,4 +1,5 @@
 """Tests du bot : python -m pytest crypto/bot -q  (≈ 2 min ; les tests « historiques » ont besoin des données locales)."""
+import math
 import os
 import sys
 
@@ -10,8 +11,8 @@ ICI = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, ICI)
 sys.path.insert(0, os.path.dirname(ICI))
 import btc  # noqa: E402
-from bot import Bot, DEFAUT  # noqa: E402
-from courtier import Action, CourtierPapier, Etat, plan  # noqa: E402
+from bot import Bot, DEFAUT, secrets  # noqa: E402
+from courtier import Action, CourtierPapier, Etat, plan, prix_stop  # noqa: E402
 from strategie import PROFILS, decider  # noqa: E402
 
 T = lambda s: pd.Timestamp(s, tz="UTC")
@@ -202,3 +203,118 @@ def test_concordance_prix_bitstamp_et_binance():
     accord = (np.sign(pb[i]) == np.sign(ps[i])).mean()
     print(f"\nmême sens de position Binance / Bitstamp : {accord:.1%}")
     assert accord > 0.9
+
+
+# ───────────────────────── levier (montage perpétuel), stop, ordres limites ─────────────────────────
+def test_plan_perpetuel_ouvre_en_perp_et_deplace_tout_le_capital():
+    p = plan(Etat(50_000, 10_000, 0, 0, 0), 2.0, montage="perpetuel")
+    assert [a.type for a in p.actions] == ["vers_futures", "perp"]
+    assert p.actions[0].quantite == pytest.approx(10_000) and p.actions[1].quantite == pytest.approx(0.4)
+
+
+def test_plan_perpetuel_retourne_la_position():
+    e = Etat(50_000, 0, 0, 10_000, 0.4)
+    a = plan(e, -0.5, montage="perpetuel").actions
+    assert [x.type for x in a] == ["perp", "perp"]
+    assert a[0].quantite == pytest.approx(-0.4) and "fermer" in a[0].motif
+    assert a[1].quantite == pytest.approx(-0.1)
+
+
+def test_plan_perpetuel_vend_le_btc_au_comptant_laisse_par_le_montage_x1():
+    e = Etat(50_000, 0, 0.2, 0, 0)
+    assert [x.type for x in plan(e, 2.0, montage="perpetuel").actions] == ["vendre_spot", "vers_futures", "perp"]
+
+
+def test_stop_a_mi_chemin_de_la_liquidation():
+    assert prix_stop(0.5, 60_000, "comptant") is None
+    assert prix_stop(2.0, 60_000, "perpetuel") == pytest.approx(45_000)       # 25 % sous le prix à ×2
+    assert prix_stop(-1.0, 60_000, "perpetuel") == pytest.approx(90_000)      # 50 % au-dessus pour une vente ×1
+
+
+def test_papier_stop_touche_ferme_la_position():
+    c = CourtierPapier(capital=10_000); c.fixer_prix(50_000)
+    c.executer(Action("vers_futures", 10_000)); c.executer(Action("perp", 0.4))     # ×2
+    c.poser_stop(prix_stop(2.0, 50_000, "perpetuel"))
+    assert c.verifier_stop(51_000, 40_000) is None
+    s = c.verifier_stop(51_000, 37_000)
+    assert s and c.perp_btc == 0
+    assert c.etat().capital == pytest.approx(10_000 - 0.4 * (50_000 - 37_500 * (1 - 0.005)), rel=0.01)
+
+
+def test_ordres_limites_coutent_moins_en_perpetuel():
+    m, l = CourtierPapier(capital=10_000, ordres="marche"), CourtierPapier(capital=10_000, ordres="limite")
+    for c in (m, l):
+        c.fixer_prix(50_000); c.executer(Action("vers_futures", 10_000)); c.executer(Action("perp", 0.2)); c.executer(Action("perp", -0.2, "fermer"))
+    assert l.etat().capital > m.etat().capital
+
+
+def test_le_levier_multiplie_la_cible(tmp_path):
+    b1 = bot_test(tmp_path / "a")
+    b3 = Bot(dict(DEFAUT, dossier=str(tmp_path / "b"), levier=3), source=SourceFixe(), courtier=CourtierPapier(capital=10_000))
+    t = T("2026-02-20 04:01")
+    d1, d3 = b1.cycle(t)["decision"], b3.cycle(t)["decision"]
+    assert d3["cible"] == pytest.approx(3 * d1["cible"])
+    assert b3.montage == "perpetuel" and b3.etat["stop"] is not None and b3.courtier.perp_btc > 0 and b3.courtier.btc_spot == 0
+
+
+def test_maintenant_force_un_nouveau_cycle(tmp_path):
+    b = bot_test(tmp_path)
+    t = T("2026-02-20 04:01")
+    b.cycle(t)
+    assert b.cycle(t)["statut"] == "déjà traité"
+    assert b.cycle(t, force=True)["statut"] == "ok"
+
+
+def test_secrets_du_fichier_d_etrave(tmp_path, monkeypatch):
+    monkeypatch.delenv("BINANCE_API_KEY", raising=False); monkeypatch.delenv("BINANCE_API_SECRET", raising=False)
+    f = tmp_path / "s.json"
+    f.write_text('{"binance_cle": "abc", "binance_secret": "def", "telegram_jeton": "1:x"}')
+    s = secrets(dict(fichier_secrets=str(f)))
+    assert s["cle"] == "abc" and s["secret"] == "def" and s["telegram_jeton"] == "1:x"
+    monkeypatch.setenv("BINANCE_API_KEY", "env")
+    assert secrets(dict(fichier_secrets=str(f)))["cle"] == "env"
+
+
+class FauxExchange:
+    """Imite ccxt : le 1er ordre limite est rempli à moitié, le 2e est refusé (il aurait été preneur), le 3e reste vide ;
+    au bout des essais, le reste part au marché."""
+
+    def __init__(self):
+        self.ordres, self.n = {}, 0
+
+    def amount_to_precision(self, sym, q):
+        return f"{math.floor(q * 1000) / 1000:.3f}"
+
+    def fetch_order_book(self, sym, n):
+        return {"bids": [[49_990.0, 1]], "asks": [[50_010.0, 1]]}
+
+    def create_order(self, sym, type_, cote, q, prix=None, params=None):
+        self.n += 1
+        if type_ == "limit":
+            assert params.get("postOnly") is True
+            if self.n == 2:
+                raise RuntimeError("post-only refusé")
+            rempli = q / 2 if self.n == 1 else 0.0
+        else:
+            rempli = q
+        o = dict(id=str(self.n), type=type_, status="closed" if rempli == q else "open", filled=rempli, amount=q)
+        self.ordres[o["id"]] = o
+        return o
+
+    def fetch_order(self, i, sym):
+        return self.ordres[i]
+
+    def cancel_order(self, i, sym):
+        self.ordres[i]["status"] = "canceled"
+
+
+def test_ordre_limite_puis_marche_pour_le_reste(monkeypatch):
+    import courtier as C
+    monkeypatch.setattr(C.time, "sleep", lambda s: None)
+    cb = object.__new__(C.CourtierBinance)
+    cb.ordres, cb.ESSAIS_LIMITE, cb.ATTENTE_S = "limite", 4, 0
+    ex = FauxExchange()
+    r = cb._ordre(ex, "BTC/USDT", "buy", 0.1)
+    types = [o["type"] for o in ex.ordres.values()]
+    assert types[0] == "limit" and types[-1] == "market"
+    assert r["quantite"] == pytest.approx(0.1, abs=1e-3)

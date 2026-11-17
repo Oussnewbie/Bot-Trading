@@ -39,12 +39,18 @@ def verifier(B, maintenant):
         raise DonneesInvalides("prix nuls ou manquants dans les dernières bougies 4h")
 
 
-def decider(B, profil, maintenant):
+LEVIER_MAX = 10
+
+
+def decider(B, profil, maintenant, levier=1):
+    """La cible (fraction du capital, signée) : la position du profil, multipliée par le levier (×1 à ×10).
+    Levier ×L = volatilité visée × L et plafond L (voir profils.py et profils.json pour ce que donne chaque levier)."""
     verifier(B, maintenant)
     p = PROFILS[profil] if isinstance(profil, str) else profil
+    levier = int(min(max(levier, 1), LEVIER_MAX))
     E = btc.elements(B)
     pos = btc.position(E, seuil=SEUIL, confirmation=CONFIRMATION, vente=p["vente"], vol_cible=p["vol_cible"])
-    cible = float(np.clip(pos.iloc[-1], -p["plafond"], p["plafond"]))
+    cible = float(np.clip(pos.iloc[-1] * levier, -p["plafond"] * levier, p["plafond"] * levier))
     ch, cb = E["conf"][CONFIRMATION]
     votes = E["votes"].iloc[-1]
     absents = [k for k, v in votes.items() if np.isnan(v)]

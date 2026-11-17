@@ -1,5 +1,5 @@
-"""Alertes Telegram (facultatives). Jeton et discussion lus dans l'environnement : TELEGRAM_TOKEN, TELEGRAM_CHAT_ID.
-Sans eux, les messages vont seulement dans le journal."""
+"""Alertes Telegram (facultatives). Jeton et discussion : variables TELEGRAM_TOKEN et TELEGRAM_CHAT_ID, sinon le
+fichier de secrets d'Étrave. Sans eux, les messages vont seulement dans le journal."""
 import json
 import logging
 import os
@@ -9,9 +9,18 @@ import urllib.request
 log = logging.getLogger("bot")
 
 
+_CONF = {}
+
+
+def configurer(jeton=None, chat=None):
+    """Jeton et discussion venus du fichier de secrets d'Étrave (l'environnement passe avant)."""
+    _CONF.update(jeton=jeton, chat=chat)
+
+
 def envoyer(texte):
     log.info(texte.replace("\n", " | "))
-    jeton, chat = os.environ.get("TELEGRAM_TOKEN"), os.environ.get("TELEGRAM_CHAT_ID")
+    jeton = os.environ.get("TELEGRAM_TOKEN") or _CONF.get("jeton")
+    chat = os.environ.get("TELEGRAM_CHAT_ID") or _CONF.get("chat")
     if not jeton or not chat:
         return False
     try:
