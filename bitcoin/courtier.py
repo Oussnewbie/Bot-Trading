@@ -1,14 +1,13 @@
 """Exécution : l'état du compte, le plan d'ordres, et deux courtiers (papier et Binance).
 
-Deux montages, choisis par le test (voir LISEZMOI.md et profils.py) :
+Deux montages (voir LISEZMOI.md) :
  « comptant » (levier ×1) :
    - ACHAT au comptant (BTC spot) : pas de financement à payer, aucune liquidation possible ;
    - VENTE en perpétuel USDⓈ-M BTCUSDT couverte à 100 % (marge = taille de la vente) : liquidation seulement si le BTC
      double.
  « perpétuel » (levier ×2 à ×10) :
    - TOUT en perpétuel USDⓈ-M BTCUSDT, tout le capital en USDT sur le portefeuille futures, marge croisée ;
-   - STOP DE PROTECTION posé chez Binance à mi-chemin de la liquidation (50 % ÷ exposition contre la position) : sans
-     lui, le test liquide le compte dès ×4.
+   - STOP DE PROTECTION posé chez Binance à mi-chemin de la liquidation (50 % ÷ exposition contre la position).
 Jamais d'achat et de vente en même temps. Ordres limites « post-only » (frais de teneur de marché) re-placés au
 meilleur prix pendant 2 minutes, puis au marché pour le reste.
 """
@@ -121,7 +120,7 @@ def prix_stop(cible, prix, montage):
 
 
 class CourtierPapier:
-    """Compte fictif : prix réels, frais et glissement du test, financement au taux de base (0,01 % / 8 h, payé par les
+    """Compte fictif : prix réels, frais et glissement de `plan`, financement au taux de base (0,01 % / 8 h, payé par les
     acheteurs en perpétuel, reçu par les vendeurs), stop de protection vérifié sur le plus haut / plus bas des bougies
     4h écoulées. L'état est gardé dans un fichier JSON par le bot."""
 

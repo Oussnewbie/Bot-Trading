@@ -1,10 +1,12 @@
-# Étrave — ORB v6 sur le Nasdaq (MetaTrader 5, interface, TradingView)
+# Étrave — deux bots de trading et leur interface
 
-Cassure du range d'ouverture de New York (bougie M5 de 9:30) sur le Nasdaq (NAS100), dans le sens de l'élan de
-l'ouverture, avec une pyramide sur les journées de tendance. Heures de New York (9:30 NY = 15:30 à Paris la plupart de
-l'année). **Nasdaq uniquement** : la stratégie ne gagne sur aucun autre symbole testé (Dow Jones, or, EUR/USD, bitcoin).
+- **ORB v6 sur le Nasdaq** (NAS100) : cassure du range d'ouverture de New York (bougie M5 de 9:30), dans le sens de
+  l'élan de l'ouverture, avec une pyramide quand le trade avance. Expert Advisor MetaTrader 5 et script TradingView.
+  Heures de New York (9:30 NY = 15:30 à Paris la plupart de l'année).
+- **Bot BTC** sur Binance : 9 indicateurs journaliers votent, une tendance 4h confirme, taille réglée sur la volatilité.
+- **Étrave** : une page web locale qui règle et surveille les deux.
 
-Le dépôt ne contient que les deux bots et leur interface :
+Le dépôt contient trois dossiers :
 
 | Dossier | Contenu |
 |---|---|
@@ -12,35 +14,9 @@ Le dépôt ne contient que les deux bots et leur interface :
 | `bitcoin/` | Le bot BTC (Binance) : voir [bitcoin/LISEZMOI.md](bitcoin/LISEZMOI.md). Avec le code de sa stratégie (`btc.py`, `indicateurs.py`, `donnees.py`). |
 | `etrave/` | **Étrave**, la page web locale qui pilote les deux : **⛵ Nasdaq** (l'EA : risque, levier, Telegram, suivi et clôture des trades, lancement de MetaTrader) et **₿ Bitcoin** (le bot : tableau de bord, 9 votes, levier ×1 à ×10, clé API Binance, démarrer / arrêter / tout fermer). On la lance avec `etrave/Etrave.bat`. |
 
-**Recherches retirées le 17 novembre 2026.** Les rapports, les simulateurs, les hypothèses testées et les scripts de
-téléchargement des données ne sont plus dans le dépôt. Ils restent dans l'historique git : dernier commit qui les
-contient, `39b5b77` (dossier `recherches/`). Pour les relire sans les remettre dans le dépôt :
-`git show 39b5b77:recherches/nasdaq/RAPPORT.md`, ou `git archive 39b5b77 recherches | tar -x` pour tout récupérer.
+Ce n'est pas un conseil en investissement. Fais tourner l'EA et le bot en démo (ou en papier) avant le réel.
 
-## Ce que dit le test
-
-Nasdaq CFD Dukascopy, M1 bid et ask rejoués minute par minute, glissement de 0,1 point, 2018-01 → 2026-11 : 1 391
-trades (156 par an), **+0,46R par trade, +643R**, pire baisse −23R, 15 pertes de suite au pire, 59 % de pertes pleines,
-9 années positives sur 9.
-
-- Période de choix (2018-05 → 2022-08) : +371R. Vérification (2022-09 → 2026-11) : +233R.
-- **La v6 = les règles de la v5 avec une pyramide de 2 unités** (17 novembre 2026). Les fichiers v5 ont été retirés du
-  dépôt (ils restent dans l'historique git). Avec un ajout d'une unité : +471R, pire baisse −22R ; sans pyramide : +312R.
-  Le détail, et tout ce qui a été essayé sans succès (placement du stop, autres entrées, flux d'ordres du future NQ,
-  sorties anticipées, règles de mise), est dans le rapport de recherche (historique git, commit `39b5b77`).
-- **Avant 2018 la stratégie perdait** : −55R sur 2015-2017, −33R sur 2013-2014. L'ancien test 2015-2026 a connu une baisse
-  de 76R avec la pyramide de 2 unités (74R avec une unité).
-- Capital, gains réinvestis, 2018 → 2026 : 0,25 % par trade → +19 % par an, pire baisse −6 % ; 0,5 % → +40 %, −11 % ;
-  1 % → +88 %, −22 %. Si une période comme 2015-2017 revenait : environ −17 % à 0,25 %, −32 % à 0,5 %, −53 % à 1 %.
-- Le résultat dépend du glissement : +565R avec 0,5 point par exécution, +455R avec 1 point. Mesuré sur le future NQ, le
-  glissement réel d'un ordre stop natif donne environ +500R (CFD ou futures), et un ordre au marché envoyé 250 ms après le
-  déclenchement +352R : voir le rapport de recherche (historique git, commit `39b5b77`).
-- Garde un risque fixe : réduire la mise après des pertes ou en période de baisse a fait moins bien dans le test.
-
-Ce n'est pas un conseil en investissement, et le passé ne garantit rien. Fais tourner l'EA en démo avant le réel, et
-choisis le risque en regardant la pire baisse.
-
-## Les règles
+## ORB v6 (Nasdaq) : les règles
 
 1. **Range** : high et low de la bougie M5 de 9:30.
 2. **Filtres** : achat permis si le RSI14 M5 de cette bougie est au-dessus de 50 **et** si son high dépasse le plus haut de
@@ -58,7 +34,7 @@ choisis le risque en regardant la pire baisse.
 8. **Jours fériés américains et demi-séances** (le marché ferme vers 13:00) : sortie à 12:45, plus de pyramide ensuite.
    Le calendrier est calculé par l'EA et par le script (jour de l'an, Martin Luther King, Presidents' Day, vendredi
    saint, Memorial Day, Juneteenth, 4 juillet, Labor Day, Thanksgiving, Noël ; lendemain de Thanksgiving, veille de
-   Noël, veille du 4 juillet). Cette règle a été ajoutée le 15 novembre 2026, après le test.
+   Noël, veille du 4 juillet).
 
 ## Installer
 
@@ -81,9 +57,9 @@ choisis le risque en regardant la pire baisse.
   des trades, case du Nasdaq (décochée : plus de nouveau trade), bouton « Clôturer le trade ». Les blocs se replient d'un
   clic sur leur titre.
 - **Risque** : le seul réglage, de 0,05 % à 20 % du solde par trade, avec le levier de ton courtier. Pour la valeur
-  choisie, la page rejoue les 1 391 trades du test : gain par an, pire baisse, série de 15 pertes, part des trades que la
-  marge aurait obligé à réduire (la marge doit porter 3 unités : à 1 % de risque avec un levier de 1:20, 8 % des trades
-  sont réduits ; à 0,5 %, 1 %). Au-delà de 1 %, il faut taper le mot RISQUE.
+  choisie, la page rejoue les trades de référence de `etrave/reference.json` (un backtest de la stratégie) : gain par
+  an, pire baisse, pire série de pertes, part des trades que la marge aurait obligé à réduire (la marge doit porter
+  3 unités). Au-delà de 1 %, il faut taper le mot RISQUE.
 - **Connexions** : Telegram (jeton, « Trouver ma discussion et tester », « Essai depuis MetaTrader » qui dit si
   MetaTrader bloque l'adresse) ; MetaTrader 5 (connexion à un compte, installation de l'EA, ouverture automatique de
   MetaTrader au démarrage d'Étrave, lancement d'Étrave à l'ouverture de la session Windows).
@@ -140,7 +116,7 @@ Les règles sont les mêmes. Les écarts viennent du spread, que TradingView ne 
 | Heure de New York | donnée par TradingView | calculée à partir de l'heure du serveur du courtier : dépend de deux réglages |
 | En plus dans l'EA | — | risque et pause réglés depuis Étrave, clôture demandée depuis Étrave |
 
-Ces écarts sont ceux du test d'origine, qui comptait le bid et l'ask : c'est lui que l'EA suit.
+Les deux exécutent les mêmes règles ; l'EA, qui voit le bid et l'ask, est la version de référence.
 
 ## Limites connues
 
@@ -168,20 +144,14 @@ Ces écarts sont ceux du test d'origine, qui comptait le bid et l'ask : c'est lu
 - Arrondi des lots faux si le pas de volume du courtier n'est pas 1, 0,1 ou 0,01.
 - Le journal des trades de l'interface commence avec la version 5.10 de l'EA ; la v6 continue le même journal.
 
-## Mettre à jour depuis l'ancienne organisation
+## Mettre à jour une copie d'avant le 17 novembre 2026
 
-Avant le 17 novembre 2026, le dépôt avait d'autres dossiers : `interface/` et `Etrave.bat` à la racine, `mt5/`, `pine/`,
-`backtest/m1/` et `crypto/` (avec le bot dans `crypto/bot/`). Pour passer à la nouvelle organisation :
-
-1. **Arrête le bot BTC** (Étrave, espace Bitcoin, « Arrêter ») et ferme Étrave. Fais-le hors séance du Nasdaq.
-2. Récupère la nouvelle version du dépôt (`git pull`, ou un nouveau téléchargement à la place de l'ancien dossier).
-3. Lance Étrave avec `etrave/Etrave.bat`. Au premier lancement, Étrave fait trois choses toutes seules, sans rien
-   écraser :
-   - il déplace les réglages et l'état du bot (`crypto/bot/config.json` et `crypto/bot/etat/`) dans `bitcoin/` ;
-   - il déplace les données de la recherche crypto de `crypto/donnees/` vers `donnees/crypto/` ;
-   - il fait pointer le lancement au démarrage de Windows, s'il était coché, vers `etrave/Etrave.bat`.
-4. Si tu lançais le bot sans Étrave, change le chemin dans ta commande : `bitcoin/bot.py --config bitcoin/config.json`
-   (`bitcoin/lancer_bot.bat` et `bitcoin/bot-btc.service` sont à jour).
+Les dossiers s'appelaient alors `interface/` (avec `Etrave.bat` à la racine), `mt5/`, `pine/` et `crypto/bot/`.
+Arrête le bot BTC et ferme Étrave, récupère la nouvelle version, puis lance `etrave/Etrave.bat`. Au premier lancement,
+Étrave déplace tout seul, sans rien écraser, les réglages et l'état du bot (`crypto/bot/config.json` et
+`crypto/bot/etat/`) dans `bitcoin/`, les données locales de `crypto/donnees/` vers `donnees/crypto/`, et fait pointer le
+lancement au démarrage de Windows vers `etrave/Etrave.bat`. Si tu lançais le bot sans Étrave :
+`bitcoin/bot.py --config bitcoin/config.json`.
 
 L'EA déjà installé dans MetaTrader ne change pas : il reste dans `MQL5\Experts\Etrave`, et ses fichiers d'échange avec
 Étrave ne bougent pas. « Installer ou mettre à jour l'EA » prend désormais `nasdaq/ORB-v6.mq5`.

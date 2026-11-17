@@ -85,7 +85,7 @@ def reprendre_ancien_dossier(ancien=ANCIEN_BOT, nouveau=BOT, donnees=os.path.joi
         c["dossier"] = os.path.join(nouveau, "etat")
         _ecrire_json(cfg, c)
         faits.append("dossier d'état")
-    # les données de la recherche crypto (hors git) : crypto/donnees/ -> donnees/crypto/
+    # les données crypto locales (hors git) : crypto/donnees/ -> donnees/crypto/
     a, n = os.path.join(os.path.dirname(ancien), "donnees"), donnees
     if os.path.isdir(a) and not os.path.exists(n):
         try:

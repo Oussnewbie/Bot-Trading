@@ -1,11 +1,11 @@
 # Le bot BTC
 
-Il exécute la stratégie BTC (rapport de recherche `recherches/crypto/RAPPORT-BTC.md`, retiré du dépôt : historique git, commit `39b5b77`) sur Binance, sans intervention, et prévient sur Telegram. C'est un
+Il exécute une stratégie BTC sur Binance, sans intervention, et prévient sur Telegram. C'est un
 **programme à part** de l'EA MetaTrader : il se pilote depuis **Étrave, espace « ₿ Bitcoin »** (démarrer, arrêter,
 pause, tout fermer, levier, clé API), ou à la main en ligne de commande.
 
 Ce n'est pas un conseil en investissement. Commence en mode **papier**, puis **testnet**, et passe en **réel** avec un
-petit capital seulement après plusieurs semaines conformes au test.
+petit capital seulement après plusieurs semaines sans anomalie.
 
 ## Ce qu'il fait
 
@@ -19,16 +19,16 @@ petit capital seulement après plusieurs semaines conformes au test.
    La bougie en cours est retirée : seules les bougies **clôturées** comptent.
 2. **Contrôles** : pas de décision si les données sont en retard, trouées, trop courtes, ou s'il manque plus de 2
    votes. Le bot envoie alors une alerte et ne passe aucun ordre.
-3. **Décision** : exactement le système testé. Le bot appelle le même code que le backtest (`btc.py`) ; un test vérifie
-   que ses décisions sont identiques au backtest, à 10⁻¹² près.
-   - 9 votes journaliers → score.
+3. **Décision** (`strategie.py`, qui appelle `btc.elements` et `btc.position`) :
+   - 9 votes journaliers (MA200, Ichimoku, MACD, RSI14, VWAP mensuel, Fibonacci sur 90 jours, flux d'ordres sur
+     7 jours, flux on-chain vers les plateformes d'échange sur 30 jours, ETH/BTC contre sa moyenne de 50 jours), chacun
+     +1, −1 ou absent → score = moyenne des votes présents.
    - **Achat** si score ≥ +0,25 et tendance 4h haussière (EMA50 > EMA200, prix > EMA200).
    - **Vente** si score ≤ −0,25 et tendance 4h baissière.
    - Sinon **rien**.
    - **Taille** = min(1 ; volatilité cible ÷ volatilité du BTC sur 30 jours). La vente est à un quart de cette taille.
 4. **Compte** : capital total = USDT au comptant + BTC au comptant + portefeuille futures (gains latents compris).
-5. **Coupe-circuit** : si le capital tombe à plus de 40 % sous son plus haut, le bot ferme tout et s'arrête. La pire
-   baisse du test est de −25 %, et −48 % au pire dans le rééchantillonnage.
+5. **Coupe-circuit** : si le capital tombe à plus de 40 % sous son plus haut, le bot ferme tout et s'arrête.
 6. **Ordres**, dans cet ordre :
    - d'abord réduire ce qui doit baisser ;
    - puis déplacer la marge ;
@@ -43,40 +43,26 @@ petit capital seulement après plusieurs semaines conformes au test.
      papier.
 8. **Telegram** : un message à chaque ordre, changement de sens, alerte ou erreur.
 
-## Le montage chez Binance (choisi par le test)
+## Le montage chez Binance
 
-**Levier ×1 (montage « comptant », recommandé)** :
+**Levier ×1 (montage « comptant », par défaut)** :
 
 | Position | Où | Pourquoi |
 |---|---|---|
-| **Achat** | BTC au comptant (spot) | Pas de financement à payer. Faire les achats en perpétuel aurait coûté 6 à 10 % par an. Aucune liquidation possible |
+| **Achat** | BTC au comptant (spot) | Pas de financement à payer. Aucune liquidation possible |
 | **Vente** | Perpétuel USDⓈ-M BTCUSDT, marge isolée, levier 1 | La marge déposée = la taille de la vente : liquidation seulement si le BTC double |
 | Le reste | USDT au comptant | — |
 
 **Levier ×2 à ×10 (montage « perpétuel »)** : la position du profil est multipliée par le levier. Tout passe en
 perpétuel USDⓈ-M BTCUSDT, marge croisée, tout le capital en USDT sur le portefeuille futures. Les achats paient
 alors le financement. Un **stop de protection** (stop au marché sur le prix de marque, qui ferme toute la position)
-est posé chez Binance à mi-chemin de la liquidation, et replacé à chaque cycle : sans lui, le test liquide le compte
-dès ×4.
+est posé chez Binance à mi-chemin de la liquidation, et replacé à chaque cycle.
 
-## Le levier : ce que dit le test (`profils.py`, `profils.json`)
+## Le levier
 
-Tableau calculé sur 2012-2026, bougies 4h Bitstamp, avec frais, financement, stops et liquidations :
-
-| Levier | Gain par an 2018-2026 | Pire baisse 2018-2026 | Pire baisse 2012-2026 | Sharpe 2012-2026 |
-|---|---|---|---|---|
-| **×1** | +35 % | −21 % | −25 % | 1,91 |
-| ×2 | +62 % | −42 % | −65 % | 1,72 |
-| ×3 | +88 % | −59 % | −71 % | 1,72 |
-| ×4 | +107 % | −72 % | −82 % | 1,63 |
-| ×5 | +77 % | −92 % | −96 % | 1,56 |
-| ×6 à ×8 | +62 % à +17 % | −95 % à −99 % | −96 % à −99 % | 1,44 |
-| ×9 | −13 % | −100 % | −100 % | 1,39 |
-| ×10 | −46 % | −100 % | −100 % | 1,32 |
-
-- Au-delà de ×4, le gain **baisse** : les frais, le financement, les stops et l'usure due à la volatilité dévorent
-  tout. À ×9 et ×10, le test perd de l'argent.
-- Étrave demande de taper LEVIER pour dépasser ×3.
+De ×1 à ×10, réglé dans Étrave. Étrave demande de taper LEVIER pour dépasser ×3. Les chiffres que la page affiche pour
+chaque levier viennent de `profils.json`, écrit par `profils.py` (un backtest du montage, avec frais, financement, stops
+et liquidations).
 
 ## Ordres limites
 
@@ -87,12 +73,12 @@ marché.
 
 ## Profils
 
-| `profil` | Volatilité cible | Sharpe 2012-2026 | Gain par an 2018-2026 | Pire baisse |
-|---|---|---|---|---|
-| `prudent` (par défaut) | 40 % | 1,89 | +34 % | −25 % |
-| `equilibre` | 60 % | 1,80 | +40 % | −32 % |
+| `profil` | Volatilité cible |
+|---|---|
+| `prudent` (par défaut) | 40 % |
+| `equilibre` | 60 % |
 
-`"vente": 0` dans la configuration désactive la vente (neutre sur l'historique long, voir le rapport de recherche, commit `39b5b77`).
+`"vente": 0` dans la configuration désactive la vente.
 
 ## Installation
 
@@ -174,25 +160,23 @@ python -m pip install pytest
 python -m pytest bitcoin -q
 ```
 
-25 tests :
+Ce qu'ils couvrent :
 - plan d'ordres ;
 - comptabilité du compte papier, y compris le gain d'une vente quand le prix baisse ;
 - PAUSE, FERMER, coupe-circuit, données en retard ;
-- **décisions identiques au backtest** sur 20 instants tirés au hasard ;
-- **rejeu 2018-2026** de l'exécution (frais, glissement, bande, marge) : Sharpe 1,36, comme le backtest (1,36),
-  +37 % par an, pire baisse −23 % ;
-- concordance des prix Binance et Bitstamp : même sens de position 98,5 % du temps ;
+- décisions du bot identiques à celles du calcul sur tout l'historique (`btc.position`), sur 20 instants tirés au
+  hasard ;
+- rejeu 2018-2026 de l'exécution (frais, glissement, bande, marge), comparé au calcul sur l'historique ;
+- concordance des positions calculées avec les prix Binance et avec les prix Bitstamp ;
 - levier : montage perpétuel, retournement de position, stop de protection (placé et touché), cible multipliée ;
 - ordres limites, puis le reste au marché (avec un faux exchange), et des frais plus bas qu'au marché ;
 - commande « maintenant », secrets lus dans le fichier d'Étrave.
 
-Les tests marqués « historiques » (décisions identiques au backtest, rejeu 2018-2026, concordance des prix) ont besoin
-des données locales dans `donnees/crypto/` ; sans elles ils sont sautés. Les scripts qui les téléchargent ont été
-retirés du dépôt avec les recherches (historique git, commit `39b5b77`) :
-`git archive 39b5b77 recherches/crypto | tar -x`, puis `bash recherches/crypto/00_telecharger.sh` et
-`python recherches/crypto/05_telecharger_btc_historique.py`.
+Ces trois derniers tests, et `profils.py`, ont besoin de données locales dans `donnees/crypto/` (format : voir
+`donnees.py` et `btc.brutes`) ; sans elles les tests sont sautés. Le bot en marche n'en a pas besoin : il prend ses
+données en direct.
 
-Côté Étrave, `python -m pytest etrave` (34 tests) couvre l'espace Bitcoin :
+Côté Étrave, `python -m pytest etrave` couvre l'espace Bitcoin :
 - réglages et leurs bornes ;
 - mots de confirmation REEL, LEVIER et FERMER ;
 - clé en écriture seule : jamais renvoyée, même par le serveur HTTP ;

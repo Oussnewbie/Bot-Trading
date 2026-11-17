@@ -29,7 +29,7 @@ FICHIER_REGLAGES = "reglages.txt"
 
 # Bornes du risque par trade, en % du solde (les mêmes dans l'EA : RISK_MIN, RISK_MAX).
 RISQUE_MIN, RISQUE_MAX = 0.05, 20.0
-# Au-delà de ce risque, le test ne dit plus rien de rassurant : il faut confirmer en toutes lettres.
+# Au-delà de ce risque, il faut confirmer en toutes lettres.
 RISQUE_A_CONFIRMER = 1.0
 LEVIER_MAX = 2000.0
 # L'EA réécrit son état toutes les 2 secondes : passé ce délai sans nouvelle, il est arrêté (ou MT5 fermé).

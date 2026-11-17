@@ -1,9 +1,9 @@
-"""Ce que le test dit d'un risque par trade et d'un levier : gain par an, pire baisse, jours où la marge manque.
+"""Un risque par trade et un levier rejoués sur les trades de référence : gain par an, pire baisse, jours où la marge manque.
 
-Les trades viennent de etrave/reference.json : les 1 391 trades de la v6 (ajout de 2 unités à +2R) rejouée le
-17 novembre 2026 minute par minute sur le Nasdaq CFD de Dukascopy (M1 bid et ask, 2018-01 -> 2026-11, glissement
-0,1 point), avec pour chacun sa date, son résultat en R, la largeur du range rapportée au prix et si la pyramide s'est
-déclenchée. Le fichier était refait par recherches/nasdaq/reference.py (retiré du dépôt, historique git, commit 39b5b77). Le capital est composé trade après trade, avec en plus la marge :
+Les trades viennent de etrave/reference.json : un backtest de la v6 (ajout de 2 unités à +2R) rejouée minute par
+minute sur le Nasdaq CFD de Dukascopy (M1 bid et ask, 2018-01 -> 2026-11, glissement 0,1 point), avec pour chaque trade
+sa date, son résultat en R, la largeur du range rapportée au prix et si la pyramide s'est déclenchée. Le capital est
+composé trade après trade, avec en plus la marge :
 
     taille de la position = solde × risque ÷ range        (règle 4 de la v6)
     marge demandée        = valeur de la position ÷ levier
@@ -20,7 +20,7 @@ REFERENCE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "reference.
 # Les deux valeurs suivantes sont celles de l'EA (MARGIN_USE, et 1 unité de départ + 2 unités de pyramide).
 PART_MARGE = 0.90
 UNITES = 3.0
-# Repères du README : pire série de pertes du test 2018-2026, pire baisse de l'ancien test 2015-2026 (ajout de 2 unités).
+# Repères affichés par la page Risque, issus du backtest : pire série de pertes 2018-2026, pire baisse sur 2015-2026 (en R).
 PIRE_SERIE = 15
 PIRE_BAISSE_ANCIEN_TEST_R = 76
 

@@ -161,7 +161,7 @@ def test_le_bot_decide_exactement_comme_le_backtest():
 @historique
 def test_rejeu_execution_2018_2026_proche_du_backtest():
     """Rejoue les décisions du système bougie par bougie avec le compte papier (frais, glissement, bande de 5 %,
-    marge de la vente) et compare au backtest : l'exécution ne doit pas détruire l'avantage."""
+    marge de la vente) et compare au calcul direct sur les mêmes prix : les deux doivent rester proches."""
     from donnees_live import SourceHistorique
     S = SourceHistorique()
     E = btc.elements(S.B)

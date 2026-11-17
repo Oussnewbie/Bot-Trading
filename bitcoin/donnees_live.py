@@ -3,7 +3,7 @@
    miroir public de données de marché de Binance (data-api.binance.vision : accessible même là où l'API de trading
    ne l'est pas) ;
  - flux des exchanges (on-chain) de Coin Metrics (API communautaire).
-Elles sont mises dans le même format que les données du test (`btc.brutes()`), puis coupées à l'instant présent : seules
+Elles sont mises dans le même format que les données historiques (`btc.brutes()`), puis coupées à l'instant présent : seules
 les bougies CLÔTURÉES comptent (`btc.tronquer`).
 
 `SourceHistorique` rejoue le passé avec les fichiers locaux, pour tester le bot de bout en bout sans réseau.
@@ -80,7 +80,7 @@ class SourceLive:
 
 
 class SourceHistorique:
-    """Le passé, avec les fichiers locaux de la recherche (Binance pour les prix, comme en réel), coupé à l'instant
+    """Le passé, avec les fichiers locaux de donnees/crypto/ (Binance pour les prix, comme en réel), coupé à l'instant
     demandé. Sert aux tests et au rejeu."""
 
     def __init__(self):

@@ -1,6 +1,5 @@
 """Chargement des données crypto locales, pour les tests du bot et profils.py (le bot en marche n'en a pas besoin : il
-prend ses données en direct). Téléchargement : `recherches/crypto/00_telecharger.sh` et `05_telecharger_btc_historique.py`,
-retirés du dépôt (historique git, commit 39b5b77).
+prend ses données en direct).
 Les fichiers sont dans donnees/crypto/ à la racine du dépôt (hors git). Tout est en UTC, début de bougie.
 
 - bougies(sym, marche, tf) : OHLCV Binance + volume acheteur agressif (taker buy) ; marche = "spot" ou "perp".

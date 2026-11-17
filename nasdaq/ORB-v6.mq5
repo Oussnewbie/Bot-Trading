@@ -23,13 +23,8 @@
 //                Un seul ajout par trade.
 //  7. R affiché = résultat net de tout le trade (ajout, commission et swap compris) ÷ somme risquée au départ.
 //
-// Test de référence (NAS100 CFD Dukascopy, rejoué minute par minute, M1 bid et ask), 2018-01 → 2026-11, 1 391 trades :
-//   2018-05 → 2022-08 (période de choix) : +0,52R par trade, +371R ; 2022-09 → 2026-11 (vérification) : +0,37R, +233R
-//   Tout : +0,46R par trade, +643R, pire baisse -23R, 15 pertes de suite au pire (avec un ajout d'une seule unité :
-//   +471R, pire baisse -22R). Avant 2018 l'ORB perdait (-55R sur 2015-2017) et l'ancien test 2015-2026 a connu une
-//   baisse de 76R. Elle ne gagne sur aucun autre symbole testé (Dow Jones, or, EUR/USD,
-//   bitcoin) : ne la trade que sur le Nasdaq. Les données et le spread de ton broker donneront un résultat un peu
-//   différent : vérifie dans le testeur de stratégie (« Chaque tick basé sur des ticks réels »).
+// Nasdaq (NAS100) uniquement. Les données et le spread de chaque courtier diffèrent : vérifie dans le testeur de
+// stratégie (« Chaque tick basé sur des ticks réels ») et en démo avant le réel.
 //
 // INTERFACE ÉTRAVE (etrave/etrave.py, lancée par etrave/Etrave.bat) : l'EA lit toutes les 2 secondes le fichier
 // Etrave\reglages.txt du dossier commun de MetaTrader (risque par trade, levier, case du Nasdaq, Telegram, demande de
@@ -921,8 +916,8 @@ bool Setup()   // true = terminé (trade préparé ou pas de trade), false = don
    gPend      = true;
    gFails     = 0;
    gGoneAt    = 0;
-   // ordres stop posés chez le courtier : exécutés par son serveur dès que le prix touche le niveau. Mesuré sur le future
-   // NQ (2018-2026) : un ordre au marché envoyé 250 ms après la cassure coûtait environ 150R de plus sur le test.
+   // ordres stop posés chez le courtier : exécutés par son serveur dès que le prix touche le niveau, sans attendre l'EA
+   // (moins de glissement qu'un ordre au marché envoyé après la cassure).
    gSrvL = gPendDir != -1 && PlaceStop(1);
    gSrvS = gPendDir != 1 && PlaceStop(-1);
 

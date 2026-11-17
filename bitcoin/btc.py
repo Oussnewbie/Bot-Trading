@@ -1,11 +1,10 @@
-"""BTC seul, biais corrigés. Le système complet est recalculé à partir des données brutes, pour pouvoir :
- - le juger sur 2012-2017, années JAMAIS utilisées par les recherches précédentes (Bitstamp) ;
- - choisir ses réglages AUTOMATIQUEMENT, chaque année, avec le passé seul (walk-forward) : plus aucun choix humain
-   après avoir vu les résultats ;
- - mesurer la probabilité de surajustement (PBO, Bailey-Borwein-López de Prado-Zhu) sur toute la grille ;
- - le comparer à des règles simples (MA200, EMA 50/200) : s'il ne les bat pas, la règle simple gagne ;
- - vérifier qu'il ne regarde jamais le futur (audit par troncature) ;
- - donner des intervalles de confiance (bootstrap par blocs), la sensibilité à la date de départ et aux frais.
+"""La stratégie BTC : le même code sert au bot (strategie.py) et au calcul sur l'historique (profils.py, test_bot.py).
+
+ - brutes()            : les données historiques locales ; tronquer(B, t) : les mêmes, telles qu'on les avait à l'instant t ;
+ - votes(B)            : les 9 votes journaliers (+1, -1 ou absent) ;
+ - elements(B)         : score, volatilité sur 30 jours et tendances 4h, calés sur les bougies 4h ;
+ - position(E, ...)    : l'exposition visée à chaque bougie 4h ; REGLAGES = la grille de réglages, FINAL = ceux du bot ;
+ - Banc4h, stats       : les rendements d'une suite d'expositions (frais, financement) et leurs statistiques.
 
 Données :
  - prix Bitstamp BTC/USD journalier et 4h (2011-08 -> 2026-11), les mêmes sur toute la période ;

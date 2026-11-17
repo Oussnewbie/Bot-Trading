@@ -1,4 +1,4 @@
-"""Le levier de ×1 à ×10, mesuré honnêtement sur 2012-2026 (prix Bitstamp, bougies 4h).
+"""Le levier de ×1 à ×10, calculé sur 2012-2026 (prix Bitstamp, bougies 4h) ; écrit profils.json, que lit Étrave.
 
 Levier ×L = la position du profil prudent multipliée par L (volatilité visée 40 % × L, plafond L).
  - ×1 : achat au comptant (pas de financement), vente en perpétuel couverte : le montage actuel du bot ;
