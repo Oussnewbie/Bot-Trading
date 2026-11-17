@@ -22,6 +22,8 @@ import signaux as S
 
 ICI = os.path.dirname(os.path.abspath(__file__))
 OUT = os.path.join(ICI, "sorties")
+MODES_TESTES = os.environ.get("MODES", "spot,perp").split(",")
+SUFFIXE = os.environ.get("SUFFIXE", "")
 PERIODES = {"R": M.RECHERCHE, "V": M.VALIDATION,
             "T": (pd.Timestamp("2018-01-01", tz="UTC"), pd.Timestamp("2026-11-17", tz="UTC"))}
 
@@ -37,7 +39,7 @@ def un(args):
     for nom, pos in base.items():
         for fn, f in [("", None)] + list(fil.items()):
             p = pos if f is None else S.filtrer(pos, f)
-            for mode in ("spot", "perp"):
+            for mode in MODES_TESTES:
                 res = banc.evaluer(p.values, mode)
                 ligne = dict(actif=actif, tf=tf, mode=mode, famille=nom.split("/")[0], variante=nom, filtre=fn)
                 for per, r in res.items():
@@ -56,8 +58,9 @@ if __name__ == "__main__":
     with Pool(int(sys.argv[1]) if len(sys.argv) > 1 else 3) as pool:
         res = pool.map(un, taches)
     df = pd.DataFrame([l for r, _ in res for l in r])
-    df.to_csv(os.path.join(OUT, "variantes.csv.gz"), index=False, float_format="%.4f")
+    df.to_csv(os.path.join(OUT, f"variantes{SUFFIXE}.csv.gz"), index=False, float_format="%.4f")
     bh = pd.DataFrame({k: v for _, b in res for k, v in b.items()}).T
     bh.index.names = ["actif", "tf", "periode"]
-    bh.to_csv(os.path.join(OUT, "achat-conservation.csv"), float_format="%.4f")
+    if not SUFFIXE:
+        bh.to_csv(os.path.join(OUT, "achat-conservation.csv"), float_format="%.4f")
     print(len(df), "lignes")

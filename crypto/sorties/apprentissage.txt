@@ -1,0 +1,41 @@
+
+######## BTC ########  achat-conservation : {'R': np.float64(0.43), 'V': np.float64(0.99), 'T': np.float64(0.6)}
+LightGBM — caractéristiques les plus utilisées : sply_ex90, stable30, of_perp30, histo_n, ethbtc_ret30, vol10, prime_cb7, of_spot7, ethbtc_dist50, dist_sma200, dvol_chg7, of_spot30
+lgbm 5j seuils 0.5/0.5                                  perp  R: Sh -0.25 t -0.99 cagr -27% dd -87%  V: Sh -0.47 t -1.13 cagr -28% dd -78%  T: Sh -0.34 t -1.56 cagr -27% dd -97%
+lgbm 5j seuils 0.5/0.5                                  spot  R: Sh 0.14 t -0.41 cagr -5% dd -68%  V: Sh 0.24 t -1.46 cagr 2% dd -52%  T: Sh 0.18 t -0.92 cagr -2% dd -71%
+lgbm 5j seuils 0.5/0.5 ventes seules                    court R: Sh -0.63 t -1.14 cagr -21% dd -81%  V: Sh -0.97 t -0.82 cagr -30% dd -80%  T: Sh -0.78 t -1.68 cagr -25% dd -94%
+lgbm 5j seuils 0.55/0.45                                perp  R: Sh 0.02 t -0.24 cagr -11% dd -83%  V: Sh -0.30 t -0.78 cagr -18% dd -64%  T: Sh -0.10 t -0.74 cagr -14% dd -92%
+lgbm 5j seuils 0.55/0.45                                spot  R: Sh 0.62 t 1.06 cagr 19% dd -61%  V: Sh 0.38 t -0.72 cagr 7% dd -37%  T: Sh 0.53 t 0.68 cagr 14% dd -61%
+lgbm 5j seuils 0.55/0.45 ventes seules                  court R: Sh -0.88 t -1.79 cagr -25% dd -82%  V: Sh -0.89 t -0.76 cagr -24% dd -73%  T: Sh -0.89 t -2.07 cagr -25% dd -94%
+lgbm 5j seuils 0.6/0.4                                  perp  R: Sh 0.17 t 0.11 cagr -3% dd -66%  V: Sh -0.43 t -1.09 cagr -18% dd -54%  T: Sh -0.04 t -0.59 cagr -10% dd -81%
+lgbm 5j seuils 0.6/0.4                                  spot  R: Sh 0.66 t 1.18 cagr 20% dd -49%  V: Sh 0.16 t -0.87 cagr 1% dd -36%  T: Sh 0.49 t 0.62 cagr 11% dd -51%
+lgbm 5j seuils 0.6/0.4 ventes seules                    court R: Sh -0.77 t -1.51 cagr -19% dd -70%  V: Sh -0.92 t -1.00 cagr -19% dd -57%  T: Sh -0.83 t -1.92 cagr -19% dd -85%
+HMM 2 états                                             perp  R: Sh 0.33 t 0.43 cagr -0% dd -80%  V: Sh 0.94 t 0.90 cagr 38% dd -51%  T: Sh 0.54 t 0.99 cagr 15% dd -80%
+HMM 2 états                                             spot  R: Sh 0.67 t 1.16 cagr 24% dd -71%  V: Sh 1.15 t 1.02 cagr 46% dd -37%  T: Sh 0.83 t 1.70 cagr 33% dd -71%
+HMM 3 états                                             perp  R: Sh -0.74 t -1.44 cagr -32% dd -86%  V: Sh 0.67 t 0.27 cagr 17% dd -32%  T: Sh -0.20 t -0.58 cagr -13% dd -86%
+HMM 3 états                                             spot  R: Sh 0.42 t 0.70 cagr 7% dd -36%  V: Sh 0.84 t 0.49 cagr 23% dd -24%  T: Sh 0.63 t 1.28 cagr 14% dd -36%
+confluence achat (référence)                            spot  R: Sh 1.22 t 2.47 cagr 32% dd -28%  V: Sh 1.13 t 1.31 cagr 29% dd -23%  T: Sh 1.18 t 2.90 cagr 31% dd -28%
+module vente seul                                       court R: Sh 0.23 t 0.78 cagr 2% dd -23%  V: Sh 0.25 t 1.00 cagr 2% dd -10%  T: Sh 0.24 t 1.17 cagr 2% dd -23%
+confluence achat + module vente                         perp  R: Sh 1.03 t 2.04 cagr 29% dd -38%  V: Sh 1.07 t 1.37 cagr 29% dd -23%  T: Sh 1.05 t 2.58 cagr 29% dd -38%
+confluence achat+vente symétrique (score<=-0,25)        perp  R: Sh 1.06 t 2.52 cagr 41% dd -34%  V: Sh 0.81 t 1.45 cagr 25% dd -39%  T: Sh 0.96 t 2.95 cagr 34% dd -39%
+confluence achat filtrée par lgbm>0,45                  spot  R: Sh 0.58 t 0.94 cagr 11% dd -30%  V: Sh 0.64 t 0.42 cagr 11% dd -18%  T: Sh 0.60 t 1.12 cagr 11% dd -31%
+
+######## ETH ########  achat-conservation : {'R': np.float64(0.6), 'V': np.float64(0.48), 'T': np.float64(0.55)}
+LightGBM — caractéristiques les plus utilisées : vol10, vol30, of_spot30, stable30, ret60, vol_ratio, of_perp30, histo_n, dvol_chg7, netflow30, ethbtc_dist50, mvrv
+lgbm 5j seuils 0.5/0.5                                  perp  R: Sh -0.46 t -1.25 cagr -48% dd -97%  V: Sh 0.77 t 1.38 cagr 33% dd -61%  T: Sh 0.02 t -0.28 cagr -22% dd -97%
+lgbm 5j seuils 0.5/0.5                                  spot  R: Sh 0.27 t -0.25 cagr -2% dd -75%  V: Sh 0.70 t 1.14 cagr 26% dd -60%  T: Sh 0.44 t 0.34 cagr 9% dd -75%
+lgbm 5j seuils 0.5/0.5 ventes seules                    court R: Sh -0.98 t -1.73 cagr -45% dd -96%  V: Sh 0.36 t 1.64 cagr 7% dd -40%  T: Sh -0.49 t -0.73 cagr -27% dd -97%
+lgbm 5j seuils 0.55/0.45                                perp  R: Sh -0.45 t -1.35 cagr -43% dd -95%  V: Sh 0.30 t 0.27 cagr 2% dd -65%  T: Sh -0.16 t -0.95 cagr -27% dd -96%
+lgbm 5j seuils 0.55/0.45                                spot  R: Sh 0.03 t -0.87 cagr -13% dd -70%  V: Sh 0.26 t -0.27 cagr 2% dd -62%  T: Sh 0.12 t -0.83 cagr -7% dd -71%
+lgbm 5j seuils 0.55/0.45 ventes seules                  court R: Sh -0.74 t -1.19 cagr -33% dd -91%  V: Sh 0.14 t 0.81 cagr -0% dd -41%  T: Sh -0.43 t -0.62 cagr -20% dd -91%
+lgbm 5j seuils 0.6/0.4                                  perp  R: Sh -0.18 t -0.73 cagr -28% dd -88%  V: Sh 0.06 t -0.29 cagr -6% dd -60%  T: Sh -0.10 t -0.76 cagr -19% dd -88%
+lgbm 5j seuils 0.6/0.4                                  spot  R: Sh 0.11 t -0.55 cagr -8% dd -66%  V: Sh 0.19 t -0.26 cagr 0% dd -47%  T: Sh 0.14 t -0.59 cagr -4% dd -66%
+lgbm 5j seuils 0.6/0.4 ventes seules                    court R: Sh -0.44 t -0.52 cagr -21% dd -79%  V: Sh -0.29 t -0.28 cagr -7% dd -36%  T: Sh -0.38 t -0.58 cagr -15% dd -79%
+HMM 2 états                                             perp  R: Sh 0.56 t 1.44 cagr 13% dd -88%  V: Sh 0.60 t 0.91 cagr 20% dd -57%  T: Sh 0.57 t 1.63 cagr 16% dd -88%
+HMM 2 états                                             spot  R: Sh 1.13 t 2.17 cagr 62% dd -75%  V: Sh 0.59 t 0.90 cagr 19% dd -59%  T: Sh 0.90 t 2.19 cagr 42% dd -75%
+HMM 3 états                                             perp  R: Sh -0.88 t -1.99 cagr -49% dd -97%  V: Sh 0.17 t 0.14 cagr -5% dd -80%  T: Sh -0.44 t -1.37 cagr -33% dd -98%
+HMM 3 états                                             spot  R: Sh -0.15 t -0.92 cagr -11% dd -62%  V: Sh 0.64 t 0.84 cagr 20% dd -58%  T: Sh 0.23 t -0.09 cagr 1% dd -62%
+confluence achat (référence)                            spot  R: Sh 1.24 t 2.42 cagr 36% dd -31%  V: Sh 0.80 t 1.25 cagr 19% dd -25%  T: Sh 1.05 t 2.65 cagr 28% dd -31%
+module vente seul                                       court R: Sh 0.21 t 0.88 cagr 2% dd -21%  V: Sh 0.02 t 0.31 cagr -1% dd -26%  T: Sh 0.13 t 0.86 cagr 1% dd -26%
+confluence achat + module vente                         perp  R: Sh 1.06 t 2.02 cagr 32% dd -32%  V: Sh 0.66 t 1.03 cagr 16% dd -41%  T: Sh 0.89 t 2.21 cagr 25% dd -41%
+confluence achat+vente symétrique (score<=-0,25)        perp  R: Sh 1.22 t 2.73 cagr 50% dd -31%  V: Sh 0.74 t 1.48 cagr 23% dd -49%  T: Sh 1.02 t 3.05 cagr 37% dd -49%

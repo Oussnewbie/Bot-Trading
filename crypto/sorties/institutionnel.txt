@@ -1,0 +1,43 @@
+== I1 cash-and-carry ==
+BTC — financement moyen 11.6% par an (2020-2026)
+  cash-and-carry toujours                        R: rendement/an +18.5%  Sharpe 8.87  pire baisse -2.5%  temps investi 100%
+  cash-and-carry toujours                        V: rendement/an +7.3%  Sharpe 12.49  pire baisse -0.4%  temps investi 100%
+  cash-and-carry toujours                        T: rendement/an +12.1%  Sharpe 8.39  pire baisse -2.5%  temps investi 100%
+  cash-and-carry si financement 7 j > 0%/an      R: rendement/an +16.2%  Sharpe 7.10  pire baisse -2.7%  temps investi 89%
+  cash-and-carry si financement 7 j > 0%/an      V: rendement/an +5.8%  Sharpe 6.63  pire baisse -2.6%  temps investi 92%
+  cash-and-carry si financement 7 j > 0%/an      T: rendement/an +10.2%  Sharpe 6.25  pire baisse -2.7%  temps investi 90%
+  cash-and-carry si financement 7 j > 5%/an      R: rendement/an +15.4%  Sharpe 7.16  pire baisse -2.4%  temps investi 70%
+  cash-and-carry si financement 7 j > 5%/an      V: rendement/an +1.8%  Sharpe 1.50  pire baisse -4.4%  temps investi 63%
+  cash-and-carry si financement 7 j > 5%/an      T: rendement/an +7.5%  Sharpe 4.46  pire baisse -4.4%  temps investi 66%
+  cash-and-carry si financement 7 j > 10%/an     R: rendement/an +15.0%  Sharpe 7.26  pire baisse -1.2%  temps investi 49%
+  cash-and-carry si financement 7 j > 10%/an     V: rendement/an +2.4%  Sharpe 3.08  pire baisse -1.9%  temps investi 23%
+  cash-and-carry si financement 7 j > 10%/an     T: rendement/an +7.7%  Sharpe 5.20  pire baisse -2.0%  temps investi 34%
+ETH — financement moyen 13.6% par an (2020-2026)
+  cash-and-carry toujours                        R: rendement/an +23.5%  Sharpe 8.23  pire baisse -1.8%  temps investi 100%
+  cash-and-carry toujours                        V: rendement/an +7.4%  Sharpe 11.60  pire baisse -0.6%  temps investi 100%
+  cash-and-carry toujours                        T: rendement/an +14.1%  Sharpe 7.37  pire baisse -1.8%  temps investi 100%
+  cash-and-carry si financement 7 j > 0%/an      R: rendement/an +22.1%  Sharpe 7.62  pire baisse -2.3%  temps investi 88%
+  cash-and-carry si financement 7 j > 0%/an      V: rendement/an +5.5%  Sharpe 5.69  pire baisse -2.7%  temps investi 92%
+  cash-and-carry si financement 7 j > 0%/an      T: rendement/an +12.4%  Sharpe 6.16  pire baisse -2.7%  temps investi 90%
+  cash-and-carry si financement 7 j > 5%/an      R: rendement/an +19.8%  Sharpe 6.65  pire baisse -5.0%  temps investi 73%
+  cash-and-carry si financement 7 j > 5%/an      V: rendement/an +0.8%  Sharpe 0.60  pire baisse -9.7%  temps investi 59%
+  cash-and-carry si financement 7 j > 5%/an      T: rendement/an +8.7%  Sharpe 3.96  pire baisse -9.7%  temps investi 65%
+  cash-and-carry si financement 7 j > 10%/an     R: rendement/an +20.3%  Sharpe 7.23  pire baisse -1.9%  temps investi 53%
+  cash-and-carry si financement 7 j > 10%/an     V: rendement/an +2.5%  Sharpe 3.35  pire baisse -1.6%  temps investi 23%
+  cash-and-carry si financement 7 j > 10%/an     T: rendement/an +9.9%  Sharpe 5.18  pire baisse -1.9%  temps investi 36%
+
+== I2 paire ETH/BTC ==
+ETH/BTC — achat-conservation du ratio : {'R': np.float64(0.38), 'V': np.float64(-0.5), 'T': np.float64(0.09)}
+  retour à la moyenne z30 ±1.5: R: Sh -1.46 cagr -57% dd -99% n 49  V: Sh -0.33 cagr -14% dd -70% n 48  T: Sh -1.06 cagr -42% dd -99% n 96
+  retour à la moyenne z30 ±2.0: R: Sh -1.18 cagr -47% dd -96% n 40  V: Sh -0.33 cagr -13% dd -69% n 37  T: Sh -0.88 cagr -34% dd -98% n 77
+  retour à la moyenne z60 ±1.5: R: Sh -0.82 cagr -41% dd -94% n 24  V: Sh -0.48 cagr -19% dd -72% n 27  T: Sh -0.69 cagr -32% dd -97% n 51
+  retour à la moyenne z60 ±2.0: R: Sh -0.47 cagr -27% dd -84% n 22  V: Sh -0.30 cagr -13% dd -63% n 22  T: Sh -0.41 cagr -21% dd -88% n 44
+  retour à la moyenne z90 ±1.5: R: Sh -0.18 cagr -18% dd -81% n 20  V: Sh -0.14 cagr -9% dd -60% n 22  T: Sh -0.17 cagr -14% dd -81% n 42
+  retour à la moyenne z90 ±2.0: R: Sh 0.04 cagr -8% dd -71% n 18  V: Sh -0.07 cagr -6% dd -56% n 17  T: Sh -0.00 cagr -8% dd -71% n 35
+  tendance du ratio MA20:       R: Sh 1.55 cagr 103% dd -42% n 164  V: Sh -0.46 cagr -21% dd -65% n 170  T: Sh 0.86 cagr 35% dd -76% n 334
+  tendance du ratio MA50:       R: Sh 0.91 cagr 42% dd -53% n 88  V: Sh 0.50 cagr 12% dd -60% n 93  T: Sh 0.75 cagr 28% dd -75% n 180
+  tendance du ratio MA100:       R: Sh 0.21 cagr -4% dd -67% n 73  V: Sh 0.08 cagr -4% dd -49% n 60  T: Sh 0.17 cagr -4% dd -82% n 132
+
+== I3 prime de volatilité ==
+BTC — DVOL moyen 60%, volatilité réalisée ensuite 52% : prime moyenne +7.9% ; positive 75% du temps ; pire -51% (2021-04)
+ETH — DVOL moyen 74%, volatilité réalisée ensuite 68% : prime moyenne +5.2% ; positive 67% du temps ; pire -95% (2021-04)

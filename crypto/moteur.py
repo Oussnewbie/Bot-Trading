@@ -15,6 +15,7 @@ MODES = {
     # coût par côté : frais taker + glissement
     "spot": dict(cout=0.0010 + 0.0002, financement=False, short=False),     # Binance spot 0,10 % + 0,02 %
     "perp": dict(cout=0.0005 + 0.0002, financement=True, short=True),       # Binance perpétuel 0,05 % + 0,02 %
+    "court": dict(cout=0.0005 + 0.0002, financement=True, short=True, seul_court=True),   # perpétuel, ventes seules
 }
 RECHERCHE = (pd.Timestamp("2018-01-01", tz="UTC"), pd.Timestamp("2023-01-01", tz="UTC"))
 VALIDATION = (pd.Timestamp("2023-01-01", tz="UTC"), pd.Timestamp("2026-11-17", tz="UTC"))
@@ -115,7 +116,7 @@ class Banc:
 
     def evaluer(self, pos, mode):
         m = MODES[mode]
-        p = np.clip(np.nan_to_num(np.asarray(pos, dtype=float)), -1 if m["short"] else 0, 1)
+        p = np.clip(np.nan_to_num(np.asarray(pos, dtype=float)), -1 if m["short"] else 0, 0 if m.get("seul_court") else 1)
         tenue = np.r_[0.0, p[:-1]]
         chg = np.abs(np.diff(np.r_[0.0, tenue]))
         net = tenue * self.r - chg * m["cout"]

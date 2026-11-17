@@ -36,16 +36,16 @@ def etat(cond_l, cond_s=None):
     return p
 
 
-def contexte(actif, tf):
+def contexte(actif, tf, decalage=0):
     """Toutes les séries alignées sur les bougies `tf` de l'actif (« BTC » ou « ETH »)."""
     sym = actif + "USDT"
-    d = DN.bougies(sym, "spot", tf)
+    d = DN.bougies(sym, "spot", tf, decalage)
     idx = d.index
     fin = idx + pd.Timedelta(hours=TF_H[tf])             # heure de clôture de chaque bougie
     ctx = dict(d=d, tf=tf, actif=actif, n_an=365 * 24 / TF_H[tf])
-    p = DN.bougies(sym, "perp", tf).reindex(idx)
+    p = DN.bougies(sym, "perp", tf, decalage).reindex(idx)
     ctx["perp"] = p
-    eb = DN.bougies("ETHBTC", "spot", tf).reindex(idx)
+    eb = DN.bougies("ETHBTC", "spot", tf, decalage).reindex(idx)
     ctx["ethbtc"] = eb.close.ffill()
     f = DN.financement(sym)
     from moteur import financement_par_bougie
@@ -56,6 +56,18 @@ def contexte(actif, tf):
     m = DN.metriques(sym)
     ctx["oi"] = m.sum_open_interest_value.reindex(idx.union(m.index)).ffill().reindex(idx).where(idx >= m.index.min())
     ctx["ls_taker"] = m.sum_taker_long_short_vol_ratio.reindex(idx.union(m.index)).ffill().reindex(idx).where(idx >= m.index.min())
+    # sentiment et marché : connus à la clôture de la bougie
+    pr = DN.prime_perp(sym)
+    ctx["prime"] = pr.reindex(idx.union(pr.index)).ffill().reindex(fin - pd.Timedelta("1h")).set_axis(idx).where(idx >= pr.index.min())
+    cb = DN.coinbase(actif + "-USD")
+    h1 = DN.bougies(sym, "spot", "1h").close
+    cbp = (cb / h1.reindex(cb.index) - 1).dropna()
+    cbp = cbp[(cbp.abs() < 0.05)]                       # écarte les cotations aberrantes
+    ctx["prime_cb"] = cbp.rolling(24, min_periods=6).mean().reindex(idx.union(cbp.index)).ffill() \
+        .reindex(fin - pd.Timedelta("1h")).set_axis(idx)
+    for k, x in DN.journaliers_extra(actif).items():
+        p_ = np.searchsorted(x.index.values, fin.values, side="right") - 1
+        ctx[k] = pd.Series(np.where(p_ >= 0, x.values[np.maximum(p_, 0)], np.nan), index=idx)
     oc = DN.onchain(actif.lower()).copy()
     oc.index = oc.index + pd.Timedelta(days=2)            # valeur du jour D utilisée à partir de D+2 00:00 UTC
     pos = np.searchsorted(oc.index.values, fin.values, side="right") - 1
@@ -356,6 +368,147 @@ def f_ethbtc(ctx):
     return out
 
 
+def f_sentiment(ctx):
+    """Prime des perpétuels (levier acheteur), prime Coinbase (demande américaine au comptant), Fear & Greed,
+    volatilité implicite DVOL (Deribit), masse des stablecoins (liquidité qui entre dans la crypto)."""
+    c = ctx["d"].close; out = {}
+    an = barres(ctx, 365)
+    m200 = I.sma(c, 200)
+    for nom, x in (("prime-perp", ctx["prime"]), ("prime-coinbase", ctx["prime_cb"])):
+        dispo = x.notna()
+        for jours in (1, 7, 30):
+            m = x.rolling(barres(ctx, jours), min_periods=1).mean()
+            rg = I.rang_glissant(m, an)
+            out[f"sentiment/{nom}{jours}j>0"] = etat(m > 0, m < 0).where(dispo, 0)
+            out[f"sentiment/{nom}{jours}j-suiveur"] = etat(rg > 0.5, rg < 0.5).where(dispo, 0)
+            out[f"sentiment/{nom}{jours}j-contrarien"] = etat(rg < 0.1, rg > 0.9).where(dispo, 0)
+            out[f"sentiment/{nom}{jours}j-excès-en-tendance"] = etat((rg < 0.1) & (c > m200), (rg > 0.9) & (c < m200)).where(dispo, 0)
+    f = ctx["fng"]; dispo = f.notna()
+    out["sentiment/fng-contrarien20-80"] = tenir(f < 20, f > 50, f > 80, f < 50).where(dispo, 0)
+    out["sentiment/fng-contrarien25-75"] = tenir(f < 25, f > 50, f > 75, f < 50).where(dispo, 0)
+    out["sentiment/fng-suiveur50"] = etat(f > 50, f < 50).where(dispo, 0)
+    for jours in (7, 30):
+        fm = f.rolling(barres(ctx, jours), min_periods=1).mean()
+        out[f"sentiment/fng-moyenne{jours}j-monte"] = etat(fm > fm.shift(barres(ctx, jours)), fm < fm.shift(barres(ctx, jours))).where(dispo, 0)
+    out["sentiment/fng-peur-extreme+ma200"] = tenir((f < 20) & (c > m200), (f > 60) | (c < m200),
+                                                    (f > 80) & (c < m200), (f < 40) | (c > m200)).where(dispo, 0)
+    v = ctx["dvol"]; dispo = v.notna()
+    rv = v.rolling(barres(ctx, 7), min_periods=1).mean()
+    rg = I.rang_glissant(rv, an)
+    out["sentiment/dvol-haut-achat"] = etat(rg > 0.8).where(dispo, 0)
+    out["sentiment/dvol-bas-tendance"] = etat((rg < 0.5) & (c > m200), (rg < 0.5) & (c < m200)).where(dispo, 0)
+    k7 = barres(ctx, 7)
+    out["sentiment/dvol-monte-prix-baisse"] = etat((v < v.shift(k7)) & (c > c.shift(k7)), (v > v.shift(k7)) & (c < c.shift(k7))).where(dispo, 0)
+    st = ctx["stable"]; dispo = st.notna()
+    for jours in (30, 90):
+        g = st / st.shift(barres(ctx, jours)) - 1
+        out[f"sentiment/stablecoins{jours}j-croissent"] = etat(g > 0, g < 0).where(dispo, 0)
+        out[f"sentiment/stablecoins{jours}j-acceleration"] = etat(g > g.rolling(barres(ctx, 90)).mean(),
+                                                                g < g.rolling(barres(ctx, 90)).mean()).where(dispo, 0)
+    return {k: x.fillna(0) for k, x in out.items()}
+
+
+def f_populaires(ctx):
+    """Indicateurs populaires pas encore couverts, et structure de marché ICT/SMC."""
+    d = ctx["d"]; c = d.close; out = {}
+    m200 = I.sma(c, 200)
+    # stochastique
+    for n in (14, 21):
+        k = 100 * (c - d.low.rolling(n).min()) / (d.high.rolling(n).max() - d.low.rolling(n).min())
+        kd = k.rolling(3).mean()
+        out[f"populaires/stoch{n}-retour20-80"] = tenir((kd < 20) & (kd > kd.shift()), kd > 50, (kd > 80) & (kd < kd.shift()), kd < 50)
+        out[f"populaires/stoch{n}>50"] = etat(kd > 50, kd < 50)
+    # ADX / DMI
+    up, dn = d.high.diff(), -d.low.diff()
+    pdm = up.where((up > dn) & (up > 0), 0.0); ndm = dn.where((dn > up) & (dn > 0), 0.0)
+    a = I.atr(d, 14)
+    pdi = 100 * pdm.ewm(alpha=1 / 14, adjust=False).mean() / a
+    ndi = 100 * ndm.ewm(alpha=1 / 14, adjust=False).mean() / a
+    adx = (100 * (pdi - ndi).abs() / (pdi + ndi)).ewm(alpha=1 / 14, adjust=False).mean()
+    for seuil in (20, 25):
+        out[f"populaires/dmi+adx>{seuil}"] = etat((pdi > ndi) & (adx > seuil), (pdi < ndi) & (adx > seuil))
+    out["populaires/dmi"] = etat(pdi > ndi, pdi < ndi)
+    # Parabolic SAR (0,02 / 0,2)
+    h, l = d.high.values, d.low.values; sar = np.zeros(len(d)); sens = np.ones(len(d)); af = 0.02; ep = h[0]; sar[0] = l[0]
+    for i in range(1, len(d)):
+        sar[i] = sar[i - 1] + af * (ep - sar[i - 1])
+        if sens[i - 1] > 0:
+            sar[i] = min(sar[i], l[i - 1], l[i - 2] if i > 1 else l[i - 1])
+            if l[i] < sar[i]:
+                sens[i], sar[i], ep, af = -1, ep, l[i], 0.02
+            else:
+                sens[i] = 1
+                if h[i] > ep:
+                    ep, af = h[i], min(af + 0.02, 0.2)
+        else:
+            sar[i] = max(sar[i], h[i - 1], h[i - 2] if i > 1 else h[i - 1])
+            if h[i] > sar[i]:
+                sens[i], sar[i], ep, af = 1, ep, h[i], 0.02
+            else:
+                sens[i] = -1
+                if l[i] < ep:
+                    ep, af = l[i], min(af + 0.02, 0.2)
+    out["populaires/parabolic-sar"] = pd.Series(sens, index=d.index)
+    # Keltner
+    for n, k in ((20, 2.0), (20, 1.5)):
+        m = I.ema(c, n); a_ = I.atr(d, n)
+        out[f"populaires/keltner{n}x{k}-cassure"] = tenir(c > m + k * a_, c < m, c < m - k * a_, c > m)
+    # Heikin-Ashi : couleur de la bougie, et 2 bougies de même couleur
+    ha_c = (d.open + d.high + d.low + c) / 4
+    ha_o = ha_c.copy()
+    ha_o.iloc[0] = d.open.iloc[0]
+    hv, cv = ha_o.to_numpy(copy=True), ha_c.to_numpy()
+    for i in range(1, len(hv)):
+        hv[i] = (hv[i - 1] + cv[i - 1]) / 2
+    vert = pd.Series(cv > hv, index=d.index)  # bougie HA verte
+    out["populaires/heikin-ashi"] = etat(vert, ~vert)
+    out["populaires/heikin-ashi-2"] = tenir(vert & vert.shift(1, fill_value=False), ~vert & ~vert.shift(1, fill_value=True),
+                                            ~vert & ~vert.shift(1, fill_value=True), vert & vert.shift(1, fill_value=False))
+    # bougies : englobante et marteau / étoile filante, dans la tendance (MA200) ou contre
+    corps = (c - d.open); rng_ = (d.high - d.low).replace(0, np.nan)
+    eng_h = (corps > 0) & (corps.shift() < 0) & (c > d.open.shift()) & (d.open < c.shift())
+    eng_b = (corps < 0) & (corps.shift() > 0) & (c < d.open.shift()) & (d.open > c.shift())
+    meche_b = (np.minimum(c, d.open) - d.low) / rng_; meche_h = (d.high - np.maximum(c, d.open)) / rng_
+    marteau = (meche_b > 0.6) & (corps.abs() / rng_ < 0.3); etoile = (meche_h > 0.6) & (corps.abs() / rng_ < 0.3)
+    k5 = barres(ctx, 5)
+    for nom, (eh, eb) in (("englobante", (eng_h, eng_b)), ("marteau-etoile", (marteau, etoile))):
+        p = tenir(eh, pd.Series(False, index=d.index), eb, pd.Series(False, index=d.index))
+        # tenue fixe de 5 jours après le signal
+        sig = etat(eh, eb)
+        tenu = sig.replace(0, np.nan).ffill(limit=k5 - 1).fillna(0)
+        out[f"bougies/{nom}-5j"] = tenu
+        out[f"bougies/{nom}-5j+ma200"] = tenu.where(np.sign(tenu) == np.sign(c - m200), 0)
+    # cycle long terme : MA 200 semaines, multiple de Mayer, Pi cycle
+    j = barres(ctx, 1)
+    m200s = I.sma(c, 1400 * j)
+    out["cycle/prix>ma200-semaines"] = etat(c > m200s, c < m200s).where(m200s.notna(), 0)
+    mayer = c / I.sma(c, 200 * j)
+    out["cycle/mayer<1-achat>2.4-vente"] = tenir(mayer < 1, mayer > 2.4).where(mayer.notna(), 0)
+    out["cycle/mayer>1"] = etat(mayer > 1, mayer < 1)
+    pi = I.sma(c, 111 * j) > 2 * I.sma(c, 350 * j)
+    out["cycle/pi-cycle-sortie"] = tenir(~pi & (c > I.sma(c, 111 * j)), pi)
+    # structure ICT/SMC : BOS / CHoCH sur pivots de 5 bougies (confirmés 5 bougies plus tard)
+    for n in (3, 5, 10):
+        hi, lo = d.high.values, d.low.values
+        dern_h = np.full(len(d), np.nan); dern_l = np.full(len(d), np.nan)
+        for i in range(2 * n, len(d)):
+            k = i - n
+            if hi[k] == hi[k - n:k + n + 1].max():
+                dern_h[i:] = hi[k]
+            if lo[k] == lo[k - n:k + n + 1].min():
+                dern_l[i:] = lo[k]
+        dh, dl = pd.Series(dern_h, index=d.index), pd.Series(dern_l, index=d.index)
+        out[f"structure/bos-choch{n}"] = tenir(c > dh, c < dl, c < dl, c > dh)
+    # zone premium / discount (ICT) de la jambe de 60 jours, dans la tendance
+    hh, ll = d.high.rolling(barres(ctx, 60)).max(), d.low.rolling(barres(ctx, 60)).min()
+    pos = (c - ll) / (hh - ll)
+    out["structure/discount-dans-tendance"] = tenir((pos < 0.5) & (c > m200), (pos > 0.9) | (c < m200),
+                                                    (pos > 0.5) & (c < m200), (pos < 0.1) | (c > m200))
+    out["structure/ote-0.62-0.79"] = tenir((pos > 0.21) & (pos < 0.38) & (c > m200), (pos > 0.9) | (c < m200),
+                                           (pos < 0.79) & (pos > 0.62) & (c < m200), (pos < 0.1) | (c > m200))
+    return {k: v.fillna(0) for k, v in out.items()}
+
+
 def f_calendrier(ctx):
     d = ctx["d"]; out = {}
     if ctx["tf"] == "1d":
@@ -371,7 +524,7 @@ def f_calendrier(ctx):
 
 
 FAMILLES = [f_tendance, f_ichimoku, f_macd, f_rsi, f_vwap, f_fibonacci, f_bollinger, f_orderflow, f_derives,
-            f_onchain, f_ethbtc, f_calendrier]
+            f_onchain, f_ethbtc, f_sentiment, f_populaires, f_calendrier]
 
 
 def tous(ctx):

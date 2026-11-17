@@ -1,5 +1,8 @@
 # Bitcoin et Ethereum : quelle stratégie avec RSI, MACD, VWAP, Ichimoku, MA200, Fibonacci, order flow ? — 17 novembre 2026
 
+Suite : `RAPPORT-2.md` (ventes, supports et résistances, sentiment, apprentissage, institutionnel) et
+`CATALOGUE.md` (toutes les stratégies et indicateurs, avec leur verdict).
+
 ## En bref
 
 - **Aucun outil seul ne tient.** 42 400 évaluations (354 variantes × 9 filtres × 3 unités de temps × spot/perpétuel × BTC

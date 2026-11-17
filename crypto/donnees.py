@@ -56,17 +56,20 @@ def _h1(sym, marche):
     return _cache(f"{sym}-{marche}-1h", lambda: _lire_klines(fs))
 
 
-def regrouper(d, tf):
+def regrouper(d, tf, decalage=0):
     if tf == "1h":
         return d
     agg = {"open": "first", "high": "max", "low": "min", "close": "last", "volume": "sum", "quote_volume": "sum",
            "count": "sum", "taker_buy_base": "sum"}
-    r = d.resample(tf.replace("h", "h").replace("d", "D").replace("w", "W-MON"), label="left", closed="left").agg(agg)
+    regle = {"1d": "24h", "4h": "4h", "2h": "2h", "12h": "12h"}.get(tf, tf.replace("d", "D").replace("w", "W-MON"))
+    r = d.resample(regle, label="left", closed="left", origin="epoch",
+                   offset=pd.Timedelta(hours=decalage)).agg(agg)
     return r.dropna(subset=["close"])
 
 
-def bougies(sym, marche="spot", tf="1h"):
-    d = regrouper(_h1(sym, marche), tf)
+def bougies(sym, marche="spot", tf="1h", decalage=0):
+    """decalage : heure UTC de clôture des bougies journalières (0 = minuit UTC, 22 = 22:00 UTC)."""
+    d = regrouper(_h1(sym, marche), tf, decalage)
     d["delta"] = 2 * d.taker_buy_base - d.volume       # achats agressifs - ventes agressives (en unités de l'actif)
     return d
 
@@ -119,3 +122,33 @@ def dukascopy(code, tf="1h"):
         return pd.concat({"bid": b.loc[idx], "ask": a.loc[idx]}, axis=1)
     d = _cache(f"duka-{code}-1h", f)
     return d
+
+
+# ───────────────────────── données supplémentaires (01_telecharger_extra.py) ─────────────────────────
+X = os.path.join(D, "extra")
+
+
+def prime_perp(sym):
+    """Indice de prime du perpétuel Binance (écart perp / indice spot), clôture horaire."""
+    d = pd.read_csv(f"{X}/{sym}-premium-1h.csv")
+    s = pd.Series(d.close.values, index=pd.to_datetime(d.t.astype("int64"), unit="ms", utc=True))
+    return s[~s.index.duplicated()].sort_index()
+
+
+def coinbase(prod):
+    d = pd.read_csv(f"{X}/coinbase-{prod}-1h.csv")
+    s = pd.Series(d.close.values, index=pd.to_datetime(d.t, unit="s", utc=True))
+    return s[~s.index.duplicated()].sort_index()
+
+
+def journaliers_extra(actif):
+    """Séries journalières, indexées par l'HEURE OÙ ELLES SONT CONNUES (prudent) :
+    fng (Fear & Greed, publié pour le jour D à 00:00 UTC à partir de D-1 : connu à D 00:00 + 1 h),
+    dvol (bougie D, connue à D+1 00:00), stablecoins (valeur du jour D, connue à D+1 00:00 + 1 jour de marge)."""
+    f = pd.read_csv(f"{X}/fear-greed.csv")
+    fng = pd.Series(f.value.values.astype(float), index=pd.to_datetime(f.timestamp, unit="s", utc=True) + pd.Timedelta("1h")).sort_index()
+    v = pd.read_csv(f"{X}/dvol-{actif}.csv")
+    dvol = pd.Series(v.close.values, index=pd.to_datetime(v.t, unit="ms", utc=True) + pd.Timedelta("1D")).sort_index()
+    s = pd.read_csv(f"{X}/stablecoins.csv")
+    st = pd.Series(s.usd.values, index=pd.to_datetime(s.t, unit="s", utc=True) + pd.Timedelta("2D")).sort_index()
+    return dict(fng=fng[~fng.index.duplicated()], dvol=dvol[~dvol.index.duplicated()], stable=st[~st.index.duplicated()])
