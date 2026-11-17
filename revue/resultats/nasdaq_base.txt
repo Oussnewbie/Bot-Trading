@@ -1,0 +1,11 @@
+prep 0.9 2291
+bt 1.2
+{'n': 1391, 'par_an': 157.0, 'R_moy': np.float64(0.483), 't_stat': np.float64(4.88), 'R_total': np.float64(671.6), 'gagnants': np.float64(0.206), 'dd_R': np.float64(-23.3), 'serie_pertes': 15, 'pyr': np.float64(0.266), 'be': np.float64(0.393), 'stop': np.float64(0.782), 'cagr_05': np.float64(0.4235), 'ambigus': 8}
+raison
+stop                          1088
+côté bloqué touché d'abord     496
+filtres                        309
+fin de journée                 303
+pas de cassure                  88
+pas de bougie 9:30               7
+Name: count, dtype: int64

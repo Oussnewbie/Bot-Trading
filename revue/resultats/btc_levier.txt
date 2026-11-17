@@ -1,0 +1,20 @@
+Levier (montage perpétuel dès ×2 ; avant 2020, les achats en perpétuel paient 10 %/an de financement, hypothèse)
+×1  2012-26: +66% Sh 1.88 dd -26% st0           | 2018-26: +34% Sh 1.25 dd -22% st0           | 2022-26: +20% Sh 0.91 dd -22% st0           | 2018-26 sans stop: +34% Sh 1.25 dd -22% st0
+×2  2012-26: +3% Sh 0.34 dd -38% st0 COUPÉ      | 2018-26: +16% Sh 0.69 dd -35% st0 COUPÉ     | 2022-26: +36% Sh 0.90 dd -39% st0           | 2018-26 sans stop: +16% Sh 0.69 dd -35% st0 COUPÉ
+×3  2012-26: +7% Sh 0.53 dd -29% st0 COUPÉ      | 2018-26: +27% Sh 0.80 dd -32% st0 COUPÉ     | 2022-26: +3% Sh 0.26 dd -40% st0 COUPÉ      | 2018-26 sans stop: +27% Sh 0.80 dd -32% st0 COUPÉ
+×4  2012-26: +9% Sh 0.51 dd -35% st1 COUPÉ      | 2018-26: +36% Sh 0.83 dd -34% st0 COUPÉ     | 2022-26: -2% Sh -0.01 dd -39% st0 COUPÉ     | 2018-26 sans stop: +36% Sh 0.83 dd -34% st0 COUPÉ
+×5  2012-26: +2% Sh 0.19 dd -43% st0 COUPÉ      | 2018-26: +1% Sh 0.16 dd -39% st0 COUPÉ      | 2022-26: -0% Sh 0.09 dd -39% st0 COUPÉ      | 2018-26 sans stop: +1% Sh 0.16 dd -39% st0 COUPÉ
+×6  2012-26: +2% Sh 0.18 dd -51% st0 COUPÉ      | 2018-26: -4% Sh -0.08 dd -42% st0 COUPÉ     | 2022-26: +1% Sh 0.17 dd -39% st0 COUPÉ      | 2018-26 sans stop: -4% Sh -0.08 dd -42% st0 COUPÉ
+×7  2012-26: +1% Sh 0.16 dd -59% st0 COUPÉ      | 2018-26: -3% Sh -0.02 dd -41% st0 COUPÉ     | 2022-26: -2% Sh -0.05 dd -38% st0 COUPÉ     | 2018-26 sans stop: -3% Sh -0.02 dd -41% st0 COUPÉ
+×8  2012-26: -3% Sh -0.23 dd -37% st0 COUPÉ     | 2018-26: -3% Sh 0.03 dd -41% st0 COUPÉ      | 2022-26: -1% Sh 0.03 dd -38% st0 COUPÉ      | 2018-26 sans stop: -3% Sh 0.03 dd -41% st0 COUPÉ
+×9  2012-26: -4% Sh -0.23 dd -42% st0 COUPÉ     | 2018-26: -2% Sh -0.11 dd -40% st0 COUPÉ     | 2022-26: -0% Sh 0.07 dd -40% st0 COUPÉ      | 2018-26 sans stop: -2% Sh -0.11 dd -40% st0 COUPÉ
+×10 2012-26: -3% Sh -0.39 dd -36% st0 COUPÉ     | 2018-26: -2% Sh -0.06 dd -42% st0 COUPÉ     | 2022-26: +1% Sh 0.14 dd -39% st0 COUPÉ      | 2018-26 sans stop: -2% Sh -0.06 dd -42% st0 COUPÉ
+
+Sans coupe-circuit (comme profils.py), achats en perpétuel payant 10 %/an avant 2020 :
+×1  2012-26: +66% Sh 1.88 dd -26% st0       | 2018-26: +34% Sh 1.25 dd -22% st0       | 2022-26: +20% Sh 0.91 dd -22% st0       | arrêt par le coupe-circuit (départ 2018) : jamais
+×2  2012-26: +132% Sh 1.71 dd -65% st1      | 2018-26: +61% Sh 1.17 dd -42% st0       | 2022-26: +36% Sh 0.90 dd -39% st0       | arrêt par le coupe-circuit (départ 2018) : 2020-02-19
+×3  2012-26: +199% Sh 1.67 dd -75% st3      | 2018-26: +87% Sh 1.17 dd -59% st0       | 2022-26: +48% Sh 0.90 dd -54% st0       | arrêt par le coupe-circuit (départ 2018) : 2019-08-14
+×4  2012-26: +211% Sh 1.55 dd -88% st8      | 2018-26: +104% Sh 1.17 dd -72% st0      | 2022-26: +52% Sh 0.89 dd -69% st0       | arrêt par le coupe-circuit (départ 2018) : 2019-06-27
+×5  2012-26: +180% Sh 1.46 dd -96% st16     | 2018-26: +73% Sh 1.05 dd -92% st4       | 2022-26: +48% Sh 0.88 dd -80% st0       | arrêt par le coupe-circuit (départ 2018) : 2019-02-24
+×7  2012-26: +57% Sh 1.32 dd -99% st41      | 2018-26: +31% Sh 1.03 dd -98% st10      | 2022-26: +16% Sh 0.86 dd -94% st1       | arrêt par le coupe-circuit (départ 2018) : 2018-07-25
+×10 2012-26: -76% Sh 1.11 dd -100% st100    | 2018-26: -57% Sh 0.97 dd -100% st25     | 2022-26: -46% Sh 0.84 dd -100% st3      | arrêt par le coupe-circuit (départ 2018) : 2018-01-08

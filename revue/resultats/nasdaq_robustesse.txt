@@ -1,0 +1,29 @@
+                                     n  R_moy          IC95_iid        IC95_blocs   P_neg sans_top10 sans_top20 sans_top2pct
+sans glissement v6                1391  0.483   [0.296 ; 0.682]   [0.320 ; 0.659]     0.0      0.311      0.184        0.109
+                ORB nu            2184  0.122   [0.034 ; 0.210]   [0.047 ; 0.200]  0.0004      0.074      0.034       -0.042
+                v6 sans pyramide  1391  0.235   [0.129 ; 0.347]   [0.144 ; 0.321]     0.0      0.162      0.104        0.068
+glis 1/0,5      v6                1391  0.364   [0.179 ; 0.557]   [0.201 ; 0.527]     0.0      0.193      0.067       -0.006
+                ORB nu            2184  0.064  [-0.023 ; 0.151]  [-0.012 ; 0.141]  0.0504      0.016     -0.024         -0.1
+                v6 sans pyramide  1391  0.183   [0.073 ; 0.299]   [0.096 ; 0.270]     0.0       0.11      0.053        0.017
+glis 2/1        v6                1391  0.215   [0.040 ; 0.405]   [0.051 ; 0.375]  0.0028      0.048     -0.073       -0.142
+                ORB nu            2184  0.006  [-0.081 ; 0.094]  [-0.068 ; 0.084]   0.441     -0.042     -0.082       -0.158
+                v6 sans pyramide  1391   0.12   [0.011 ; 0.233]   [0.028 ; 0.206]   0.004      0.047      -0.01       -0.046
+
+Nombre d'essais indépendants N tel que le meilleur de N stratégies sans avantage atteigne le t observé (≈ exp(t²/2)) :
+  v6 sans glissement: t=4.88 -> N ≈ 148,331
+  v6 glis 1/0,5: t=3.77 -> N ≈ 1,220
+  v6 glis 2/1: t=2.34 -> N ≈ 15
+
+=== Marge : part des trades où 3 unités (départ + ajout) dépassent 90 % de la marge ===
+risque 0.5% : notionnel 3 unités médian 4.9× le capital, max 44× ; trop gros pour : {'levier 5': '56%', 'levier 10': '8%', 'levier 20': '1%', 'levier 30': '0%', 'levier 50': '0%', 'levier 100': '0%'}
+risque 1.0% : notionnel 3 unités médian 9.7× le capital, max 87× ; trop gros pour : {'levier 5': '94%', 'levier 10': '56%', 'levier 20': '8%', 'levier 30': '1%', 'levier 50': '1%', 'levier 100': '0%'}
+risque 2.0% : notionnel 3 unités médian 19.4× le capital, max 175× ; trop gros pour : {'levier 5': '100%', 'levier 10': '94%', 'levier 20': '56%', 'levier 30': '23%', 'levier 50': '2%', 'levier 100': '1%'}
+
+=== Comptes financés : limites de perte (règles typiques, à vérifier chez ton courtier) ===
+risque 0.25%, phase 1 (+8 % avant −10 %) : {'objectif': '98%', 'perte max': '0%', "ni l'un ni l'autre": '2%', "trades médians jusqu'à l'objectif": 89}
+risque 0.50%, phase 1 (+8 % avant −10 %) : {'objectif': '94%', 'perte max': '5%', "ni l'un ni l'autre": '1%', "trades médians jusqu'à l'objectif": 39}
+risque 1.00%, phase 1 (+8 % avant −10 %) : {'objectif': '75%', 'perte max': '25%', "ni l'un ni l'autre": '0%', "trades médians jusqu'à l'objectif": 11}
+risque 0.50%, compte financé, 1 an (157 trades), −10 % : {'objectif': '0%', 'perte max': '5%', "ni l'un ni l'autre": '95%', "trades médians jusqu'à l'objectif": None}
+risque 1.00%, compte financé, 1 an (157 trades), −10 % : {'objectif': '0%', 'perte max': '30%', "ni l'un ni l'autre": '70%', "trades médians jusqu'à l'objectif": None}
+Pires trades (R): [-3.24 -1.74 -1.71 -1.41 -1.32]
+Année simulée (157 trades tirés au hasard) : R total médian 55, P(année < 0) = 9.8%, 5e centile -13 R

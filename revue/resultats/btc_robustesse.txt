@@ -1,0 +1,37 @@
+Grille REGLAGES 2018-2026 (135) : Sharpe médian 1.00, 10e-90e centile 0.83-1.16, max 1.32
+Réglage final : Sharpe 1.25, rang 4/135
+{'aucune': 1.01, 'ema20/50': 0.88, 'ema50/200': 1.13} {0.0: 0.98, 0.15: 0.94, 0.25: 1.11, 0.35: 1.03, 0.5: 1.0} {0.0: 1.0, 0.25: 1.04, 0.5: 0.98}
+
+Retrait d'un vote (Sharpe 2018-2026, réglage final) :
+  sans ma200     : Sharpe 1.10  CAGR +29%  dd -26%
+  sans ichimoku  : Sharpe 1.22  CAGR +33%  dd -22%
+  sans macd      : Sharpe 1.21  CAGR +34%  dd -26%
+  sans rsi       : Sharpe 1.24  CAGR +34%  dd -22%
+  sans vwap      : Sharpe 1.25  CAGR +34%  dd -26%
+  sans fibonacci : Sharpe 1.15  CAGR +31%  dd -24%
+  sans orderflow : Sharpe 1.22  CAGR +34%  dd -26%
+  sans onchain   : Sharpe 1.19  CAGR +33%  dd -25%
+  sans ethbtc    : Sharpe 1.12  CAGR +30%  dd -24%
+  votes ['ma200'] seulement: Sharpe 0.99 CAGR +25% dd -31%
+  votes ['ma200', 'ichimoku', 'macd', 'rsi'] seulement: Sharpe 1.25 CAGR +37% dd -24%
+
+Binance vs Bitstamp (bougies 4h depuis 2018-06) : même sens 98.5%, écart moyen d'exposition 0.008
+  décisions Bitstamp, prix Bitstamp: CAGR +35% Sharpe 1.28 dd -22%
+  décisions Binance, prix Binance: CAGR +39% Sharpe 1.39 dd -23%
+
+12 mois à partir de chaque jour (2018-2025) : bot < 0 dans 10% des départs (pire -18%, médiane +24%) ; MA200 dosée < 0 : 31% ; achat-garde < 0 : 36% ; bot > MA200 dosée : 61%
+Par année civile (bot / MA200 dosée / achat-garde) :
+  2018: +6% / -24% / -73%
+  2019: +103% / +36% / +87%
+  2020: +109% / +107% / +304%
+  2021: +20% / -13% / +57%
+  2022: -3% / +0% / -65%
+  2023: +31% / +65% / +154%
+  2024: +64% / +60% / +111%
+  2025: -2% / -10% / -7%
+  2026: +16% / -1% / -23%
+
+Blocs de 60 jours, Sharpe bot : IC95 [0.49 ; 1.95]
+  bot − MA200 dosée : Sharpe +0.43, IC95 [-0.07 ; +0.97], P(≤0) = 4.9%
+  bot − EMA50/200 4h dosée : Sharpe +0.09, IC95 [-0.19 ; +0.40], P(≤0) = 25.7%
+  bot − achat-garde : Sharpe +0.55, IC95 [-0.06 ; +1.18], P(≤0) = 3.7%

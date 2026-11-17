@@ -1,0 +1,16 @@
+                                                    2012-07 → 2017        2018 → 13/11/2026 expo moy 2018+ ordres/an rotation/an        2022 → 13/11/2026 après 13/11/2026
+bot ×1 (prudent)                          +135%/an Sh 2.69 dd -26%  +34%/an Sh 1.25 dd -22%           0.31        75        28.2  +20%/an Sh 0.91 dd -22%           +0.99%
+bot ×1 sans coupe-circuit                 +135%/an Sh 2.69 dd -26%  +34%/an Sh 1.25 dd -22%           0.31        75        28.2  +20%/an Sh 0.91 dd -22%           +0.99%
+bot ×1 coûts ×0                           +155%/an Sh 2.94 dd -23%  +38%/an Sh 1.38 dd -20%           0.31        75        28.2  +25%/an Sh 1.07 dd -20%           +0.99%
+bot ×1 coûts ×2                            +47%/an Sh 1.53 dd -37%  +29%/an Sh 1.12 dd -24%           0.31        75        28.3  +16%/an Sh 0.74 dd -24%           +0.99%
+bot ×1 coûts ×3                            -1%/an Sh -0.03 dd -36%  +25%/an Sh 0.99 dd -28%           0.31        75        28.3  +11%/an Sh 0.58 dd -28%           +0.99%
+bot ×1 vente paie 10 %/an avant 2020      +134%/an Sh 2.68 dd -26%  +33%/an Sh 1.25 dd -22%           0.31        75        28.2  +20%/an Sh 0.91 dd -22%           +0.99%
+bot ×1 sans bande                         +131%/an Sh 2.67 dd -25%  +34%/an Sh 1.26 dd -21%           0.31      2192        30.9  +21%/an Sh 0.93 dd -21%           +0.95%
+bot équilibré (60 %)                        +5%/an Sh 0.43 dd -33%  +40%/an Sh 1.21 dd -28%           0.38        68        34.2  +22%/an Sh 0.88 dd -28%           +0.99%
+bot sans vente                            +131%/an Sh 2.67 dd -25%  +31%/an Sh 1.22 dd -23%           0.25        42        22.6  +18%/an Sh 0.87 dd -23%           +0.00%
+achat et garde                            +303%/an Sh 1.99 dd -85%  +20%/an Sh 0.61 dd -81%            1.0         0         0.1   +8%/an Sh 0.40 dd -67%           -3.96%
+MA200 journalière (100 %)                 +313%/an Sh 2.12 dd -71%  +18%/an Sh 0.58 dd -68%           0.54         8         7.9  +24%/an Sh 0.80 dd -29%           +0.00%
+MA200 + même dosage vol 40 %              +147%/an Sh 2.40 dd -45%  +19%/an Sh 0.72 dd -42%            0.4        29         7.2  +20%/an Sh 0.78 dd -24%           +0.00%
+dosage vol 40 % seul (toujours acheteur)  +142%/an Sh 2.14 dd -61%  +20%/an Sh 0.63 dd -65%           0.73        42         3.7   +9%/an Sh 0.41 dd -55%           -3.90%
+EMA50/200 4h seule + dosage               +119%/an Sh 2.38 dd -39%  +32%/an Sh 1.12 dd -31%           0.33        54        28.0  +15%/an Sh 0.65 dd -31%           +0.00%
+votes seuls (sans tendance 4h)            +133%/an Sh 2.57 dd -29%  +31%/an Sh 1.14 dd -29%           0.34        76        29.9  +19%/an Sh 0.86 dd -25%           +0.99%
