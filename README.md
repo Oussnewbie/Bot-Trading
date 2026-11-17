@@ -29,7 +29,9 @@ trades (156 par an), **+0,46R par trade, +643R**, pire baisse −23R, 15 pertes 
   de 76R avec la pyramide de 2 unités (74R avec une unité).
 - Capital, gains réinvestis, 2018 → 2026 : 0,25 % par trade → +19 % par an, pire baisse −6 % ; 0,5 % → +40 %, −11 % ;
   1 % → +88 %, −22 %. Si une période comme 2015-2017 revenait : environ −17 % à 0,25 %, −32 % à 0,5 %, −53 % à 1 %.
-- Le résultat dépend du glissement : +565R avec 0,5 point par exécution, +455R avec 1 point.
+- Le résultat dépend du glissement : +565R avec 0,5 point par exécution, +455R avec 1 point. Mesuré sur le future NQ, le
+  glissement réel d'un ordre stop natif donne environ +500R (CFD ou futures), et un ordre au marché envoyé 250 ms après le
+  déclenchement +352R : voir [backtest/m1/RAPPORT.md](backtest/m1/RAPPORT.md).
 - Garde un risque fixe : réduire la mise après des pertes ou en période de baisse a fait moins bien dans le test.
 
 Ce n'est pas un conseil en investissement, et le passé ne garantit rien. Fais tourner l'EA en démo avant le réel, et

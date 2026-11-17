@@ -51,6 +51,29 @@ l'ajout de 2. Entre les trades, un risque fixe bat toutes les règles qui rédui
 baisse : les résultats alternent (après 3 pertes de suite, le trade suivant fait +0,6R en moyenne, contre +0,2 à
 +0,3R sinon, sur les deux périodes).
 
+## Coûts réels, CFD ou futures (mesuré le 17 novembre 2026)
+
+Le glissement a été mesuré sur les transactions du future NQ (Databento) à chaque cassure et à chaque stop touché avant
+10:00 : écart entre le niveau et le pire prix échangé juste après le déclenchement.
+
+| Exécution | Glissement moyen par exécution | 2018-05 → 2022-08 | 2022-09 → 2026-11 | Tout | Pire baisse |
+|---|---|---|---|---|---|
+| Hypothèse du test (spread Dukascopy + 0,1 point) | 0,1 pt | +371R | +233R | +643R | −23R |
+| Ordre stop natif, au déclenchement : CFD | 0,6 pt (2019) à 1,9 pt (2026) | +288R | +186R | +507R | −26R |
+| Ordre stop natif : future MNQ (1 tick + 1,2 $ de commission aller-retour) | idem | +301R | +166R | +497R | −29R |
+| Ordre stop natif : future NQ (1 tick + 4,5 $ aller-retour) | idem | +315R | +173R | +520R | −27R |
+| Ordre au marché envoyé 250 ms après le déclenchement (comme l'EA aujourd'hui), CFD | 0,9 pt (2019) à 3,7 pt (2026) | +200R | +123R | +352R | −36R |
+
+- **Ce qui coûte, c'est le délai, pas le spread.** À exécution égale, CFD et futures font presque le même résultat : le
+  spread du CFD (1,3 point) vaut à peu près le tick et la commission d'un MNQ. Un ordre stop posé chez le courtier ou à la
+  bourse rapporte environ 150R de plus qu'un ordre au marché envoyé par l'EA après le déclenchement.
+- **Le glissement augmente** : 0,6 point en 2019, 1,4 en 2025, 1,9 en 2026 au déclenchement ; le double avec 250 ms de
+  délai.
+- **Prop firms** : en MNQ (1 contrat, +2 à la pyramide), le risque d'un trade fait 170 $ en médiane depuis 2025 (jusqu'à
+  500 $) et la pire baisse depuis 2024 atteint 5 200 $. Une évaluation 50K (baisse maximale suiveuse de 2 000 à 2 500 $,
+  objectif 3 000 $) réussit dans 43 à 60 % des départs ; une 150K (4 500 $, objectif 9 000 $) dans 16 %. Les baisses
+  normales de la stratégie dépassent la marge de ces comptes.
+
 ## Refaire les chiffres
 
 ```
