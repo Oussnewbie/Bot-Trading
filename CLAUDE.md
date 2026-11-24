@@ -29,15 +29,16 @@ recherche/   rapports des sessions 2 à 4, journal (notes/nasdaq-progress.md), t
 ```
 
 Commandes, à lancer depuis la racine du dépôt :
-- Tests : `.venv/bin/python -m pytest robot etrave -q` (42 tests ; il faut seulement pytest). Le `.venv` du dépôt tourne sous Python 3.15.
+- Tests : `.venv/bin/python -m pytest robot etrave -q` (50 tests ; il faut seulement pytest). Le `.venv` du dépôt tourne sous Python 3.15.
 - Étrave : `.venv/bin/python etrave/etrave.py --sans-navigateur --port 8799 --dossier <dossier jetable>`, puis la page sur
   `http://127.0.0.1:8799`.
 
 ## Ce qu'on ne peut pas vérifier sur ce Mac
 - **Pas de MetaEditor ni de TradingView.** N'affirme jamais qu'un `.mq5` ou un `.pine` modifié compile.
-  - Le `.mq5` a compilé avec 0 erreur sous Wine, sur la plateforme Claude, le 21 novembre 2026. La recette est dans
-    `recherche/notes/nasdaq-progress.md`, session 2.
-  - Le `.pine` est passé par l'analyseur de TradingView.
+  - La version du 21 novembre 2026 avait compilé avec 0 erreur sous Wine, sur la plateforme Claude (recette dans
+    `recherche/notes/nasdaq-progress.md`, session 2), et le `.pine` était passé par l'analyseur de TradingView.
+  - **Les correctifs du 24 novembre (branche `correctifs/execution-v10`) n'ont été ni compilés ni analysés.** Sur ce Mac, Wine
+    n'est pas installé : ses paquets Homebrew sont désactivés depuis septembre 2026, et Rosetta est absent.
 - **Pas de `.ex5` dans le dépôt** : il ne correspondrait plus au `.mq5` après la première modification. L'utilisateur compile avec F7
   dans MetaEditor, ou avec le bouton d'installation d'Étrave. Après toute modification du `.mq5`, demande-lui de compiler et de te
   renvoyer les erreurs éventuelles.

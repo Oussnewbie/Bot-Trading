@@ -97,6 +97,19 @@
 // Réglages à vérifier : décalage horaire du serveur (le panneau affiche l'heure de New York calculée : elle doit être
 // juste), compte en mode « hedging » OBLIGATOIRE pour les entrées B, C et D, et pour WhatsApp / Telegram autoriser l'adresse dans
 // Outils > Options > Expert Advisors > « Autoriser WebRequest pour les URL listées ».
+// CORRECTIFS D'EXÉCUTION DU 24/11/2026 (constats de la revue du 17/11/2026 ; règles de trading inchangées) :
+//  - heure du serveur différente des réglages : aucun ordre ce jour-là (avant : trade sur la mauvaise bougie) ;
+//  - RSI de 9:30 lu seulement quand l'indicateur a calculé la nouvelle bougie ;
+//  - arrondi des lots qui ne monte jamais (un pas de 0,5 arrondissait 0,5 lot à 1 lot : risque doublé) ;
+//  - ordres stop : l'expiration la plus courte acceptée ; supprimés quand l'EA est retiré ou MetaTrader fermé ;
+//  - entrée au marché refusée au-delà de 1,25 R de risque réel (EA lancé en retard, saut de prix) ;
+//  - pyramide : stop de l'ensemble jamais sous +1R, pire cas -1R ; ajout calculé sur le volume réellement ouvert ;
+//  - réponse du courtier perdue : pas d'ordre au marché en double, et une entrée B/C/D ouverte est reprise ;
+//  - redémarrage : état écrit sur le disque, position de départ = la plus ancienne, pyramide déjà faite comptée ;
+//  - filet de sécurité : une fois par minute, toute position de l'EA encore ouverte après la sortie de fin de journée
+//    (ou ouverte un jour précédent) est fermée ;
+//  - messages WhatsApp / Telegram envoyés un par un (3 s d'attente au plus), pour ne pas retarder les sorties.
+// Version non compilée au moment de ces correctifs : compiler (F7) et passer le testeur avant tout usage.
 #property copyright   "Bot-Trading"
 #property version     "10.00"
 #property description "Strategy V10 : cassure du range de 9:30 (v7 : pyramide à +2R, règle mémoire, jours FOMC et fériés exclus) + repli sur le VWAP + 3 continuations (bougies de 9:35 à 9:45). Stop élargi (profil Confort) par défaut. Nasdaq uniquement."
@@ -309,6 +322,7 @@ long     gCloseSeen = 0;        // dernière demande de clôture traitée
 bool     gCloseDue  = false;
 bool     gClockOk   = true;     // l'heure du serveur correspond aux réglages
 double   gBalStart  = 0;        // solde au moment de l'entrée (résultat du trade en %)
+bool     gGvDirty   = false;    // état modifié depuis la dernière écriture sur le disque (FlushState)
 string   gQueue[];              // messages WhatsApp / Telegram en attente : envoyés APRÈS le passage des ordres
 
 //--- statistiques en R
@@ -631,7 +645,7 @@ void FlushNotifs()
 //+------------------------------------------------------------------+
 //| Sauvegarde de l'état (redémarrage de MT5 ou de l'EA)             |
 //+------------------------------------------------------------------+
-void   Sv(string k, double v) { GlobalVariableSet(GV + k, v); }
+void   Sv(string k, double v) { GlobalVariableSet(GV + k, v); gGvDirty = true; }
 double Ld(string k, double d) { return GlobalVariableCheck(GV + k) ? GlobalVariableGet(GV + k) : d; }
 
 void SaveState()
@@ -650,9 +664,21 @@ void SaveState()
    Sv("pyr", gPyr); Sv("posid2", (double)gPosId2); Sv("vstop", gVStop); Sv("bal0", gBalStart);
    Sv("n", gN); Sv("win", gWin); Sv("streak", gStreak); Sv("worst", gWorst);
    Sv("sumr", gSumR); Sv("peak", gPeak); Sv("dd", gDD);
-   // Correctif X-03 (revue du 17/11/2026) : après un plantage, l'état relu pouvait être plus ancien que le trade.
+   // Correctif X-03 (revue du 17/11/2026) : l'ajout refusé reste refusé après un redémarrage.
    Sv("pyrtoday", gUsePyrToday);
+  }
+
+// Correctif X-03 (revue du 17/11/2026) : MetaTrader n'écrit ses variables globales sur le disque qu'à sa fermeture ; après un
+// plantage, l'état relu pouvait être plus ancien que le trade. Tout changement (cassure et jambes, via Sv) est écrit sur le
+// disque à la fin de la cotation ou du passage du minuteur, au plus une fois par seconde.
+void FlushState()
+  {
+   static uint last = 0;
+   if(!gGvDirty || MQLInfoInteger(MQL_TESTER) || GetTickCount() - last < 1000)
+      return;
    GlobalVariablesFlush();
+   gGvDirty = false;
+   last     = GetTickCount();
   }
 
 void LoadState()
@@ -761,13 +787,15 @@ ulong FindPos()
    return best;
   }
 
-int CountPos()   // positions du trade de cassure (départ + ajout éventuel)
+int CountPos(int dir)   // positions du trade de cassure dans le sens dir (départ + ajout éventuel)
   {
    int n = 0;
    for(int i = PositionsTotal() - 1; i >= 0; i--)
      {
       ulong tk = PositionGetTicket(i);
-      if(tk != 0 && PositionGetString(POSITION_SYMBOL) == _Symbol && (ulong)PositionGetInteger(POSITION_MAGIC) == InpMagic)
+      if(tk == 0 || PositionGetString(POSITION_SYMBOL) != _Symbol || (ulong)PositionGetInteger(POSITION_MAGIC) != InpMagic)
+         continue;
+      if((PositionGetInteger(POSITION_TYPE) == POSITION_TYPE_BUY ? 1 : -1) == dir)
          n++;
      }
    return n;
@@ -1069,7 +1097,7 @@ void SyncPosition()
         }
       // Correctif X-03 (revue du 17/11/2026) : si l'ajout de la pyramide existe déjà (état relu plus ancien que le trade, après
       // un plantage), la pyramide est comptée comme faite : pas de second ajout, et l'ajout est suivi comme tel.
-      gPyr     = CountPos() > 1;
+      gPyr     = CountPos(gDir) > 1;   // même sens : une position de sens contraire est fermée par CloseOpposite
       gUsePyrToday = !gPyr;
       gPosId2  = 0;
       if(gPyr)
@@ -1078,7 +1106,8 @@ void SyncPosition()
          for(int ip = PositionsTotal() - 1; ip >= 0; ip--)
            {
             ulong tp = PositionGetTicket(ip);
-            if(tp != 0 && tp != tk && PositionGetString(POSITION_SYMBOL) == _Symbol && (ulong)PositionGetInteger(POSITION_MAGIC) == InpMagic)
+            if(tp != 0 && tp != tk && PositionGetString(POSITION_SYMBOL) == _Symbol && (ulong)PositionGetInteger(POSITION_MAGIC) == InpMagic &&
+               (PositionGetInteger(POSITION_TYPE) == POSITION_TYPE_BUY ? 1 : -1) == gDir)
                gPosId2 = PositionGetInteger(POSITION_IDENTIFIER);
            }
          PositionSelectByTicket(tk);
@@ -2782,6 +2811,7 @@ void OnTimer()
      }
    CheckClock();
    FlushNotifs();
+   FlushState();
    WriteState();
    Panel();
   }
@@ -2852,5 +2882,6 @@ void OnTick()
    // 5. messages WhatsApp / Telegram, une fois les ordres passés
    FlushNotifs();
    Panel();
+   FlushState();
   }
 //+------------------------------------------------------------------+

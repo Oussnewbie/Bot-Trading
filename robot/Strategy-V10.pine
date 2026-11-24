@@ -73,6 +73,9 @@
 //
 // Nasdaq (NAS100) uniquement. Le testeur de TradingView ne compte pas le spread d'un CFD : ajoute une commission
 // dans « Propriétés ». L'EA MetaTrader (Strategy-V10.mq5), qui voit le bid et l'ask, est la version de référence.
+// CORRECTIFS DU 24/11/2026 : l'alerte « ORDRES ORB placés » donne le stop élargi (elle donnait l'autre bord du range) ; quand la
+// taille du backtest TradingView s'arrondit à zéro, elle est portée au pas minimum pour que les ordres et alertes restent affichés.
+// Version non passée par l'analyseur de TradingView au moment de ces correctifs.
 strategy("Strategy V10 — ORB New York, stop élargi (Confort) + repli VWAP + continuations", shorttitle = "Strategy V10", overlay = true,
      initial_capital = 10000, currency = currency.USD, pyramiding = 20,
      process_orders_on_close = true, margin_long = 0, margin_short = 0, slippage = 2,
@@ -724,9 +727,11 @@ markC(bool pris, string txt) =>
         line.delete(v8.cLn)
     true
 
-// Taille d'une entrée B ou C : pas plus d'unités que la cassure, pas plus que la somme qu'elle risque (1R)
+// Taille d'une entrée B, C ou D : pas plus d'unités que la cassure, pas plus que la somme qu'elle risque (1R).
+// Correctif PINE-03 (24/11/2026) : au moins le pas minimum, pour que le signal reste affiché quand la taille du backtest
+// TradingView s'arrondit à zéro (le lot à passer chez le courtier, legLots, est calculé à part).
 legQty(float dist) =>
-    dist > 0 and not na(v8.qty) and not na(v8.usd) ? math.min(v8.qty, math.floor(v8.usd / (dist * syminfo.pointvalue * fx) / qtyStep + 0.000001) * qtyStep) : 0.0
+    dist > 0 and not na(v8.qty) and not na(v8.usd) ? math.min(v8.qty, math.max(qtyStep, math.floor(v8.usd / (dist * syminfo.pointvalue * fx) / qtyStep + 0.000001) * qtyStep)) : 0.0
 
 // Lot correspondant chez le courtier : même règle, avec le lot et le risque de la cassure
 legLots(float dist) =>

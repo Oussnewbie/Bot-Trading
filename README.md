@@ -166,9 +166,9 @@ Tests : `python -m pytest robot etrave`, à la racine du dépôt. Ils vérifient
 
 ## Limites connues
 
-- **Le robot n'a jamais été vu en train de tourner.** Le `.mq5` compile sans erreur (MetaEditor, 21 novembre 2026) et le `.pine` passe
-  l'analyseur de TradingView, mais personne ne l'a encore vu passer un ordre. Il faut le testeur de stratégie, puis une démo, avant
-  tout argent réel.
+- **Le robot n'a jamais été vu en train de tourner.** La version du 21 novembre 2026 compilait sans erreur (MetaEditor) et passait
+  l'analyseur de TradingView. Celle-ci, corrigée le 24 novembre (voir l'en-tête du `.mq5`), **n'a pas encore été compilée**. Il faut
+  la compiler (F7), puis le testeur de stratégie, puis une démo, avant tout argent réel.
 - **Nasdaq seulement, pour l'instant.**
   - Le Dow Jones testé tel quel ne gagne rien.
   - Le S&P 500 n'a eu qu'un contrôle de la version précédente, avec un avantage qui disparaît à coûts doublés.

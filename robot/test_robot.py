@@ -170,11 +170,16 @@ def test_jambe_reprise_quand_la_reponse_est_perdue():
 
 def test_redemarrage_etat_ecrit_et_pyramide_comptee():
     """X-03 : état non écrit sur le disque, ajout repris comme trade de départ, second ajout possible."""
-    sauve = fonction("void SaveState()")
-    assert "GlobalVariablesFlush();" in sauve and 'Sv("pyrtoday", gUsePyrToday);' in sauve
+    assert 'Sv("pyrtoday", gUsePyrToday);' in fonction("void SaveState()")
     assert 'gUsePyrToday = Ld("pyrtoday", 1) != 0;' in fonction("void LoadState()")
+    assert "gGvDirty = true;" in EA[EA.index("void   Sv("):EA.index("double Ld(")]      # cassure ET jambes (LegSave passe par Sv)
+    assert "GlobalVariablesFlush();" in fonction("void FlushState()")
+    for evenement in ("void OnTick()", "void OnTimer()"):
+        assert "FlushState();" in fonction(evenement)
     assert "t < t0" in fonction("ulong FindPos()")                                  # la plus ancienne
-    assert "gPyr     = CountPos() > 1;" in fonction("void SyncPosition()")
+    adoption = fonction("void SyncPosition()")
+    assert "gPyr     = CountPos(gDir) > 1;" in adoption                             # même sens seulement
+    assert "POSITION_TYPE_BUY ? 1 : -1) == dir" in fonction("int CountPos(int dir)")
 
 
 def test_ajout_calcule_sur_le_volume_reellement_ouvert():
@@ -194,3 +199,11 @@ def test_le_script_affiche_les_ordres_meme_si_la_taille_tradingview_s_arrondit_a
     """PINE-03 : stop ×3 et 0,25 % : la taille du backtest TradingView tombait à 0, et le jour était marqué « taille nulle »."""
     assert "float qty    = qtyMin ? qtyStep : qtyRaw" in PINE
     assert PINE.index("bool  qtyMin = not na(qtyRaw) and qtyRaw <= 0") < PINE.index("bool  go  = pDir != 2 and not na(qty) and qty > 0")
+
+
+
+def test_les_entrees_b_c_d_du_script_restent_affichees():
+    """PINE-03 : la taille d'une entrée B, C ou D du backtest TradingView ne tombe plus à zéro."""
+    corps = PINE[PINE.index("legQty(float dist) =>"):]
+    corps = corps[:corps.index("\n\n")]
+    assert "math.max(qtyStep," in corps
