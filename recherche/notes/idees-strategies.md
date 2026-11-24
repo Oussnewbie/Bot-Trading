@@ -350,3 +350,84 @@ Marchés : EUR/USD, GBP/USD, or. Recherche jusqu'au 31 décembre 2023. Mêmes cr
   être écrite à l'avance et jugée sur le coffre 3.
 - Leçon : sur ces marchés, à l'échelle de la journée, les règles classiques ne laissent rien après les coûts d'un CFD. Rien n'est retenu hors Nasdaq.
 - Nasdaq : le seul changement retenu en session 4 est la largeur du stop (profil Confort de la V10). Il n'augmente pas le gain à baisse égale.
+
+
+# SESSION 5 (24 novembre 2026) — quatre règles jugées une seule fois sur le S&P 500. Écrit AVANT tout chargement des données du S&P 500 Dukascopy
+
+Origine : `recherche/critique-v10.md` et `recherche/reports/Pistes ORB asymétrie stop gamma VIX.md`.
+But de l'utilisateur : perdre moins souvent, et bien lire les baisses comme les hausses.
+
+## Critère de réussite, choisi par l'utilisateur le 24/11/2026 (« critère A »)
+Une règle est retenue seulement si les quatre conditions sont vraies au coût principal, sur toute la période :
+1. **Taux de trades gagnants** (r > +0,05 R) **plus haut** que celui de la référence R0. La différence doit être significative
+   après correction de Holm sur les 4 règles (seuils unilatéraux 0,0125, 0,0167, 0,025, puis 0,05). La p-valeur se calcule par
+   tirage de jours avec remise : 10 000 tirages, les deux taux étant recalculés sur le même tirage.
+2. **Gain total** au moins égal à 75 % de celui de R0 (perte de gain de 25 % au plus).
+3. **Part de jours perdants** pas plus haute que celle de R0.
+4. **Au coût de résistance 1,2 pb**, le taux de trades gagnants reste plus haut que celui de R0.
+
+Si R0 ne gagne rien au coût principal (total ≤ 0), aucune règle n'est retenue sur ces données. On rapporte alors les taux de
+réussite et de stops, et la décision attend des données neuves.
+
+## Données juges
+- S&P 500 CFD Dukascopy (`usa500idxusd`), M1 bid et ask, du 2018-01-01 à la dernière journée complète disponible. Jamais chargées à
+  ce jour.
+- Réserve : un contrôle des entrées de la V9 a été fait sur le S&P 500 HistData 2015-2025 (bid seul, `resultats/62_sp500.md`).
+  L'indice n'est donc pas tout à fait vierge, mais ces données-ci et ces règles-ci n'ont jamais été regardées.
+- Préparation comme pour le Nasdaq : heure de New York, bougie de 9:30, jours FOMC et fériés américains.
+- Contrôle de qualité avant toute stratégie (spread, trous, jours incomplets). Une période inutilisable est exclue par une règle
+  écrite à ce moment-là, avant tout résultat de stratégie.
+
+## Coûts, fixés pour le S&P 500
+- Spread réel Dukascopy, plus un glissement de **0,6 pb du prix** par exécution : c'est la convention « indices » de la session 4.
+  Tests de résistance à 1,2 pb et 1,8 pb.
+- Marge du stop de l'entrée B : **0,5 pb du prix**, soit 1 point du Nasdaq à 20 000 (au lieu de 1 point fixe).
+- Garde-fou coût : non modélisé, comme dans la référence de la V10.
+
+## Référence R0 : la V10 Confort inchangée
+Stop à 3 ranges, mémoire après un trade A à plus de +1 R, entrées B et D1-D3 (armées si l'autre bord du range est intact), sortie
+15:50, ou 12:45 les jours courts.
+
+## Les quatre règles, jugées chacune seule contre R0
+- **H1, plancher de bruit.**
+  - Pour le jour j, R20 est la moyenne des ranges M5 de 9:30 des 20 séances précédentes (jour j exclu, toutes les séances qui ont une
+    bougie de 9:30).
+  - Le multiple du stop devient f = max(3 ; 2,5 × R20 / range du jour j).
+  - Il s'applique à A, B et D, comme le k de la V10. Les lots sont divisés par f, donc le risque reste de 1 R.
+- **H2, achats seuls.**
+  - Aucune vente : ni A, ni B, ni D.
+  - La règle mémoire ne regarde que les trades pris.
+  - Version retenue : achats seuls plutôt que ventes à demi-risque, parce que le critère A porte sur le taux de réussite, que le
+    demi-risque ne change pas.
+- **H3, R1 (VIX).**
+  - On ne trade le jour j que si le VIX de clôture de la dernière séance avant j est au moins égal à la médiane des 252 dernières
+    clôtures, celle-ci comprise.
+  - Source : Cboe `VIX_History.csv`.
+  - Un jour sauté ne touche pas à la règle mémoire, comme un jour FOMC.
+- **H4, G1 (gamma).**
+  - On ne trade le jour j que si le GEX de la dernière ligne datée avant j est sous la médiane des 252 dernières lignes, celle-ci
+    comprise.
+  - Source : SqueezeMetrics `DIX.csv`, S&P 500.
+  - Un jour sauté ne touche pas à la règle mémoire.
+
+## Ce qui est seulement décrit, sans jugement
+- L'écart entre achats et ventes de R0 sur le S&P 500.
+- Les stops pleins de R0 selon le quintile du range relatif.
+- Les découpages par année et par sens de chaque règle.
+- Le GEX coupé en deux périodes : 2018 à novembre 2020 (valeurs reconstruites) et décembre 2020 à 2026.
+- Les pistes exploratoires : VIX/VIX3M, ventes seulement si le GEX est bas. Aucune ne peut être retenue.
+
+## Interdits
+- Aucun paramètre n'est réglé après lecture.
+- Aucune combinaison des règles n'est jugée sur ces données.
+- Le S&P 500 n'est lu qu'une fois : on refait un calcul pour corriger une erreur de code prouvée, jamais pour changer une règle.
+
+## Si une règle est retenue
+Elle devient une option de l'EA et du script Pine (V11), coupée ou allumée selon le résultat. Elle est ensuite vérifiée en démo sur
+le Nasdaq, sans aucun réglage de plus.
+
+## Déroulé
+1. Ce texte est commité.
+2. Les règles sont codées et vérifiées : avec les réglages neutres, le code doit retrouver les 3 612 trades de la V10 sur le Nasdaq.
+3. Le S&P 500, le VIX et le GEX sont téléchargés, et la qualité du S&P 500 est contrôlée.
+4. Une seule lecture du S&P 500.
