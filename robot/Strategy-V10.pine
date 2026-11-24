@@ -1145,7 +1145,12 @@ if isOR and strategy.position_size == 0 and not pend and na(cur)
     string whyS  = not rsiS ? "RSI" : not extS ? (preOk ? "élan" : "pas de bougies 9:00-9:30") : not trS ? "tendance" : ""
     pDir := okL and okS ? 0 : okL ? 1 : okS ? -1 : 2
     S.filtTxt := "Achat " + (okL ? "✓" : "✕ " + whyL) + " · Vente " + (okS ? "✓" : "✕ " + whyS) + (useRSI ? " · RSI " + str.tostring(rsiV, "0") : "")
-    float qty = dist > 0 ? math.floor((strategy.initial_capital + strategy.netprofit) * riskPct / 100 / (stopMult * dist * syminfo.pointvalue * fx) / qtyStep) * qtyStep : na   // V10 : 1R = stopMult ranges
+    float qtyRaw = dist > 0 ? math.floor((strategy.initial_capital + strategy.netprofit) * riskPct / 100 / (stopMult * dist * syminfo.pointvalue * fx) / qtyStep + 0.000001) * qtyStep : na   // V10 : 1R = stopMult ranges
+    // Correctif PINE-03 (revue du 17/11/2026, aggravé par la V10 : stop ×3 et 0,25 %) : quand la taille du backtest TradingView
+    // s'arrondit à zéro, elle est portée au pas minimum. Sinon le script n'affichait aucun ordre ni alerte ce jour-là, alors que
+    // le lot à passer chez le courtier (calculé à part, sur le solde du compte) restait valable.
+    bool  qtyMin = not na(qtyRaw) and qtyRaw <= 0
+    float qty    = qtyMin ? qtyStep : qtyRaw
     // v7 : jours FOMC, jours fériés / demi-séances, règle mémoire
     bool  fomcD  = skipFomc and isFomc(nyDate)
     bool  shortD = skipShort and shortDay
@@ -1214,6 +1219,7 @@ if isOR and strategy.position_size == 0 and not pend and na(cur)
              (pDir != 1 ? "\nVente stop : " + fmt(orL) + " · stop " + fmt(orL + stopMult * dist) : "\nVente bloquée (" + whyS + ")") +
              (tgtR > 0 ? "\nObjectif : +" + str.tostring(tgtR) + "R depuis le prix d'exécution" : "") +
              "\nTaille : " + str.tostring(qty) + (isFut ? " contrat(s)" : "") + " · " + str.tostring(pUSD, "0.##") + " $ risqués (" + str.tostring(riskPct) + " %)" +
+             (qtyMin ? " — taille TradingView portée au minimum, le backtest risque plus que prévu ce jour-là" : "") +
              (na(pLots) ? "" : pLots > 0 ? "\nLot chez le courtier (contrat de " + str.tostring(lotSize) + ") : " + lotTxt(pLots) + " · " + str.tostring(pLotUSD, "0.##") + " $ risqués" +
                  (usePyr ? " · ajout de la pyramide : " + lotTxt(pLotsA) : "") :
                  "\nLot chez le courtier : moins de " + str.tostring(lotStep) + " lot, risque trop petit pour ce range") +

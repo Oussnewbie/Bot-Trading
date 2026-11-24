@@ -188,3 +188,9 @@ def test_un_message_a_la_fois():
     envoi = fonction("void FlushNotifs()")
     assert "for(int i = 0; i < n; i++)" not in envoi and "ArrayResize(gQueue, n - 1);" in envoi
     assert ", 5000, data, res, hdr)" not in EA
+
+
+def test_le_script_affiche_les_ordres_meme_si_la_taille_tradingview_s_arrondit_a_zero():
+    """PINE-03 : stop ×3 et 0,25 % : la taille du backtest TradingView tombait à 0, et le jour était marqué « taille nulle »."""
+    assert "float qty    = qtyMin ? qtyStep : qtyRaw" in PINE
+    assert PINE.index("bool  qtyMin = not na(qtyRaw) and qtyRaw <= 0") < PINE.index("bool  go  = pDir != 2 and not na(qty) and qty > 0")
