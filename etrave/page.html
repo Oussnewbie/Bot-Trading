@@ -450,8 +450,9 @@ function instrumentRow(key, label, eas) {
   }
   for (const e of eas) {
     who.append(el('span', { class: 'tag' }, e.symbole), el('span', { class: `status${e.en_marche ? ' on' : ''}`, style: 'margin:0' }, el('span', { class: 'dot' }), e.en_marche ? (e.actif ? 'en marche' : 'en marche, désactivé') : 'arrêté'));
-    if (e.en_marche && (e.position || e.attente)) {
-      actions.append(el('button', { class: 'btn danger small', onclick: () => askClose(e) }, e.position ? 'Clôturer le trade' : 'Annuler les ordres'));
+    // Le bouton reste tant qu'une entrée B, C ou D est ouverte, même après la sortie de la cassure A : l'EA ferme tout.
+    if (e.en_marche && (e.position || e.attente || e.jambes > 0)) {
+      actions.append(el('button', { class: 'btn danger small', onclick: () => askClose(e) }, e.position || e.jambes > 0 ? 'Clôturer les positions' : 'Annuler les ordres'));
     }
     const range = e.range_haut ? `${e.range_bas} – ${e.range_haut}` : '—';
     const list = el('dl', {}, el('dt', {}, 'Aujourd’hui'), el('dd', {}, e.jour || '—'), el('dt', {}, 'Range 9:30'), el('dd', {}, range), el('dt', {}, 'Filtres'), el('dd', {}, e.filtres || '—'));
@@ -459,6 +460,7 @@ function instrumentRow(key, label, eas) {
       list.append(el('dt', {}, 'Position'), el('dd', {}, `${e.pos_sens === 1 ? 'Achat' : 'Vente'} ${e.pos_lots} lot à ${e.pos_entree} · stop ${e.pos_stop}${e.pos_pyramide ? ' · pyramide faite' : ''}`));
       list.append(el('dt', {}, 'Résultat'), el('dd', {}, delta(e.pos_resultat || 0, `${moneySigned(e.pos_resultat, e.devise)}${e.solde_depart > 0 ? ` · ${pctSigned((100 * e.pos_resultat) / e.solde_depart)}` : ''} · ${rSigned(e.pos_r)}`)));
     }
+    if (e.v8_b || e.v9_d) list.append(el('dt', {}, 'Entrées B · D'), el('dd', {}, [e.v8_b, e.v9_d].filter(Boolean).join(' · ')));
     if (e.stats_n) list.append(el('dt', {}, 'Depuis le début'), el('dd', {}, `${e.stats_n} trades · ${rSigned(e.stats_r)} · pire baisse −${num(e.stats_baisse, 1)}R`));
     row.append(list);
   }

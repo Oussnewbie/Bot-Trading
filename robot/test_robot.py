@@ -118,3 +118,20 @@ def test_les_deux_pyramides_ont_le_plancher():
     assert "PyrLock(gDir, gEntry, gRisk, mkt)" in EA                     # trade de cassure
     assert "PyrLock(g.dir, g.entry, g.risk, mkt)" in EA                  # entrées B, C, D
     assert "mkt - gDir * InpPyrGap * gRisk" not in EA and "mkt - g.dir * InpPyrGap * g.risk" not in EA
+
+
+PINE = open(os.path.join(ICI, "Strategy-V10.pine"), encoding="utf-8").read()
+
+
+def test_l_alerte_tradingview_donne_le_stop_elargi():
+    """Relecture du 24/11/2026 : l'alerte « ORDRES ORB placés » donnait le stop de la V9 (l'autre bord du range)."""
+    alerte = PINE[PINE.index('notify("ORDRES ORB placés'):]
+    alerte = alerte[:alerte.index("\n\n")]
+    assert '"\\nAchat stop : " + fmt(orH) + " · stop " + fmt(orH - stopMult * dist)' in alerte
+    assert '"\\nVente stop : " + fmt(orL) + " · stop " + fmt(orL + stopMult * dist)' in alerte
+    assert "15:45" not in alerte and "15:45 NY" not in PINE
+
+
+def test_le_garde_fou_cout_est_decrit_par_rapport_au_risque():
+    assert "part du range (0 = coupé)" not in PINE and "cette part du range (0 = coupé)" not in EA
+    assert "InpStopMult * (gOrH - gOrL)" in EA and "costPts / (stopMult * dist)" in PINE

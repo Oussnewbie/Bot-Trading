@@ -43,9 +43,10 @@
 //                Même gestion que la cassure (stop à l'entrée à +1,5R, pyramide à +2R), en multiples du stop de cette
 //                entrée. Taille : comme B (jamais plus d'unités que A, jamais plus de 1R).
 // 14. C (entrée de 10:00) est COUPÉE PAR DÉFAUT : sur les données jamais vues elle ne gagne presque rien.
-// 15. GARDE-FOU COÛT : aucun ordre si le coût d'un aller-retour (réglage, en points) pèse plus de 25 % du range du jour.
+// 15. GARDE-FOU COÛT : aucun ordre si le coût d'un aller-retour (réglage, en points) pèse plus de 25 % du risque du jour
+//     (V10 : le risque vaut « largeur du stop » × range, soit 3 ranges par défaut).
 //     Jusqu'à 5 positions en même temps dans le même sens : risque par trade à régler plus bas qu'avec la V8.
-//     Ce que disent les tests (détail dans rapport.md) :
+//     Ce que disent les tests (détail dans recherche/rapport-session4.md) :
 //       2018-2026, période de recherche, spread réel + 1 point         : V9 +1 614 R, pire baisse  56 R (V8 : +986 R, 38 R).
 //       2010-2017, JAMAIS VU, coûts ramenés à leur poids d'aujourd'hui : V9   +577 R, pire baisse 170 R (V8 : +281 R, 102 R).
 //       2010-2017 avec les coûts au poids de 2018                       : V9   -157 R (V8 : -159 R).
@@ -121,7 +122,7 @@ useD      = input.bool(true, "D : cassure des bougies qui suivent le range, tant
 dCount    = input.int(3, "D : nombre de bougies après celle du range", minval = 1, maxval = 7, tooltip = "3 = bougies de 9:35, 9:40 et 9:45.", group = GV9, display = display.none)
 dValid    = input.int(2, "D : validité de chaque ordre (en bougies M5)", minval = 1, maxval = 6, tooltip = "2 bougies = 10 minutes.", group = GV9, display = display.none)
 dPyr      = input.bool(true, "D : pyramide à +2R sur ces entrées", group = GV9, display = display.none)
-maxCostR  = input.float(0.25, "Garde-fou : pas d'ordre si le coût dépasse cette part du range (0 = coupé)", minval = 0, step = 0.05, tooltip = "Si le coût d'un aller-retour (ligne suivante) pèse plus que cette part du range d'ouverture, aucun ordre ce jour-là. La règle mémoire n'est pas touchée.", group = GV9, display = display.none)
+maxCostR  = input.float(0.25, "Garde-fou : pas d'ordre si le coût dépasse cette part du risque (0 = coupé)", minval = 0, step = 0.05, tooltip = "Si le coût d'un aller-retour (ligne suivante) pèse plus que cette part du risque (largeur du stop × range d'ouverture), aucun ordre ce jour-là. La règle mémoire n'est pas touchée.", group = GV9, display = display.none)
 costPts   = input.float(3.3, "Garde-fou : coût d'un aller-retour (points = spread + 2 glissements)", minval = 0, step = 0.1, tooltip = "TradingView ne connaît pas le spread du courtier : indique ici spread + 2 glissements, en points d'indice (1,3 + 2 x 1 par défaut).", group = GV9, display = display.none)
 GV10 = "V10 — largeur du stop (3 = profil Confort ; 1 = profil Tendance, la V9)"
 stopMult  = input.float(3.0, "Stop à N fois la distance normale", minval = 1, maxval = 10, step = 0.5, tooltip = "3 : le stop est 3 fois plus loin et la taille 3 fois plus petite ; la somme risquée par trade ne change pas. Vaut pour la cassure, le repli VWAP et les continuations. 1 : stop de la V9 (l'autre bord du range).", group = GV10, display = display.none)
@@ -752,7 +753,7 @@ openLeg(string nm, int d, float stop, float q, bool pyrOk, string quoi) =>
     notify(sens + nm + " MAINTENANT : " + quoi + "\nEntrée au marché ≈ " + fmt(close) + " · stop " + fmt(stop) + " (" + distTxt(g.risk) + ")" +
          "\nTaille : " + str.tostring(q) + (na(lots) ? "" : lots > 0 ? " (" + lotTxt(lots) + " chez le courtier)" : " (moins de " + str.tostring(lotStep) + " lot chez le courtier)") + " — au plus la taille et le risque de la cassure" +
          (beR > 0 ? "\nStop au prix d'entrée à +" + str.tostring(beR) + "R de cette entrée (" + fmt(close + d * beR * g.risk) + ")" : "") +
-         (pyrOk and usePyr ? "\nPyramide si une bougie clôture à " + fmt(close + d * pyrR * g.risk) : "") + "\nSortie à 15:45 NY au plus tard")
+         (pyrOk and usePyr ? "\nPyramide si une bougie clôture à " + fmt(close + d * pyrR * g.risk) : "") + "\nSortie à 15:50 NY au plus tard")
     g
 
 // V9 : entrée D (continuation). Ordre stop sur l'extrême de la bougie qui vient de clôturer, stop à l'autre extrême.
@@ -937,7 +938,7 @@ if pend and na(cur) and (strategy.position_size != 0 or strategy.closedtrades > 
         notify((d == 1 ? "ACHAT" : "VENTE") + " exécuté : " + cur.id + " à " + fmt(cur.entry) + "\nStop : " + fmt(cur.sl) +
              (beR > 0 ? "\nStop au prix d'entrée dès " + fmt(cur.entry + d * beR * cur.risk) + " (+" + str.tostring(beR) + "R)" : "") +
              (usePyr ? "\nPyramide : ajout si une bougie clôture à " + fmt(cur.entry + d * pyrR * cur.risk) + " (" + rTxt(pyrR) + "), stop de l'ensemble " + str.tostring(pyrGap) + "R sous l'ajout" : "") +
-             (not na(cur.tp) ? "\nObjectif : " + fmt(cur.tp) : "\nSortie à 15:45 NY si ni stop ni objectif"))
+             (not na(cur.tp) ? "\nObjectif : " + fmt(cur.tp) : "\nSortie à 15:50 NY si ni stop ni objectif"))
         S.dayTxt := cur.id + " en cours"
         tryPyramid(cur)
         armV8(d, cur.fillBar, cur.qty, cur.usd, false)   // V8 : B et C deviennent possibles
@@ -1208,16 +1209,16 @@ if isOR and strategy.position_size == 0 and not pend and na(cur)
                      textcolor = color.new(chart.fg_color, 20), size = size.small, tooltip = "Si ce côté est touché avant la cassure permise, l'ordre du jour est annulé.")
         S.dayTxt := (pDir == 1 ? "Achat stop " + fmt(orH) : pDir == -1 ? "Vente stop " + fmt(orL) : "Achat " + fmt(orH) + " · Vente " + fmt(orL)) + " · jusqu'à " + endT
         notify("ORDRES ORB placés · " + hhmm(time_close) + " NY (" + str.format_time(time_close, "HH:mm", TZ_PARIS) + " Paris)" +
-             "\nRange 9:30 : " + fmt(orL) + " – " + fmt(orH) + " (" + distTxt(dist) + " = 1R)" +
-             (pDir != -1 ? "\nAchat stop : " + fmt(orH) + " · stop " + fmt(orL) : "\nAchat bloqué (" + whyL + ")") +
-             (pDir != 1 ? "\nVente stop : " + fmt(orL) + " · stop " + fmt(orH) : "\nVente bloquée (" + whyS + ")") +
+             "\nRange 9:30 : " + fmt(orL) + " – " + fmt(orH) + " (" + distTxt(dist) + ") · 1R = " + distTxt(stopMult * dist) + (stopMult != 1 ? " (stop élargi : " + str.tostring(stopMult) + " ranges)" : "") +
+             (pDir != -1 ? "\nAchat stop : " + fmt(orH) + " · stop " + fmt(orH - stopMult * dist) : "\nAchat bloqué (" + whyL + ")") +
+             (pDir != 1 ? "\nVente stop : " + fmt(orL) + " · stop " + fmt(orL + stopMult * dist) : "\nVente bloquée (" + whyS + ")") +
              (tgtR > 0 ? "\nObjectif : +" + str.tostring(tgtR) + "R depuis le prix d'exécution" : "") +
              "\nTaille : " + str.tostring(qty) + (isFut ? " contrat(s)" : "") + " · " + str.tostring(pUSD, "0.##") + " $ risqués (" + str.tostring(riskPct) + " %)" +
              (na(pLots) ? "" : pLots > 0 ? "\nLot chez le courtier (contrat de " + str.tostring(lotSize) + ") : " + lotTxt(pLots) + " · " + str.tostring(pLotUSD, "0.##") + " $ risqués" +
                  (usePyr ? " · ajout de la pyramide : " + lotTxt(pLotsA) : "") :
                  "\nLot chez le courtier : moins de " + str.tostring(lotStep) + " lot, risque trop petit pour ce range") +
              "\nValables jusqu'à " + endT + " NY." + (pDir == 0 ? " Le premier exécuté annule l'autre." : " Annulé si le côté bloqué est touché d'abord.") +
-             (beR > 0 ? "\nStop au prix d'entrée à +" + str.tostring(beR) + "R" : "") + (tgtR > 0 ? "" : " · sortie à 15:45 NY") +
+             (beR > 0 ? "\nStop au prix d'entrée à +" + str.tostring(beR) + "R" : "") + (tgtR > 0 ? "" : " · sortie à 15:50 NY (12:45 les jours fériés et demi-séances)") +
              (usePyr ? "\nPyramide : +" + str.tostring(pyrSize) + " unité si une bougie clôture à " + rTxt(pyrR) + ", stop de l'ensemble " + str.tostring(pyrGap) + "R sous l'ajout" : ""))
 
 // ═════════════════════════ V8 : VWAP, zone de repli et bougies de signal ═════════════════════════

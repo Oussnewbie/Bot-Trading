@@ -36,7 +36,8 @@ def faux_etat(dossier, symbole="NAS100", age=0.0, **cles):
                 risque_pct="0.5000", risque_source="mt5", range_bas="25010.5", range_haut="25050.5", filtres="Achat oui · Vente non (RSI) · RSI 61",
                 jour="Achat stop 25050.5 · jusqu'à 09:45", attente="0", position="0", pos_sens="0", pos_entree="0", pos_stop="0",
                 pos_lots="0", pos_resultat="0", pos_r="0", pos_pyramide="0", risque_argent="0", solde_depart="0", stats_n="0",
-                stats_gagnants="0", stats_r="0", stats_baisse="0", stats_serie="0", telegram="0", telegram_envoi="jamais", telegram_essai="")
+                stats_gagnants="0", stats_r="0", stats_baisse="0", stats_serie="0", telegram="0", telegram_envoi="jamais", telegram_essai="",
+                jambes="0", v8_b="B attend la cassure", v9_d="D : 0 en cours")
     base.update(cles)
     chemin = os.path.join(dossier, f"etat-{symbole}.txt")
     with open(chemin, "w", encoding="utf-8", newline="") as f:
@@ -132,6 +133,15 @@ def test_un_fichier_toujours_occupe_refuse_au_lieu_d_ecraser(dossier, monkeypatc
     monkeypatch.undo()
     assert pont.lire_reglages(dossier) == {"risque_pct": "0.25", "nasdaq": "0", "version": "1"}
 
+
+
+def test_entrees_b_et_d_ouvertes_apres_la_sortie_de_a(dossier):
+    """Relecture du 24/11/2026 : une fois A sortie, le bouton « Clôturer » disparaissait alors que B ou D étaient ouvertes."""
+    faux_etat(dossier, position="0", attente="0", jambes="2", v8_b="B en cours +0,4R", v9_d="D : 1 en cours +0,2R")
+    e = pont.lire_etats(dossier)[0]
+    assert e["position"] is False and e["jambes"] == 2 and e["v8_b"] == "B en cours +0,4R"
+    page = open(os.path.join(RACINE, "etrave", "page.html"), encoding="utf-8").read()
+    assert "e.position || e.attente || e.jambes > 0" in page
 
 def test_connexions_validees_et_jamais_renvoyees(dossier):
     with pytest.raises(pont.Refus) as refus:

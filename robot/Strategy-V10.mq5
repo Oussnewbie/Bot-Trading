@@ -51,12 +51,13 @@
 //                touche d'abord ce stop. Même gestion que la cassure (stop à l'entrée à +1,5R, pyramide à +2R), en
 //                multiples du stop de cette entrée. Taille : comme B (jamais plus de lots que A, jamais plus de 1R).
 // 14. C (entrée de 10:00) est COUPÉE PAR DÉFAUT : sur les données jamais vues elle ne gagne presque rien (+0,04 R par trade).
-// 15. GARDE-FOU COÛT : aucun ordre si le spread du moment + 2 glissements supposés pèse plus de 25 % du range du jour.
+// 15. GARDE-FOU COÛT : aucun ordre si le spread du moment + 2 glissements supposés pèse plus de 25 % du risque du jour
+//     (V10 : le risque vaut InpStopMult × range, soit 3 ranges par défaut).
 //                Ces jours-là ne changent rien à la règle mémoire.
 //     Numéros magiques : A = InpMagic, B = +1, C = +2, D1 = +3, D2 = +4, D3 = +5 (jusqu'à D7 = +9).
 //     Jusqu'à 5 positions ouvertes en même temps dans le même sens et 15 lots de A pyramides comprises (7 pour la V8) :
 //     compte « hedging » obligatoire, et risque par trade à régler plus bas qu'avec la V8.
-//     Ce que disent les tests (détail dans rapport.md) :
+//     Ce que disent les tests (détail dans recherche/rapport-session4.md) :
 //       2018-2026, période de recherche, spread réel + 1 point         : V9 +1 614 R, pire baisse  56 R (V8 : +986 R, 38 R).
 //       2010-2017, JAMAIS VU, coûts ramenés à leur poids d'aujourd'hui : V9   +577 R, pire baisse 170 R (V8 : +281 R, 102 R).
 //       2010-2017 avec les coûts au poids de 2018                       : V9   -157 R (V8 : -159 R).
@@ -74,7 +75,7 @@
 // 17. PROFIL TENDANCE = la V9 : InpStopMult = 1 et « gagnant au-delà de » = 0,05 R.
 // 18. RISQUE PAR TRADE : 0,25 % par défaut, comme la V9. Le remonter (0,5 % était le réglage des V6 à V8) double les gains ET les
 //                baisses : c'est ta décision. En Confort à 0,5 % : pire journée des tests -2,6 %, pire baisse 16 % (2018-2026) et 27 % (2010-2017).
-//     Ce que disent les tests sur le Nasdaq (détail dans rapport.md) :
+//     Ce que disent les tests sur le Nasdaq (détail dans recherche/rapport-session4.md) :
 //                                                        TENDANCE (V9)                 CONFORT
 //       2018-2026, spread réel + 1 point :   +1 614 R, 18 % de réussite, baisse 56 R | +477 R, 47 % de réussite, baisse 32 R
 //       2018-2026, 3 points de glissement :    +799 R, baisse 157 R                  | +301 R, baisse 70 R
@@ -158,7 +159,7 @@ input bool         InpUseD      = true;         // D : cassure des bougies M5 qu
 input int          InpDCount    = 3;            // D : nombre de bougies après celle du range (3 = 9:35, 9:40, 9:45 ; 7 au plus)
 input int          InpDValid    = 10;           // D : durée de validité de chaque guet (minutes)
 input bool         InpDPyr      = true;         // D : pyramide à +2R sur ces entrées, comme la cassure
-input double       InpMaxCostR  = 0.25;         // Garde-fou : pas d'ordre si spread + 2 glissements dépasse cette part du range (0 = coupé)
+input double       InpMaxCostR  = 0.25;         // Garde-fou : pas d'ordre si spread + 2 glissements dépasse cette part du risque (InpStopMult × range ; 0 = coupé)
 input double       InpCostSlip  = 1.0;          // Garde-fou : glissement supposé par exécution (points d'indice)
 
 input group "V10 — largeur du stop (3 = profil Confort ; 1 = profil Tendance, la V9)"
@@ -1893,6 +1894,15 @@ string LegTxt(SLeg &g, bool use)
 //+------------------------------------------------------------------+
 //| V9 : entrées D (continuations)                                    |
 //+------------------------------------------------------------------+
+int OpenLegs()   // nombre d'entrées B, C et D encore en position
+  {
+   int n = (gB.enPos ? 1 : 0) + (gC.enPos ? 1 : 0);
+   for(int k = 0; k < D_MAX; k++)
+      if(gD[k].enPos)
+         n++;
+   return n;
+  }
+
 bool DAny()   // une entrée D est-elle en position ?
   {
    for(int k = 0; k < D_MAX; k++)
@@ -2452,6 +2462,7 @@ void WriteState()
    Kd(h, "v8_resultat", (gB.enPos ? LegOpenProfit(gB) : 0) + (gC.enPos ? LegOpenProfit(gC) : 0) + DOpenProfit(), 2);
    Kv(h, "attente", gPend ? "1" : "0");
    Kv(h, "position", gIn ? "1" : "0");
+   Kv(h, "jambes", IntegerToString(OpenLegs()));   // entrées B, C, D ouvertes : Étrave garde le bouton « Clôturer »
    Kv(h, "pos_sens", IntegerToString(gIn ? gDir : 0));
    Kd(h, "pos_entree", gIn ? gEntry : 0, _Digits);
    Kd(h, "pos_stop", gIn ? (gVStop > 0 ? gVStop : gSL) : 0, _Digits);

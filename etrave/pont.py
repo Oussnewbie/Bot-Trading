@@ -265,7 +265,7 @@ def demander_cloture(dossier, symbole, confirmation, maintenant=None):
 # ───────────────────────── ce que dit l'EA ─────────────────────────
 NOMBRES = ("solde", "capital", "marge_libre", "levier_compte", "levier_symbole", "risque_pct", "range_bas", "range_haut",
            "pos_sens", "pos_entree", "pos_stop", "pos_lots", "pos_resultat", "pos_r", "risque_argent", "solde_depart",
-           "stats_n", "stats_gagnants", "stats_r", "stats_baisse", "stats_serie")
+           "stats_n", "stats_gagnants", "stats_r", "stats_baisse", "stats_serie", "jambes")
 DRAPEAUX = ("actif", "connecte", "trading_auto", "horloge_ok", "regles_test", "position", "pos_pyramide", "attente", "telegram")
 
 
