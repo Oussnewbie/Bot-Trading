@@ -1338,6 +1338,17 @@ void CheckEntries()
       SaveState();
       return;
      }
+   // Correctif EA-06 (revue du 17/11/2026) : entrée au marché « quelle que soit la distance » (EA lancé en retard, saut de
+   // prix) : la taille est calculée pour 1R depuis le niveau de cassure, donc un prix déjà loin du niveau risquait plus,
+   // sans limite. Au-delà de 1,25 R de risque réel, pas d'entrée ce jour-là.
+   double pxIn  = d == 1 ? ask : bid;
+   double riskP = ((d == 1 ? gOrH : gOrL) - StopA(d)) * d;
+   double riskN = (pxIn - StopA(d)) * d;
+   if(riskP > 0 && riskN > 1.25 * riskP)
+     {
+      CancelDay("prix déjà trop loin du niveau de cassure : " + DoubleToString(riskN / riskP, 2) + " R de risque au lieu de 1 R", I_WARN + "PAS D'ENTRÉE");
+      return;
+     }
    double sl = NormalizeDouble(StopA(d), _Digits);
    bool ok = d == 1 ? trade.Buy(gLots, _Symbol, 0, sl, 0, InpComment) : trade.Sell(gLots, _Symbol, 0, sl, 0, InpComment);
    uint rc = trade.ResultRetcode();

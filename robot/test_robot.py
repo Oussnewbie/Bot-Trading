@@ -78,3 +78,11 @@ def test_les_ordres_stop_ne_survivent_pas_a_l_ea():
         assert raison in fin
     for raison in ("REASON_PARAMETERS", "REASON_RECOMPILE", "REASON_CHARTCHANGE"):   # l'EA repart aussitôt : on garde
         assert raison not in fin
+
+
+def test_entree_au_marche_bornee_a_1_25_R():
+    """EA-06 : entrée au marché « quelle que soit la distance » quand l'EA démarre en retard."""
+    entrees = re.search(r"void CheckEntries\(\)(.*?)\n  }\n", EA, re.S).group(1)
+    garde = entrees.index("riskN > 1.25 * riskP")
+    assert entrees.index("if(gObserve)") < garde < entrees.index("trade.Buy(gLots")    # après la règle mémoire, avant l'ordre
+    assert "CancelDay(" in entrees[garde:garde + 200]
