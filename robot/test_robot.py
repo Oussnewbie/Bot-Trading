@@ -58,3 +58,11 @@ def test_pas_d_ordre_si_l_heure_du_serveur_est_fausse():
     assert "CheckClock();" in setup[:garde]
     assert setup.index("if(!gActive)") < garde < setup.index("gObserve   = true;")   # avant tout ordre et avant la mémoire
     assert "!MQLInfoInteger(MQL_TESTER)" in setup[:garde]                            # pas dans le testeur (heure simulée)
+
+
+def test_le_rsi_est_lu_une_fois_l_indicateur_a_jour():
+    """EA-04 (RSI) : au premier tick de 9:35, le RSI pouvait être celui de 9:25."""
+    setup = corps("Setup")
+    attente = setup.index("BarsCalculated(hRSI) < Bars(_Symbol, PERIOD_M5)")
+    assert attente < setup.index("CopyBuffer(hRSI, 0, 1, 1, rsi)")
+    assert setup[attente:attente + 120].count("return false;") == 1                  # réessayé au tick suivant

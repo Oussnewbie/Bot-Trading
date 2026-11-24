@@ -1055,6 +1055,10 @@ bool Setup()   // true = terminé (trade préparé ou pas de trade), false = don
    if(NYMin(ny1) != mOR || day == gDay)
       return true;
    double rsi[];
+   // Correctif EA-04 RSI (revue du 17/11/2026) : au premier tick de 9:35, l'indicateur peut ne pas avoir encore calculé
+   // la nouvelle bougie ; la valeur lue en position 1 serait alors celle de 9:25. On attend qu'il soit à jour.
+   if(InpUseRSI && BarsCalculated(hRSI) < Bars(_Symbol, PERIOD_M5))
+      return false;
    bool rsiOk = CopyBuffer(hRSI, 0, 1, 1, rsi) == 1;
    if(InpUseRSI && !rsiOk)
       return false;
