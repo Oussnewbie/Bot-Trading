@@ -29,7 +29,7 @@ recherche/   rapports des sessions 2 à 4, journal (notes/nasdaq-progress.md), t
 ```
 
 Commandes, à lancer depuis la racine du dépôt :
-- Tests : `.venv/bin/python -m pytest robot etrave -q` (50 tests ; il faut seulement pytest). Le `.venv` du dépôt tourne sous Python 3.15.
+- Tests : `.venv/bin/python -m pytest robot etrave -q` (52 tests ; il faut seulement pytest). Le `.venv` du dépôt tourne sous Python 3.15.
 - Étrave : `.venv/bin/python etrave/etrave.py --sans-navigateur --port 8799 --dossier <dossier jetable>`, puis la page sur
   `http://127.0.0.1:8799`.
 

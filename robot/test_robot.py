@@ -64,6 +64,7 @@ def test_le_rsi_est_lu_une_fois_l_indicateur_a_jour():
     """EA-04 (RSI) : au premier tick de 9:35, le RSI pouvait être celui de 9:25."""
     setup = corps("Setup")
     attente = setup.index("BarsCalculated(hRSI) < Bars(_Symbol, PERIOD_M5)")
+    assert "!MQLInfoInteger(MQL_TESTER) && BarsCalculated(hRSI)" in setup          # le testeur ne calcule qu'à la lecture
     assert attente < setup.index("CopyBuffer(hRSI, 0, 1, 1, rsi)")
     assert setup[attente:attente + 120].count("return false;") == 1                  # réessayé au tick suivant
 
@@ -151,7 +152,9 @@ def test_filet_de_securite_ferme_les_positions_oubliees():
     tick = fonction("void OnTick()")
     assert tick.index("V8OnTick();") < tick.index("CloseOrphans(") < tick.index("FlushNotifs();")
     assert "NYMin(nyS) >= FlatMin(nyS)" in tick and "TimeCurrent() - sweepAt >= 60" in tick
-    assert 'CloseOrphans("clôture demandée depuis l\'interface", true);' in fonction("void UiClose()")
+    assert "gSweepAllAt = TimeCurrent() + 10;" in fonction("void UiClose()")       # balayage 10 s après une clôture demandée
+    assert "NYMin(nyS) >= FlatMin(nyS) + 1" in tick                                 # une minute après la sortie normale
+    assert "gCloseWhy = why;" in filet                                              # la raison reste dans le journal
 
 
 def test_pas_d_entree_doublee_apres_une_reponse_perdue():
@@ -207,3 +210,16 @@ def test_les_entrees_b_c_d_du_script_restent_affichees():
     corps = PINE[PINE.index("legQty(float dist) =>"):]
     corps = corps[:corps.index("\n\n")]
     assert "math.max(qtyStep," in corps
+
+
+
+def test_reglages_de_pyramide_compatibles_avec_le_plancher():
+    """Revue du 24/11/2026 : avec taille × écart trop grands, PyrLock abandonnait toutes les pyramides."""
+    init = fonction("int OnInit()")
+    assert "InpPyrSize * InpPyrGap - 1.0 > InpPyrR - 0.1" in init
+    for taille, ecart, seuil in ((2.0, 1.0, 2.0),):                                 # valeurs du test : acceptées
+        assert not (taille * ecart - 1.0 > seuil - 0.1 - 1e-9)
+
+
+def test_un_ordre_d_un_autre_jour_n_est_pas_celui_du_jour():
+    assert "(datetime)OrderGetInteger(ORDER_TIME_SETUP) < gOrTime" in fonction("bool HasPending(int d)")

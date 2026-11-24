@@ -322,6 +322,7 @@ long     gCloseSeen = 0;        // dernière demande de clôture traitée
 bool     gCloseDue  = false;
 bool     gClockOk   = true;     // l'heure du serveur correspond aux réglages
 double   gBalStart  = 0;        // solde au moment de l'entrée (résultat du trade en %)
+datetime gSweepAllAt = 0;        // heure du balayage complet demandé après une clôture depuis l'interface (CloseOrphans)
 bool     gGvDirty   = false;    // état modifié depuis la dernière écriture sur le disque (FlushState)
 string   gQueue[];              // messages WhatsApp / Telegram en attente : envoyés APRÈS le passage des ordres
 
@@ -601,7 +602,7 @@ string SendTelegram(string msg)   // "ok", "bloque" (MetaTrader interdit l'adres
   }
 
 // Journal et notification push tout de suite ; WhatsApp et Telegram passent par une file, vidée par FlushNotifs()
-// en fin de OnTick : un envoi lent (WebRequest attend jusqu'à 5 secondes) ne retarde plus ni l'entrée ni un stop.
+// en fin de OnTick, un message par appel : un envoi lent (WebRequest attend jusqu'à 3 secondes) ne retarde ni l'entrée ni un stop.
 void Notify(string msg)
   {
    string full = BOT + " · " + _Symbol + "\n" + msg;
@@ -817,6 +818,8 @@ bool HasPending(int d)   // l'ordre stop du côté d (1 achat, -1 vente) est-il 
       if(!MyOrder(tk))
          continue;
       ENUM_ORDER_TYPE t = (ENUM_ORDER_TYPE)OrderGetInteger(ORDER_TYPE);
+      if((datetime)OrderGetInteger(ORDER_TIME_SETUP) < gOrTime)   // un ordre resté d'un autre jour n'est pas celui du jour
+         continue;
       if((d == 1 && t == ORDER_TYPE_BUY_STOP) || (d == -1 && t == ORDER_TYPE_SELL_STOP))
          return true;
      }
@@ -961,6 +964,17 @@ int CloseOrphans(string why, bool toutes)
          continue;
       if(!toutes && NYDate(ToNY((datetime)PositionGetInteger(POSITION_TIME))) >= today)
          continue;
+      // le journal des trades garde la raison de la fermeture pour une position que l'EA suivait encore
+      if(mg == InpMagic)
+         gCloseWhy = why;
+      else if(mg == gB.magic)
+         gB.closeWhy = why;
+      else if(mg == gC.magic)
+         gC.closeWhy = why;
+      else
+         for(int k = 0; k < D_MAX; k++)
+            if(mg == gD[k].magic)
+               gD[k].closeWhy = why;
       n++;
       if(!trade.PositionClose(tk, InpDeviation))
          PrintFormat("Fermeture de sécurité refusée (%d) : %s", trade.ResultRetcode(), trade.ResultRetcodeDescription());
@@ -1100,6 +1114,7 @@ void SyncPosition()
       gPyr     = CountPos(gDir) > 1;   // même sens : une position de sens contraire est fermée par CloseOpposite
       gUsePyrToday = !gPyr;
       gPosId2  = 0;
+      gVStop   = 0;
       if(gPyr)
         {
          gBE = true;
@@ -1108,11 +1123,13 @@ void SyncPosition()
             ulong tp = PositionGetTicket(ip);
             if(tp != 0 && tp != tk && PositionGetString(POSITION_SYMBOL) == _Symbol && (ulong)PositionGetInteger(POSITION_MAGIC) == InpMagic &&
                (PositionGetInteger(POSITION_TYPE) == POSITION_TYPE_BUY ? 1 : -1) == gDir)
+              {
                gPosId2 = PositionGetInteger(POSITION_IDENTIFIER);
+               if(PositionGetDouble(POSITION_SL) > 0)
+                  gVStop = PositionGetDouble(POSITION_SL);   // stop de l'ensemble, surveillé aussi par l'EA
+              }
            }
-         PositionSelectByTicket(tk);
         }
-      gVStop   = 0;
       gTPset   = InpTgtR <= 0;
       gPend    = false;
       gDelDue  = !DeletePendings();   // le premier exécuté annule l'autre
@@ -1161,7 +1178,8 @@ bool Setup()   // true = terminé (trade préparé ou pas de trade), false = don
    double rsi[];
    // Correctif EA-04 RSI (revue du 17/11/2026) : au premier tick de 9:35, l'indicateur peut ne pas avoir encore calculé
    // la nouvelle bougie ; la valeur lue en position 1 serait alors celle de 9:25. On attend qu'il soit à jour.
-   if(InpUseRSI && BarsCalculated(hRSI) < Bars(_Symbol, PERIOD_M5))
+   // Pas dans le testeur : l'indicateur n'y est calculé qu'au moment où on lit ses valeurs (CopyBuffer), l'attente n'y finirait pas.
+   if(InpUseRSI && !MQLInfoInteger(MQL_TESTER) && BarsCalculated(hRSI) < Bars(_Symbol, PERIOD_M5))
       return false;
    bool rsiOk = CopyBuffer(hRSI, 0, 1, 1, rsi) == 1;
    if(InpUseRSI && !rsiOk)
@@ -2530,8 +2548,9 @@ void UiClose()
      }
    else if(gPend)
       CancelDay("ordres annulés depuis l'interface", I_HAND + "ORDRES ANNULÉS depuis l'interface");
-   // filet de sécurité : toute position de l'EA que son état ne connaissait plus est fermée aussi
-   CloseOrphans("clôture demandée depuis l'interface", true);
+   // filet de sécurité : 10 s plus tard (le temps que la liste des positions soit à jour), toute position de l'EA que son
+   // état ne connaissait plus est fermée aussi
+   gSweepAllAt = TimeCurrent() + 10;
    // V8 : après une demande de clôture, plus d'entrée B ni C aujourd'hui
    gB.done = true;
    gC.done = true;
@@ -2738,6 +2757,13 @@ int OnInit()
       Alert("Strategy V10 : réglages des entrées D, du garde-fou coût ou de la largeur du stop invalides (1 à 7 bougies, validité d'au moins 1 minute, valeurs positives, largeur du stop entre 1 et 10).");
       return INIT_PARAMETERS_INCORRECT;
      }
+   // Plancher de la pyramide (PyrLock) : entrée + (taille × écart - 1) R. Il doit rester sous le niveau de l'ajout, sinon toutes
+   // les pyramides seraient abandonnées.
+   if(InpUsePyr && InpPyrSize * InpPyrGap - 1.0 > InpPyrR - 0.1 - 1e-9)
+     {
+      Alert("Strategy V10 : pyramide impossible avec ces réglages : taille × écart de l'ajout doit rester sous le seuil de la pyramide + 0,9 (valeurs du test : 2 × 1 et +2R).");
+      return INIT_PARAMETERS_INCORRECT;
+     }
    mBEnd = ParseHM(InpBEnd);
    mCAt  = ParseHM(InpCAt);
    if((InpUseB && (mBEnd <= mOR || mBEnd > mFlat || InpBTol < 0 || InpBBuf < 0)) || (InpUseC && (mCAt <= mOR + 5 || mCAt >= mFlat)))
@@ -2787,6 +2813,15 @@ void OnDeinit(const int reason)
      {
       if(!DeletePendings())
          Print(BOT + " · " + _Symbol + " : arrêt de l'EA, ordre stop NON supprimé : supprime-le à la main dans l'onglet Trading");
+      else if(gPend && !gObserve)
+        {
+         gPend   = false;
+         gSrvL   = false;
+         gSrvS   = false;
+         gDayTxt = "Pas de trade : EA arrêté pendant la validité des ordres (ordres supprimés)";
+         SaveState();
+         GlobalVariablesFlush();
+        }
      }
    if(hRSI != INVALID_HANDLE)
       IndicatorRelease(hRSI);
@@ -2865,12 +2900,16 @@ void OnTick()
 
    // Filet de sécurité, une fois par minute, après les sorties normales : à partir de la sortie de fin de journée, toute position
    // de l'EA encore ouverte est fermée ; à toute heure, celles ouvertes un jour précédent.
+   // Le balayage complet commence une minute après la sortie prévue : la liste des positions du terminal peut encore montrer
+   // pendant un instant celles que la sortie normale vient de fermer.
    static datetime sweepAt = 0;
-   if(TimeCurrent() - sweepAt >= 60)
+   bool sweepUi = gSweepAllAt > 0 && TimeCurrent() >= gSweepAllAt;
+   if(TimeCurrent() - sweepAt >= 60 || sweepUi)
      {
       sweepAt = TimeCurrent();
       datetime nyS = ToNY(TimeCurrent());
-      int nS = CloseOrphans("filet de sécurité", NYMin(nyS) >= FlatMin(nyS));
+      int nS = CloseOrphans(sweepUi ? "fermeture depuis l'interface" : "filet de sécurité", sweepUi || NYMin(nyS) >= FlatMin(nyS) + 1);
+      gSweepAllAt = 0;
       static int sweepNote = 0;
       if(nS > 0 && sweepNote != NYDate(nyS))
         {
