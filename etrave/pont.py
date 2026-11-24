@@ -20,6 +20,7 @@ Règles reprises de Vigie :
 import glob
 import os
 import re
+import threading
 import time
 
 NOM = "Étrave"
@@ -65,12 +66,25 @@ def dossier_commun(env=None):
 
 
 # ───────────────────────── fichiers cle=valeur ─────────────────────────
-def lire_cles(chemin):
-    """Les lignes `cle=valeur` d'un fichier ; {} s'il est absent ou illisible à cet instant (l'EA est en train d'écrire)."""
-    try:
-        with open(chemin, "r", encoding="utf-8-sig", errors="replace") as f:
-            texte = f.read()
-    except OSError:
+def lire_cles(chemin, strict=False):
+    """Les lignes `cle=valeur` d'un fichier ; {} s'il est absent ou illisible à cet instant (l'EA est en train d'écrire).
+
+    strict : pour un fichier qu'on va réécrire. Un fichier qui existe mais reste illisible lève Refus au lieu de rendre {} :
+    réécrire à partir de {} effacerait toutes les autres clés (correctif ET-02 / ET-03 de la revue du 17/11/2026)."""
+    texte = None
+    for essai in range(20 if strict else 1):
+        try:
+            with open(chemin, "r", encoding="utf-8-sig", errors="replace") as f:
+                texte = f.read()
+            break
+        except FileNotFoundError:
+            return {}
+        except OSError:
+            if strict and essai < 19:
+                time.sleep(0.05)
+    if texte is None:
+        if strict:
+            raise Refus("Le fichier de réglages est occupé par MetaTrader : réessaie dans un instant.")
         return {}
     cles = {}
     for ligne in texte.splitlines():
@@ -106,9 +120,19 @@ def lire_reglages(dossier):
     return lire_cles(os.path.join(dossier, FICHIER_REGLAGES))
 
 
+# Une seule modification à la fois : la page envoie ses demandes sur plusieurs fils (serveur multi-fils), et deux
+# lectures-réécritures simultanées perdraient l'une des deux.
+_VERROU = threading.Lock()
+
+
 def _modifier(dossier, changements):
     """Applique des changements (valeur None = retirer la clé). Retourne les clés réellement modifiées."""
-    cles = lire_reglages(dossier)
+    with _VERROU:
+        return _modifier_sans_verrou(dossier, changements)
+
+
+def _modifier_sans_verrou(dossier, changements):
+    cles = lire_cles(os.path.join(dossier, FICHIER_REGLAGES), strict=True)
     changees = []
     for cle, valeur in changements.items():
         if valeur is None:

@@ -102,6 +102,37 @@ def test_une_proposition_refusee_n_ecrit_rien(dossier):
     assert pont.lire_reglages(dossier) == {}
 
 
+def fichier_occupe(monkeypatch, echecs):
+    """reglages.txt illisible pendant `echecs` lectures (sous Windows : l'EA est en train de le lire)."""
+    vrai_open, reste = open, [echecs]
+
+    def faux_open(chemin, mode="r", *args, **kwargs):
+        if str(chemin).endswith(pont.FICHIER_REGLAGES) and "r" in mode and reste[0] > 0:
+            reste[0] -= 1
+            raise PermissionError("occupé")
+        return vrai_open(chemin, mode, *args, **kwargs)
+    monkeypatch.setattr("builtins.open", faux_open)
+    monkeypatch.setattr(pont.time, "sleep", lambda s: None)
+
+
+def test_un_fichier_occupe_un_instant_n_efface_pas_les_autres_reglages(dossier, monkeypatch):
+    """ET-02 / ET-03 (revue du 17/11/2026) : une lecture ratée effaçait les autres clés, case du Nasdaq comprise."""
+    pont.regler(dossier, {"risquePct": 0.25, "nasdaq": False})
+    fichier_occupe(monkeypatch, 3)
+    pont.regler(dossier, {"levier": 20})
+    cles = pont.lire_reglages(dossier)
+    assert cles["risque_pct"] == "0.25" and cles["nasdaq"] == "0" and cles["levier"] == "20"
+
+
+def test_un_fichier_toujours_occupe_refuse_au_lieu_d_ecraser(dossier, monkeypatch):
+    pont.regler(dossier, {"risquePct": 0.25, "nasdaq": False})
+    fichier_occupe(monkeypatch, 10_000)
+    with pytest.raises(pont.Refus):
+        pont.regler(dossier, {"levier": 20})
+    monkeypatch.undo()
+    assert pont.lire_reglages(dossier) == {"risque_pct": "0.25", "nasdaq": "0", "version": "1"}
+
+
 def test_connexions_validees_et_jamais_renvoyees(dossier):
     with pytest.raises(pont.Refus) as refus:
         pont.enregistrer_connexions(dossier, {"telegram_jeton": "pas-un-jeton-secret"})
