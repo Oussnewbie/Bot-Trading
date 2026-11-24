@@ -128,7 +128,9 @@ Le tableau en haut à droite dit la même chose en clair, ligne par ligne : A, B
 le lot.
 
 **Écarts avec l'EA.** TradingView ne voit que des bougies de 5 minutes et ne compte pas le spread : ses résultats sont un peu plus
-beaux. Le VWAP dépend du volume, qui diffère d'un fournisseur à l'autre : le signal B peut se décaler d'une bougie. L'EA reste la
+beaux. Il vérifie aussi le côté bloqué à la clôture de la bougie, pas à chaque cotation. Il ajoute la pyramide au prix de la clôture
+qui la décide, ce qui est optimiste. Avec un petit capital de stratégie, la taille du backtest TradingView peut être portée au minimum
+du symbole ; l'alerte le dit, et le lot à passer chez le courtier reste juste. Le VWAP dépend du volume, qui diffère d'un fournisseur à l'autre : le signal B peut se décaler d'une bougie. L'EA reste la
 version de référence.
 
 ## Étrave (l'interface de l'EA)
@@ -194,6 +196,13 @@ Tests : `python -m pytest robot etrave`, à la racine du dépôt. Ils vérifient
   minimum du courtier. L'EA le signale (« taille trop petite ») et ne trade pas ce jour-là.
 - **Étrave sous Windows.** Le lancement de MetaTrader, la connexion à un compte, l'installation de l'EA depuis la page et le lancement
   au démarrage de Windows n'ont jamais été essayés sous Windows.
+- **Un seul MetaTrader avec l'EA par ordinateur.** Deux terminaux sur la même machine (une démo et un compte réel, par exemple)
+  partagent le dossier d'Étrave : même risque, même case Nasdaq, et une demande « Clôturer » fermerait les deux. Mets la démo et le
+  réel sur deux machines ou deux VPS.
+- **Filet de sécurité.** Une fois par minute, à partir de la sortie de fin de journée, l'EA ferme toute position qui porte un de ses
+  numéros magiques, même s'il l'avait perdue de vue (réponse du courtier perdue, redémarrage). À toute heure, il ferme aussi celles
+  ouvertes un jour précédent. Il le signale par un message « FERMETURE DE SÉCURITÉ ». Ce filet ne marche que si l'EA tourne : d'où
+  le VPS pour le réel.
 - **Arrêt de l'EA.** Quand on le retire du graphique ou qu'on ferme MetaTrader, l'EA supprime ses ordres stop du jour. Après un
   plantage, il ne le peut pas : son état peut être ancien et un ordre peut rester chez le courtier jusqu'à son expiration. C'est 9:45
   si le courtier accepte une heure d'expiration, sinon la fin de la journée ; avec un courtier qui n'accepte que les ordres sans

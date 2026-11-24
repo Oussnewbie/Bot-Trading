@@ -101,6 +101,22 @@ Commandes, à lancer depuis la racine du dépôt :
 - **Revue indépendante du 17/11/2026** (branche `claude/cool-galileo-hzgjdo`, `revue/revue_code_complete.md`) : ses constats
   EA-xx, PINE-xx et ET-xx visaient l'ORB v6, dont la V10 hérite le code. Ceux qui sont corrigés portent leur numéro dans un
   commentaire de l'EA et un test de `robot/test_robot.py`. Avant de déclarer un constat réglé, vérifie le code.
+  - **Corrigés le 24/11/2026** (branche `correctifs/execution-v10`) :
+    - EA : EA-01 (heure du serveur), RSI lu trop tôt, X-01 (ordres GTC et `OnDeinit`), EA-04 (arrondi des lots), EA-06 (entrée au
+      marché bornée à 1,25 R), EA-07 et EA-10 (plancher de la pyramide), X-03 (état écrit et pyramide comptée au redémarrage),
+      X-08 (un message à la fois), X-12 (entrée doublée), X-15 (exécution partielle), jambes perdues de vue (`CloseOrphans`) ;
+    - Pine : PINE-03 (taille nulle), PINE-15 (15:45), stop faux dans l'alerte ;
+    - Étrave : ET-02 et ET-03 (fichier de réglages).
+  - **Encore ouverts**, du plus au moins grave :
+    - X-11 / ET-04 : deux terminaux sur un même ordinateur partagent `reglages.txt` et les clôtures. C'est une règle d'usage dans
+      le README, pas un verrou dans le code.
+    - X-02 : les sorties et le stop virtuel exigent un EA en marche (VPS).
+    - R-04 : une bougie est perdue si `CopyRates` échoue.
+    - R-05 : l'achat se déclenche sur l'ask. C'est voulu, et le backtest le modélise.
+    - Pine : R-09 / PINE-02 (côté bloqué vu à la clôture), R-17 / PINE-10 (ajout au prix de clôture), PINE-01 (pas de commission
+      par défaut). Ce sont des limites du backtest TradingView.
+    - R-06 : le prochain jour faux du calendrier est le 31/12/2027.
+    - Divers ET mineurs, et R-22 (chat ID par défaut dans le Pine).
 - Le script Pine a un vrai chat ID Telegram de l'utilisateur comme valeur par défaut : n'envoie jamais rien vers lui.
 
 ## Données (hors dépôt, `donnees/` est ignoré par git)
