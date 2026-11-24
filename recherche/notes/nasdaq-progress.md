@@ -474,3 +474,24 @@ Attendre le retour de l'utilisateur (testeur MT5 sur 12 mois, puis démo). Ensui
    ~70 % de réussite, gain trop petit pour être prouvé seul ; à tester en panier d'indices) ; cassure 20 jours à l'achat seul sur le BTC (47 trades,
    trop peu) ; DAX à 9:30 New York (t = 1,6).
 3. Ne pas copier la V10 sur le Dow, le DAX, l'or, le BTC, l'EUR/USD ou le GBP/USD.
+
+
+---
+
+## SESSION 5 (2026-11-24, Claude Code sur le Mac de l'utilisateur)
+
+- Dépôt nettoyé (main = V10 seule), correctifs d'exécution de l'EA et d'Étrave (non compilés), critique de la V10
+  (`recherche/critique-v10.md`), recherche documentaire (`recherche/reports/Pistes ORB asymétrie stop gamma VIX.md`).
+- Simulateur dans le dépôt (`recherche/simulateur/`) : retrouve les 3 612 trades de la V10 à l'identique.
+- Quatre règles et le critère A écrits AVANT tout chargement du S&P 500 (`notes/idees-strategies.md`, « SESSION 5 », commit f400ceb),
+  codées et vérifiées (réglages neutres = V10 exacte) avant les données (commit 8d1887f).
+- VIX (Cboe) et GEX (SqueezeMetrics) téléchargés le 24/11 dans `donnees/externes/` (jusqu'au 23/11/2026).
+- **S&P 500 Dukascopy : téléchargement automatique refusé par Dukascopy (HTTP 403, dukascopy-node 1.51.1, la dernière version).**
+  Pas de contournement (pas d'imitation d'un navigateur). Les données sont à fournir par l'utilisateur, comme le Nasdaq.
+- Essai à blanc de `s5_juger.py` sur le Nasdaq déjà vu (contrôle du code seulement, 500 tirages, écrit hors du dépôt), au coût de
+  0,6 pb : R0 46,7 % de trades gagnants, +499 R ; H1 47,2 %, +455 R ; H2 51,4 %, +378 R ; H3 47,2 %, +298 R ; H4 44,9 %, +218 R.
+  Ces chiffres décrivent des données déjà vues. Ils ne changent aucune règle et ne jugent rien.
+
+### PROCHAINE ACTION
+Recevoir les CSV M1 bid et ask du S&P 500 (`usa500idxusd`, 2018-01-01 → 2026-11-24) et les mettre dans `donnees/brut/sp500/`. Puis
+lancer `s5_qualite.py`, relire, écrire une éventuelle exclusion, et lancer une seule fois `s5_juger.py`.
