@@ -37,7 +37,7 @@ Commandes, à lancer depuis la racine du dépôt :
 - **Pas de MetaEditor ni de TradingView.** N'affirme jamais qu'un `.mq5` ou un `.pine` modifié compile.
   - La version du 21 novembre 2026 avait compilé avec 0 erreur sous Wine, sur la plateforme Claude (recette dans
     `recherche/notes/nasdaq-progress.md`, session 2), et le `.pine` était passé par l'analyseur de TradingView.
-  - **Les correctifs du 24 novembre (branche `correctifs/execution-v10`) n'ont été ni compilés ni analysés.** Sur ce Mac, Wine
+  - **Les correctifs du 24 novembre (sur `main`) n'ont été ni compilés ni analysés.** Sur ce Mac, Wine
     n'est pas installé : ses paquets Homebrew sont désactivés depuis septembre 2026, et Rosetta est absent.
 - **Pas de `.ex5` dans le dépôt** : il ne correspondrait plus au `.mq5` après la première modification. L'utilisateur compile avec F7
   dans MetaEditor, ou avec le bouton d'installation d'Étrave. Après toute modification du `.mq5`, demande-lui de compiler et de te
@@ -54,7 +54,7 @@ Commandes, à lancer depuis la racine du dépôt :
 1. L'utilisateur passe la V10 dans le testeur MT5 : 12 derniers mois, « chaque tick basé sur des ticks réels », compte hedging. Compare
    son rapport trade par trade à `recherche/resultats/trades_V10_confort_2018_2026_1pt.csv` (jour, sens, heure, prix à quelques points
    près). Ordre de grandeur sur les 12 derniers mois du fichier (jusqu'au 18/11/2026) : environ 410 trades, environ 50 % de
-   gagnants, +76 R. Les correctifs d'exécution du 24/11/2026 (branche `correctifs/execution-v10`) peuvent retirer quelques trades :
+   gagnants, +76 R. Les correctifs d'exécution du 24/11/2026 (sur `main`) peuvent retirer quelques trades :
    heure du serveur fausse, entrée au marché trop loin du niveau, pyramide abandonnée près du plancher.
 2. Ensuite, la démo. Mesure le **glissement réel** des ordres stop de 9:35 : c'est la variable qui décide de tout (les tests supposent
    1 point).
@@ -102,7 +102,7 @@ Commandes, à lancer depuis la racine du dépôt :
 - **Revue indépendante du 17/11/2026** (branche `claude/cool-galileo-hzgjdo`, `revue/revue_code_complete.md`) : ses constats
   EA-xx, PINE-xx et ET-xx visaient l'ORB v6, dont la V10 hérite le code. Ceux qui sont corrigés portent leur numéro dans un
   commentaire de l'EA et un test de `robot/test_robot.py`. Avant de déclarer un constat réglé, vérifie le code.
-  - **Corrigés le 24/11/2026** (branche `correctifs/execution-v10`) :
+  - **Corrigés le 24/11/2026** (sur `main`) :
     - EA : EA-01 (heure du serveur), RSI lu trop tôt, X-01 (ordres GTC et `OnDeinit`), EA-04 (arrondi des lots), EA-06 (entrée au
       marché bornée à 1,25 R), EA-07 et EA-10 (plancher de la pyramide), X-03 (état écrit et pyramide comptée au redémarrage),
       X-08 (un message à la fois), X-12 (entrée doublée), X-15 (exécution partielle), jambes perdues de vue (`CloseOrphans`) ;
