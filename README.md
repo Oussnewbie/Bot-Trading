@@ -3,7 +3,7 @@
 Un robot de trading intrajournalier pour les **indices américains**, en deux versions qui suivent les mêmes règles :
 
 - `robot/Strategy-V10.mq5` : l'Expert Advisor MetaTrader 5 (version 10.00). C'est la version de référence, car il voit le bid et l'ask.
-  `robot/Strategy-V10.ex5` est le même robot déjà compilé.
+  Il se compile dans MetaEditor (F7) ou par le bouton d'installation d'Étrave.
 - `robot/Strategy-V10.pine` : le script TradingView (Pine v6), avec ses alertes et le calcul du lot à passer chez le courtier.
 
 **Où il tourne.** Il est en service sur le **Nasdaq (NAS100)**. Le Dow Jones et le S&P 500 sont à l'étude : rien n'est encore
@@ -16,7 +16,7 @@ Toutes les heures sont celles de New York (9:30 NY = 15:30 à Paris la plupart d
 
 | Dossier | Contenu |
 |---|---|
-| `robot/` | Le robot : `.mq5`, `.ex5` et `.pine` |
+| `robot/` | Le robot (`.mq5` et `.pine`) et les contrôles de son code (`test_robot.py`) |
 | `etrave/` | L'interface locale de l'EA (Python, sans dépendance) et ses tests |
 | `recherche/` | Les rapports de recherche, le journal, les idées écrites avant les tests, et les trades simulés de la V10 qui servent de référence |
 | `CLAUDE.md` | Les consignes de travail sur ce dépôt |
@@ -41,8 +41,10 @@ Toutes les heures sont celles de New York (9:30 NY = 15:30 à Paris la plupart d
 **Les entrées de plus, seulement les jours où la cassure est prise, et dans son sens**
 - **B · repli VWAP** : la première bougie M5 qui revient toucher le prix moyen de séance (à 0,1 range près), puis clôture du bon
   côté. Entrée au marché, jusqu'à 14:00.
-- **D1, D2, D3 · continuations** : à la clôture des bougies de 9:35, 9:40 et 9:45, un ordre stop est posé sur l'extrême de la
-  bougie, valable 10 minutes. Elles ne sont armées que si l'autre bord du range n'a pas été touché depuis la cassure.
+- **D1, D2, D3 · continuations** : à la clôture des bougies de 9:35, 9:40 et 9:45, le dépassement de l'extrême de la bougie est
+  guetté pendant 10 minutes. L'EA surveille ce niveau lui-même et entre au marché : aucun ordre n'apparaît chez le courtier. Sur
+  TradingView, tu poses toi-même un ordre stop à ce prix. Elles ne sont armées que si l'autre bord du range n'a pas été touché
+  depuis la cassure.
 - **C · entrée de 10:00** : coupée par défaut.
 - B et D suivent la même gestion que A et ne risquent jamais plus de 1 R chacune. On peut avoir jusqu'à 5 positions ouvertes en même
   temps, toutes dans le même sens.
@@ -59,15 +61,15 @@ lui qui est utilisé.
 
 1. Hors séance et sans trade ouvert, retire tout ancien robot (ORB v6, V9…) du graphique.
 2. Copie `robot/Strategy-V10.mq5` dans `MQL5\Experts\Etrave`, ouvre-le dans MetaEditor et appuie sur F7 (tu dois lire « 0 errors »).
-   Tu peux aussi copier `Strategy-V10.ex5` directement, ou cliquer sur « Installer ou mettre à jour l'EA » dans Étrave.
+   Tu peux aussi cliquer sur « Installer ou mettre à jour l'EA » dans Étrave, qui copie et compile le fichier.
 3. Glisse Strategy-V10 sur le graphique **M5** du Nasdaq et coche « Autoriser le trading algorithmique ».
 4. Vérifie l'heure de New York affichée par le panneau. Si elle est fausse, corrige « Décalage GMT du serveur » et « Heure d'été du
    serveur ». Vérifie aussi la ligne « Entrées V10 : B … · C coupée · D … ».
 
 À savoir :
 - **Compte « hedging » obligatoire.** Sur un compte « netting », B et D sont coupées et seule la cassure est prise.
-- **Numéros magiques** : A = 50930 (réglage), B = +1, C = +2, D1 à D3 = +3 à +5. Ce sont les mêmes que la V9 : ne fais jamais
-  tourner les deux sur le même compte.
+- **Numéros magiques** : A = 50930 (réglage), B = +1, C = +2, D1 à D3 = +3 à +5. La V9 et l'ORB v6 utilisent aussi 50930 : ne
+  fais jamais tourner l'un d'eux en même temps que la V10 sur le même compte.
 - **Dates FOMC** : celles de 2018 à 2026 sont dans le code. Pour 2027 et après, saisis-les dans « Jours FOMC après 2026 » dès que la
   Fed les publie, au format `2027.01.27` séparé par des virgules. Sinon le robot trade ces jours-là.
 - **État** : le robot repart d'un état neuf (préfixe `StratV10_`). Installe-le un jour sans position.
@@ -112,7 +114,7 @@ Ces seuils ne sont pas codés dans le robot. Le détail est dans `recherche/resu
 
 | Ce que tu vois | Ce que ça veut dire | Ce que tu fais |
 |---|---|---|
-| Rectangle gris « 9:30 » et tirets verts / rouges « Achat stop · prix · lot » | les ordres de la cassure (A) sont à poser | poser l'ordre stop au prix indiqué, avec le lot affiché ; stop sur la ligne « SL » (3 ranges plus loin) |
+| Rectangle gris « 9:30 » et tirets verts / rouges « Achat stop · prix · lot » | les ordres de la cassure (A) sont à poser | poser l'ordre stop au prix indiqué, avec le lot affiché ; stop à 3 ranges du niveau, donné dans l'alerte « ORDRES ORB placés » et dans l'infobulle de l'ordre (la ligne « SL » n'apparaît qu'après l'exécution) |
 | **Ligne orange** | le prix moyen de la séance (VWAP) depuis 9:30 | rien, c'est le repère de B |
 | **Bande bleue** collée à la ligne orange | B est guettée | surveiller |
 | **Étiquette bleue « ACHAT B »** (ou « VENTE B ») | signal B : la bougie a touché la bande et clôturé du bon côté | entrer au marché ; stop sur la ligne bleue « SL B » ; lot dans l'infobulle et l'alerte |
@@ -137,7 +139,8 @@ version de référence.
 
 Ce qu'on trouve dans la page :
 - **Vue d'ensemble** : solde, trade en cours, résultat cumulé en argent, en % et en R, courbe et liste des trades. La case du Nasdaq,
-  une fois décochée, empêche tout nouveau trade. Le bouton « Clôturer » ferme toutes les positions du jour (A, B, D).
+  une fois décochée, empêche tout nouveau trade. Le bouton « Clôturer les positions » ferme toutes les positions du jour (A, B, D) ; il
+  reste affiché tant qu'une entrée B ou D est ouverte, même après la sortie de A.
 - **Risque** : le risque par trade (de 0,05 % à 20 % ; au-delà de 1 %, il faut taper RISQUE) et le levier du courtier.
   **Attention** : la simulation de cette page rejoue encore les trades de l'ancienne ORB v6 (`etrave/reference.json`), pas ceux de la V10.
 - **Connexions** :
@@ -145,8 +148,8 @@ Ce qu'on trouve dans la page :
   - **MetaTrader 5** : connexion à un compte, installation de l'EA (copie et compilation de `robot/Strategy-V10.mq5`), ouverture
     automatique de MetaTrader et lancement au démarrage de Windows.
 
-En direct, la page ne montre que la cassure A : l'état des entrées B et D n'y est pas encore affiché. Leurs trades clôturés apparaissent
-bien dans la liste des trades.
+En direct, la page détaille la cassure A (sens, lots, stop, résultat). Pour B et D, elle affiche une ligne d'état écrite par l'EA
+(« B en cours +0,4R », « D : 1 en cours »…). Leurs trades clôturés apparaissent dans la liste des trades.
 
 L'interface et l'EA se parlent par des fichiers du dossier commun de MetaTrader (`…\MetaQuotes\Terminal\Common\Files\Etrave`). L'interface
 ne passe aucun ordre : on peut la fermer sans rien changer à l'EA.
@@ -154,8 +157,10 @@ ne passe aucun ordre : on peut la fermer sans rien changer à l'EA.
 Côté sécurité, elle n'écoute que sur 127.0.0.1, avec un jeton tiré au hasard à chaque lancement, et le jeton Telegram n'est jamais
 réaffiché. N'ouvre jamais le port 8788 sur internet.
 
-Tests : `python -m pytest etrave`, à la racine du dépôt. Ils vérifient l'interface et son accord avec l'EA et le script Pine : mêmes
-fichiers, mêmes clés, mêmes bornes, même calendrier des jours fériés.
+Tests : `python -m pytest robot etrave`, à la racine du dépôt. Ils vérifient :
+- l'interface, et son accord avec l'EA : mêmes fichiers, mêmes clés, mêmes bornes ;
+- le calendrier des jours fériés, identique dans l'EA et le script Pine ;
+- les correctifs d'exécution de l'EA, en relisant son code (ce ne sont pas des tests de compilation).
 
 ## Limites connues
 
@@ -165,7 +170,8 @@ fichiers, mêmes clés, mêmes bornes, même calendrier des jours fériés.
 - **Nasdaq seulement, pour l'instant.**
   - Le Dow Jones testé tel quel ne gagne rien.
   - Le S&P 500 n'a eu qu'un contrôle de la version précédente, avec un avantage qui disparaît à coûts doublés.
-  - Sur ces deux indices, l'EA ne se règle pas depuis Étrave, qui ne connaît que le Nasdaq.
+  - Étrave applique son risque, son levier et Telegram à l'EA sur n'importe quel symbole, mais sa case marche / arrêt ne commande
+    que le Nasdaq. Un EA posé sur US30 ou US500 prendrait donc le risque réglé pour le Nasdaq.
   - Plusieurs réglages sont en points d'indice, calibrés pour le Nasdaq : glissement supposé et marge du stop de B dans l'EA, coût
     du garde-fou dans le script.
 - **Le glissement réel décide de tout.** Les tests supposent 1 point par exécution. Avec 3 points, le gain baisse d'environ 37 % et la
@@ -178,13 +184,20 @@ fichiers, mêmes clés, mêmes bornes, même calendrier des jours fériés.
   position passerait la fermeture.
 - **Ordres en attente.** Ne supprime pas à la main les ordres Buy Stop / Sell Stop de l'EA : 10 secondes après leur disparition, il
   renonce au trade du jour.
-- **EA lancé en retard.** S'il démarre après 9:35, pendant la validité des ordres, avec le prix déjà au-delà du niveau, ou trop près pour un ordre en attente,
-  ce côté est surveillé par l'EA, qui entre au marché, avec plus de glissement.
-- **Arrondi des lots.** Il est faux si le pas de volume du courtier n'est pas 1, 0,1 ou 0,01. Avec le stop élargi, les lots sont
-  3 fois plus petits : sur un petit compte, la taille peut tomber sous le lot minimum du courtier. L'EA le signale (« taille trop petite ») et ne trade pas ce jour-là.
+- **EA lancé en retard.** S'il démarre après 9:35, pendant la validité des ordres, avec le prix déjà au-delà du niveau, ou trop près
+  pour un ordre en attente, ce côté est surveillé par l'EA, qui entre au marché, avec plus de glissement. Si le prix est déjà si loin
+  que le risque réel dépasserait 1,25 R, il n'entre pas.
+- **Heure du serveur.** Si l'heure du serveur ne correspond plus aux réglages « Décalage GMT du serveur » et « Heure d'été du
+  serveur », l'EA ne pose aucun ordre ce jour-là et le dit. Une horloge Windows ou un fuseau mal réglés sur le VPS peuvent aussi
+  le déclencher.
+- **Petits comptes.** Avec le stop élargi, les lots sont 3 fois plus petits : sur un petit compte, la taille peut tomber sous le lot
+  minimum du courtier. L'EA le signale (« taille trop petite ») et ne trade pas ce jour-là.
 - **Étrave sous Windows.** Le lancement de MetaTrader, la connexion à un compte, l'installation de l'EA depuis la page et le lancement
   au démarrage de Windows n'ont jamais été essayés sous Windows.
-- **Après un plantage de MetaTrader**, l'état de l'EA peut être ancien.
+- **Arrêt de l'EA.** Quand on le retire du graphique ou qu'on ferme MetaTrader, l'EA supprime ses ordres stop du jour. Après un
+  plantage, il ne le peut pas : son état peut être ancien et un ordre peut rester chez le courtier jusqu'à son expiration. C'est 9:45
+  si le courtier accepte une heure d'expiration, sinon la fin de la journée ; avec un courtier qui n'accepte que les ordres sans
+  limite (GTC), l'ordre reste jusqu'à ce que tu le supprimes.
 
 ## Mettre à jour depuis l'ancienne version (ORB v6 + bot BTC)
 
@@ -192,5 +205,6 @@ fichiers, mêmes clés, mêmes bornes, même calendrier des jours fériés.
    « Arrêter ». La nouvelle Étrave n'a plus d'onglet Bitcoin, donc plus de bouton pour l'arrêter.
 2. Ferme Étrave et récupère la nouvelle version du dépôt.
 3. Hors séance et sans trade ouvert, retire ORB-v6 du graphique du Nasdaq. Ensuite, installe Strategy-V10 (section MetaTrader 5).
-   Les réglages d'Étrave (risque, levier, Telegram) sont gardés.
+   Les réglages d'Étrave (risque, levier, Telegram) sont gardés. **Vérifie le risque dans l'onglet Risque** : c'est lui qui
+   s'applique. Si tu tradais l'ORB v6 à 0,5 %, la V10 tournera à 0,5 % au lieu des 0,25 % prévus.
 4. Sur TradingView, supprime l'ancien script et son alerte, colle `robot/Strategy-V10.pine` et recrée l'alerte.

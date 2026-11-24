@@ -187,7 +187,7 @@ def test_journal_des_trades(dossier):
 
 # ───────────────────────── risque et marge ─────────────────────────
 @pytest.mark.parametrize("pct, par_an, baisse", [(0.25, 19, 6), (0.5, 40, 11), (1.0, 88, 22)])
-def test_le_calcul_redonne_le_tableau_du_readme(pct, par_an, baisse):
+def test_le_calcul_redonne_les_chiffres_connus_de_la_v6(pct, par_an, baisse):
     s = risque.simuler(pct)
     assert s["trades"] == 1391 and s["unites"] == 3.0
     assert round(s["parAnPct"]) == par_an and round(s["pireBaissePct"]) == baisse

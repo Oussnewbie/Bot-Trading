@@ -23,13 +23,13 @@ Les règles et l'installation sont dans `README.md`.
 
 ## Arborescence
 ```
-robot/       Strategy-V10.mq5, .ex5 (compilé), .pine
+robot/       Strategy-V10.mq5, Strategy-V10.pine, test_robot.py (contrôles du code de l'EA et du Pine)
 etrave/      interface web locale de l'EA (Python sans dépendance) + test_interface.py
 recherche/   rapports des sessions 2 à 4, journal (notes/nasdaq-progress.md), trades V10 de référence
 ```
 
 Commandes, à lancer depuis la racine du dépôt :
-- Tests : `.venv/bin/python -m pytest etrave -q` (28 tests ; il faut seulement pytest). Le `.venv` du dépôt tourne sous Python 3.15.
+- Tests : `.venv/bin/python -m pytest robot etrave -q` (42 tests ; il faut seulement pytest). Le `.venv` du dépôt tourne sous Python 3.15.
 - Étrave : `.venv/bin/python etrave/etrave.py --sans-navigateur --port 8799 --dossier <dossier jetable>`, puis la page sur
   `http://127.0.0.1:8799`.
 
@@ -38,16 +38,23 @@ Commandes, à lancer depuis la racine du dépôt :
   - Le `.mq5` a compilé avec 0 erreur sous Wine, sur la plateforme Claude, le 21 novembre 2026. La recette est dans
     `recherche/notes/nasdaq-progress.md`, session 2.
   - Le `.pine` est passé par l'analyseur de TradingView.
-- **Modifier le `.mq5` rend le `.ex5` périmé.** Dis-le à l'utilisateur : il recompile avec F7, ou avec le bouton d'Étrave.
+- **Pas de `.ex5` dans le dépôt** : il ne correspondrait plus au `.mq5` après la première modification. L'utilisateur compile avec F7
+  dans MetaEditor, ou avec le bouton d'installation d'Étrave. Après toute modification du `.mq5`, demande-lui de compiler et de te
+  renvoyer les erreurs éventuelles.
 - **Les deux fichiers du robot sont maintenant la source.** Ils avaient été générés depuis la V9 par des scripts restés dans l'archive
-  (`81_generer_v10.py`). On les modifie désormais directement, en gardant l'EA et le Pine d'accord. `etrave/test_interface.py` vérifie
-  une partie de cet accord : clés d'Étrave, journal des trades, calendrier des fériés.
+  (`81_generer_v10.py`). On les modifie désormais directement, en gardant l'EA et le Pine d'accord.
+  - `etrave/test_interface.py` vérifie l'accord entre Étrave et l'EA (clés, bornes, journal des trades) et le calendrier des fériés
+    entre l'EA et le Pine.
+  - `robot/test_robot.py` relit le code pour vérifier que chaque correctif d'exécution est en place.
+  - Un nouveau correctif ajoute son contrôle dans `robot/test_robot.py`.
 - **Le robot n'a jamais été vu en train de tourner** : ni testeur MT5, ni backtest TradingView, ni démo.
 
 ## État au 24 novembre 2026 et prochaine action
 1. L'utilisateur passe la V10 dans le testeur MT5 : 12 derniers mois, « chaque tick basé sur des ticks réels », compte hedging. Compare
    son rapport trade par trade à `recherche/resultats/trades_V10_confort_2018_2026_1pt.csv` (jour, sens, heure, prix à quelques points
-   près). Ordre de grandeur sur le 20/11/2025 → 19/11/2026 : environ 410 trades, environ 50 % de gagnants, +76 R.
+   près). Ordre de grandeur sur les 12 derniers mois du fichier (jusqu'au 18/11/2026) : environ 410 trades, environ 50 % de
+   gagnants, +76 R. Les correctifs d'exécution du 24/11/2026 (branche `correctifs/execution-v10`) peuvent retirer quelques trades :
+   heure du serveur fausse, entrée au marché trop loin du niveau, pyramide abandonnée près du plancher.
 2. Ensuite, la démo. Mesure le **glissement réel** des ordres stop de 9:35 : c'est la variable qui décide de tout (les tests supposent
    1 point).
 3. Interrupteur, sur 60 jours de trade : moins de 28 % de jours gagnants, un total pire que −40 R, ou une baisse de plus de 66 R. Ces
@@ -56,8 +63,8 @@ Commandes, à lancer depuis la racine du dépôt :
 
 ## Discipline de recherche (à respecter)
 - Environ 2 000 essais ont déjà été faits. Tout chiffre trouvé sur l'historique est un **candidat**, pas une preuve.
-- **Nasdaq** : 2010 → 18/11/2026 a été vu en entier (Dukascopy 2018-2026, HistData 2010-2017). **Ne règle plus rien sur le Nasdaq à
-  partir du backtest.** Les seules données neuves sont celles qui arrivent après le 19/11/2026, et les trades de démo.
+- **Nasdaq** : 2010 → 18/11/2026 inclus a été vu en entier (Dukascopy 2018-2026, HistData 2010-2017). **Ne règle plus rien sur le
+  Nasdaq à partir du backtest.** Les seules données neuves sont celles qui commencent le 19/11/2026, et les trades de démo.
 - **Dow Jones** : la recherche s'est arrêtée au 31/12/2023. Les années **2024-2026 n'ont jamais été ouvertes** (le « coffre 3 »).
   Elles servent à juger **une seule fois une seule idée**, écrite à l'avance avec son critère dans `recherche/notes/idees-strategies.md`.
   - La V10 transposée telle quelle : Confort −26 R, Tendance −38 R. Pas d'élan à l'ouverture (t = 0,4).
@@ -74,25 +81,31 @@ Commandes, à lancer depuis la racine du dépôt :
   - ne jamais augmenter le risque par trade sans l'accord de l'utilisateur.
 
 ## Pièges connus du code
-- `InstrumentOf()` (EA) ne reconnaît que les symboles du Nasdaq. US30 et US500 tombent dans « autre » : la case d'Étrave ne les commande
-  pas (`etrave/pont.py`, `INSTRUMENTS = {"nasdaq": True}`).
+- `InstrumentOf()` (EA) ne reconnaît que les symboles du Nasdaq. US30 et US500 tombent dans « autre » : la case marche / arrêt d'Étrave
+  ne les commande pas (`etrave/pont.py`, `INSTRUMENTS = {"nasdaq": True}`). En revanche, le risque, le levier et Telegram d'Étrave
+  s'appliquent à tous les symboles.
 - Certains réglages sont **en points d'indice et calibrés pour le Nasdaq** : `InpBBuf` (1 point, marge du stop de B), `InpCostSlip`
   (1 point de glissement supposé) et `costPts` du Pine (3,3 points). Ils sont à revoir avant tout test sur le Dow ou le S&P : un point
   y pèse bien plus lourd par rapport au range.
 - **FOMC** : les dates sont codées jusqu'en 2026. Celles de 2027 se saisissent dans `InpFomc` (EA) et `fomcExtra` (Pine). C'est à faire
   dès que la Fed les publie.
-- Les numéros magiques 50930 à 50935 sont partagés avec la V9. Le préfixe d'état est `StratV10_`. Le compte doit être en mode
-  **hedging**.
+- Les numéros magiques 50930 à 50935 sont partagés avec la V9 (et 50930 avec l'ORB v6). Le préfixe d'état est `StratV10_`. Le compte
+  doit être en mode **hedging**.
+- Le risque réglé dans Étrave passe avant les 0,25 % de l'EA. Après une mise à jour depuis la v6, il peut encore valoir 0,5 %.
 - `etrave/reference.json` contient encore les trades de l'**ORB v6** : la page Risque d'Étrave simule donc la v6. Le refaire à partir des
   trades V10 est un chantier ouvert. La V10 tient jusqu'à 5 positions, alors que `risque.py` suppose une seule position avec sa pyramide.
-- **Étrave n'affiche en direct que la cassure A.** L'EA écrit l'état de B et D (clés `v8_*`, `v9_d`), mais `pont.py` et `page.html`
-  ne le lisent pas encore. Les trades clôturés de B et D apparaissent bien dans le journal.
-- L'arrondi des lots (`vd = round(-log10(step))` dans l'EA) est faux si le pas de volume n'est pas 1, 0,1 ou 0,01.
+- **Étrave en direct** : le détail (lots, stop, résultat) ne concerne que la cassure A. Pour B et D, la page affiche seulement les
+  lignes d'état `v8_b` et `v9_d` écrites par l'EA. La clé `jambes` (nombre d'entrées B, C, D ouvertes) garde le bouton
+  « Clôturer » visible après la sortie de A.
+- Les entrées D ne posent aucun ordre chez le courtier : l'EA guette le niveau et entre au marché.
+- **Revue indépendante du 17/11/2026** (branche `claude/cool-galileo-hzgjdo`, `revue/revue_code_complete.md`) : ses constats
+  EA-xx, PINE-xx et ET-xx visaient l'ORB v6, dont la V10 hérite le code. Ceux qui sont corrigés portent leur numéro dans un
+  commentaire de l'EA et un test de `robot/test_robot.py`. Avant de déclarer un constat réglé, vérifie le code.
 - Le script Pine a un vrai chat ID Telegram de l'utilisateur comme valeur par défaut : n'envoie jamais rien vers lui.
 
 ## Données (hors dépôt, `donnees/` est ignoré par git)
-- **Nasdaq M1**, Dukascopy, bid et ask, du 01/01/2018 au 19/11/2026 : `~/Desktop/Nasdaq 8 ans/` (deux CSV, horodatage en ms UTC),
-  avec la même chose en zip à côté.
+- **Nasdaq M1**, Dukascopy, bid et ask, du 01/01/2018 au 18/11/2026 inclus : `~/Desktop/Nasdaq 8 ans/` (deux CSV nommés
+  `…-2026-11-19.csv`, horodatage en ms UTC), avec la même chose en zip à côté.
 - **L'archive complète de la recherche** est `~/Desktop/Strategy v10.zip` (identique à `~/Desktop/sortie 3/`). Elle contient les
   scripts, tous les résultats et les versions V7 à V9.
   - Les scripts pointent vers `/workspace` et demandent numba et des fichiers parquet : il faut les adapter avant de les relancer.
