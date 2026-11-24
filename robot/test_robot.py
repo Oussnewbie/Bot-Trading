@@ -66,3 +66,15 @@ def test_le_rsi_est_lu_une_fois_l_indicateur_a_jour():
     attente = setup.index("BarsCalculated(hRSI) < Bars(_Symbol, PERIOD_M5)")
     assert attente < setup.index("CopyBuffer(hRSI, 0, 1, 1, rsi)")
     assert setup[attente:attente + 120].count("return false;") == 1                  # réessayé au tick suivant
+
+
+def test_les_ordres_stop_ne_survivent_pas_a_l_ea():
+    """Revue du 17/11/2026 : ordres GTC préférés aux ordres DAY, et jamais supprimés quand l'EA s'arrête."""
+    choix = re.search(r"ENUM_ORDER_TYPE_TIME tt = (.*?);", EA, re.S).group(1)
+    assert choix.index("ORDER_TIME_SPECIFIED") < choix.index("ORDER_TIME_DAY") < choix.index("ORDER_TIME_GTC")
+    fin = re.search(r"void OnDeinit\(const int reason\)(.*?)\n  }\n", EA, re.S).group(1)
+    assert "DeletePendings()" in fin
+    for raison in ("REASON_REMOVE", "REASON_CHARTCLOSE", "REASON_CLOSE"):
+        assert raison in fin
+    for raison in ("REASON_PARAMETERS", "REASON_RECOMPILE", "REASON_CHARTCHANGE"):   # l'EA repart aussitôt : on garde
+        assert raison not in fin

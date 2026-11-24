@@ -805,8 +805,12 @@ bool PlaceStop(int d)
    double gap   = MathMax(SymbolInfoInteger(_Symbol, SYMBOL_TRADE_STOPS_LEVEL), SymbolInfoInteger(_Symbol, SYMBOL_TRADE_FREEZE_LEVEL)) * _Point;
    if(d == 1 ? price - ask <= gap : bid - price <= gap)
       return false;
+   // Correctif (revue du 17/11/2026) : l'expiration la plus courte que le courtier accepte. Avant, un ordre GTC était
+   // préféré à un ordre DAY : si l'EA s'arrêtait à 9:38, l'ordre pouvait être exécuté l'après-midi ou le lendemain.
    int em = (int)SymbolInfoInteger(_Symbol, SYMBOL_EXPIRATION_MODE);
-   ENUM_ORDER_TYPE_TIME tt = (em & SYMBOL_EXPIRATION_SPECIFIED) != 0 ? ORDER_TIME_SPECIFIED : (em & SYMBOL_EXPIRATION_GTC) != 0 ? ORDER_TIME_GTC : ORDER_TIME_DAY;
+   ENUM_ORDER_TYPE_TIME tt = (em & SYMBOL_EXPIRATION_SPECIFIED) != 0 ? ORDER_TIME_SPECIFIED :
+                             (em & SYMBOL_EXPIRATION_DAY) != 0 ? ORDER_TIME_DAY :
+                             (em & SYMBOL_EXPIRATION_GTC) != 0 ? ORDER_TIME_GTC : ORDER_TIME_DAY;
    datetime exp = tt == ORDER_TIME_SPECIFIED ? gOrTime + (InpLiveBars + 1) * BAR : 0;   // l'EA annule de toute façon à cette heure
    bool placed = false;
    for(int k = 0; k < 2 && !placed; k++)
@@ -2584,6 +2588,15 @@ int OnInit()
 void OnDeinit(const int reason)
   {
    EventKillTimer();
+   // Correctif (revue du 17/11/2026) : EA retiré du graphique, graphique ou terminal fermé : ses ordres stop du jour sont
+   // supprimés, pour qu'aucun ne soit exécuté sans l'EA pour le gérer (stop à l'entrée, pyramide, sortie de 15:50).
+   // Rien n'est supprimé quand l'EA redémarre aussitôt (réglages modifiés, recompilation, changement de période).
+   if(!MQLInfoInteger(MQL_TESTER) && (reason == REASON_REMOVE || reason == REASON_CHARTCLOSE || reason == REASON_CLOSE ||
+                                       reason == REASON_PROGRAM || reason == REASON_TEMPLATE))
+     {
+      if(!DeletePendings())
+         Print(BOT + " · " + _Symbol + " : arrêt de l'EA, ordre stop NON supprimé : supprime-le à la main dans l'onglet Trading");
+     }
    if(hRSI != INVALID_HANDLE)
       IndicatorRelease(hRSI);
    if(hDI != INVALID_HANDLE)
