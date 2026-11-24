@@ -85,6 +85,9 @@ Commandes, à lancer depuis la racine du dépôt :
   **hedging**.
 - `etrave/reference.json` contient encore les trades de l'**ORB v6** : la page Risque d'Étrave simule donc la v6. Le refaire à partir des
   trades V10 est un chantier ouvert. La V10 tient jusqu'à 5 positions, alors que `risque.py` suppose une seule position avec sa pyramide.
+- **Étrave n'affiche en direct que la cassure A.** L'EA écrit l'état de B et D (clés `v8_*`, `v9_d`), mais `pont.py` et `page.html`
+  ne le lisent pas encore. Les trades clôturés de B et D apparaissent bien dans le journal.
+- L'arrondi des lots (`vd = round(-log10(step))` dans l'EA) est faux si le pas de volume n'est pas 1, 0,1 ou 0,01.
 - Le script Pine a un vrai chat ID Telegram de l'utilisateur comme valeur par défaut : n'envoie jamais rien vers lui.
 
 ## Données (hors dépôt, `donnees/` est ignoré par git)

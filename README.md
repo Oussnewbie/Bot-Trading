@@ -145,6 +145,9 @@ Ce qu'on trouve dans la page :
   - **MetaTrader 5** : connexion à un compte, installation de l'EA (copie et compilation de `robot/Strategy-V10.mq5`), ouverture
     automatique de MetaTrader et lancement au démarrage de Windows.
 
+En direct, la page ne montre que la cassure A : l'état des entrées B et D n'y est pas encore affiché. Leurs trades clôturés apparaissent
+bien dans la liste des trades.
+
 L'interface et l'EA se parlent par des fichiers du dossier commun de MetaTrader (`…\MetaQuotes\Terminal\Common\Files\Etrave`). L'interface
 ne passe aucun ordre : on peut la fermer sans rien changer à l'EA.
 
@@ -175,4 +178,19 @@ fichiers, mêmes clés, mêmes bornes, même calendrier des jours fériés.
   position passerait la fermeture.
 - **Ordres en attente.** Ne supprime pas à la main les ordres Buy Stop / Sell Stop de l'EA : 10 secondes après leur disparition, il
   renonce au trade du jour.
+- **EA lancé en retard.** S'il démarre après 9:35, pendant la validité des ordres, avec le prix déjà au-delà du niveau, ou trop près pour un ordre en attente,
+  ce côté est surveillé par l'EA, qui entre au marché, avec plus de glissement.
+- **Arrondi des lots.** Il est faux si le pas de volume du courtier n'est pas 1, 0,1 ou 0,01. Avec le stop élargi, les lots sont
+  3 fois plus petits : sur un petit compte, la taille peut tomber sous le lot minimum du courtier. L'EA le signale (« taille trop petite ») et ne trade pas ce jour-là.
+- **Étrave sous Windows.** Le lancement de MetaTrader, la connexion à un compte, l'installation de l'EA depuis la page et le lancement
+  au démarrage de Windows n'ont jamais été essayés sous Windows.
 - **Après un plantage de MetaTrader**, l'état de l'EA peut être ancien.
+
+## Mettre à jour depuis l'ancienne version (ORB v6 + bot BTC)
+
+1. **Avant de récupérer la nouvelle version**, si le bot BTC tourne : dans l'ancienne Étrave, onglet ₿, fais « Tout fermer », puis
+   « Arrêter ». La nouvelle Étrave n'a plus d'onglet Bitcoin, donc plus de bouton pour l'arrêter.
+2. Ferme Étrave et récupère la nouvelle version du dépôt.
+3. Hors séance et sans trade ouvert, retire ORB-v6 du graphique du Nasdaq. Ensuite, installe Strategy-V10 (section MetaTrader 5).
+   Les réglages d'Étrave (risque, levier, Telegram) sont gardés.
+4. Sur TradingView, supprime l'ancien script et son alerte, colle `robot/Strategy-V10.pine` et recrée l'alerte.
