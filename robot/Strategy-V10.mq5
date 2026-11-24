@@ -1200,7 +1200,7 @@ bool Setup()   // true = terminé (trade préparé ou pas de trade), false = don
      }
    bool cut = lots < want - step / 2;   // réduite par la marge (et non par le volume maximal du symbole)
    lots = MathMin(lots, vmax);
-   int vd = (int)MathMax(0, MathRound(-MathLog10(step)));
+   int vd = VolDigits(step);
    lots = NormalizeDouble(lots, vd);
 
    string endT = TimeToString(ToNY(gOrTime) + (InpLiveBars + 1) * BAR, TIME_MINUTES);
@@ -1362,7 +1362,7 @@ void DoPyramid(double curR)
   {
    double step = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_STEP);
    double vmin = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MIN);
-   int    vd   = (int)MathMax(0, MathRound(-MathLog10(step)));
+   int    vd   = VolDigits(step);
    double lots = NormalizeDouble(MathFloor(gLots * InpPyrSize / step + 0.000001) * step, vd);
    gPyr = true;   // une seule tentative par trade
    gBE  = true;
@@ -1571,7 +1571,7 @@ bool LegOpen(SLeg &g, int dir, double stop, string quoi)
    double ts   = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_SIZE);
    double step = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_STEP);
    double vmin = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MIN);
-   int    vd   = (int)MathMax(0, MathRound(-MathLog10(step)));
+   int    vd   = VolDigits(step);
    if(dist <= 0 || dist <= lvl || ts <= 0 || tv <= 0 || step <= 0)
      {
       Notify(I_NONE + "PAS D'ENTRÉE " + g.nom + " (" + g.titre + ")\nStop trop proche du prix ou symbole mal décrit par le courtier");
@@ -1642,7 +1642,7 @@ void LegPyramid(SLeg &g, double curR)
   {
    double step = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_STEP);
    double vmin = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MIN);
-   int    vd   = (int)MathMax(0, MathRound(-MathLog10(step)));
+   int    vd   = VolDigits(step);
    double lots = NormalizeDouble(MathFloor(g.lots * InpPyrSize / step + 0.000001) * step, vd);
    g.pyrFree = false;   // une seule tentative par trade
    double mkt  = g.dir == 1 ? SymbolInfoDouble(_Symbol, SYMBOL_ASK) : SymbolInfoDouble(_Symbol, SYMBOL_BID);
@@ -2094,6 +2094,17 @@ string InstrumentOf(string sym)   // quelle case de l'interface commande ce symb
    if(StringFind(s, "NAS") >= 0 || StringFind(s, "NDX") >= 0 || StringFind(s, "NQ") >= 0 || StringFind(s, "USTEC") >= 0 || StringFind(s, "US100") >= 0 || StringFind(s, "USATECH") >= 0 || StringFind(s, "TECH100") >= 0)
       return "nasdaq";
    return "autre";
+  }
+
+// Nombre de décimales du pas de volume du courtier : 1 -> 0 ; 0,1 et 0,5 -> 1 ; 0,01, 0,05 et 0,25 -> 2.
+// (Correctif EA-04 de la revue du 17/11/2026 : l'ancien calcul round(-log10(pas)) donnait 0 décimale pour un pas de 0,5
+// ou 0,25, et NormalizeDouble arrondissait alors 0,5 lot à 1 lot : le double du risque prévu.)
+int VolDigits(double step)
+  {
+   int d = 0;
+   while(d < 8 && MathAbs(step * MathPow(10, d) - MathRound(step * MathPow(10, d))) > 1e-6)
+      d++;
+   return d;
   }
 
 string SafeName(string sym)   // lettres, chiffres et . _ - # + ; tout autre caractère devient _
