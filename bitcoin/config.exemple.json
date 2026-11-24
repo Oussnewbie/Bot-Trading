@@ -1,9 +1,0 @@
-{
-  "mode": "papier",
-  "profil": "prudent",
-  "vente": null,
-  "bande": 0.05,
-  "perte_max": 0.40,
-  "capital_papier": 10000,
-  "delai_s": 90
-}

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Étrave : l'interface de l'EA ORB v6 (Nasdaq) et du bot BTC (Binance) — une page web servie sur cet ordinateur uniquement.
+"""Étrave : l'interface de l'EA Strategy V10 (indices US) — une page web servie sur cet ordinateur uniquement.
 
     python etrave/etrave.py                 démarre et ouvre la page dans le navigateur
     python etrave/etrave.py --port 8790     autre port (8788 par défaut)
@@ -30,7 +30,6 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-import bitcoin  # noqa: E402
 import mt5  # noqa: E402
 import pont  # noqa: E402
 import risque  # noqa: E402
@@ -39,7 +38,7 @@ import telegram  # noqa: E402
 PAGE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "page.html")
 ICI = os.path.dirname(os.path.abspath(__file__))            # le dossier etrave/ (avec Etrave.bat)
 RACINE = os.path.dirname(ICI)
-SOURCE_EA = os.path.join(RACINE, "nasdaq", "ORB-v6.mq5")
+SOURCE_EA = os.path.join(RACINE, "robot", "Strategy-V10.mq5")
 PORT = 8788
 CORPS_MAX = 64 * 1024
 EN_TETE_JETON = "x-etrave-jeton"
@@ -56,10 +55,8 @@ class Erreur(Exception):
 class Application:
     """Les routes de l'interface, sans le transport HTTP (les tests l'appellent directement)."""
 
-    def __init__(self, dossier, appel_telegram=None, mt5_ouvert=None, mt5_lancer=None, mt5_installer=None, mt5_demarrage=None, journal=None,
-                 btc=None):
+    def __init__(self, dossier, appel_telegram=None, mt5_ouvert=None, mt5_lancer=None, mt5_installer=None, mt5_demarrage=None, journal=None):
         self.dossier = dossier
-        self.btc = btc or bitcoin.Bitcoin(dossier)
         self.appel_telegram = appel_telegram or telegram.appeler
         self._mt5_ouvert = mt5_ouvert or mt5.est_ouvert
         self._mt5_lancer = mt5_lancer or mt5.lancer
@@ -175,39 +172,6 @@ class Application:
             if isinstance(corps.get("demarrageWindows"), bool):
                 demarrage = self._mt5_demarrage(corps["demarrageWindows"], ICI)
             return {"ok": True, "reglages": pont.reglages_publics(self.dossier), "demarrageWindows": demarrage}
-        if chemin.startswith("/api/btc/"):
-            return self.traiter_btc(route, corps)
-        raise Erreur(404, "Route inconnue")
-
-    def traiter_btc(self, route, corps):
-        """L'onglet Bitcoin : le bot BTC (dossier bitcoin/), un programme à part de l'EA."""
-        b = self.btc
-        if route == "GET /api/btc/etat":
-            return b.etat()
-        if route == "POST /api/btc/reglages":
-            changees = b.regler(corps.get("valeurs"), corps.get("confirmation", ""))
-            if changees:
-                self.journal(f"bot BTC, réglages modifiés : {', '.join(changees)}")
-            return {"ok": True, "changees": changees, "reglages": b.reglages_publics()}
-        if route == "POST /api/btc/cles":
-            resultat = b.enregistrer_cles(corps.get("cle"), corps.get("secret"))
-            self.journal("bot BTC, clé Binance enregistrée")
-            return {"ok": True, "cles": resultat}
-        if route == "POST /api/btc/cles/effacer":
-            self.journal("bot BTC, clé Binance effacée")
-            return {"ok": True, "cles": b.effacer_cles()}
-        actions = {"POST /api/btc/tester": b.tester, "POST /api/btc/demarrer": b.demarrer, "POST /api/btc/arreter": b.arreter,
-                   "POST /api/btc/analyser": b.analyser, "POST /api/btc/rearmer": b.rearmer}
-        if route in actions:
-            resultat = actions[route]()
-            self.journal(f"bot BTC : {route.rsplit('/', 1)[-1]}")
-            return {"ok": True, **resultat}
-        if route == "POST /api/btc/pause":
-            return b.pause(bool(corps.get("pause")))
-        if route == "POST /api/btc/fermer":
-            resultat = b.fermer(corps.get("confirmation", ""))
-            self.journal("bot BTC : fermeture de toutes les positions demandée")
-            return resultat
         raise Erreur(404, "Route inconnue")
 
 
@@ -307,11 +271,8 @@ def deja_lancee(port):
 
 
 def reprendre_ancienne_organisation():
-    """Après la réorganisation du dépôt (17 novembre 2026) : réglages et état du bot BTC repris de crypto/bot/, et
-    lancement au démarrage de Windows redirigé vers etrave/Etrave.bat (il visait Etrave.bat à la racine du dépôt)."""
-    repris = bitcoin.reprendre_ancien_dossier()
-    if repris:
-        print("Ancien emplacement repris : " + ", ".join(repris))
+    """Après la réorganisation du dépôt (17 novembre 2026) : lancement au démarrage de Windows redirigé vers
+    etrave/Etrave.bat (il visait Etrave.bat à la racine du dépôt)."""
     fichier = mt5.fichier_demarrage()
     try:
         if fichier and os.path.exists(fichier) and os.path.join(RACINE, "Etrave.bat") in open(fichier, encoding="utf-8").read():
@@ -322,7 +283,7 @@ def reprendre_ancienne_organisation():
 
 
 def main(arguments=None):
-    lecteur = argparse.ArgumentParser(description=f"{pont.NOM} : l'interface de l'EA ORB v6")
+    lecteur = argparse.ArgumentParser(description=f"{pont.NOM} : l'interface de l'EA Strategy V10")
     lecteur.add_argument("--port", type=int, default=int(os.environ.get("ETRAVE_PORT", PORT)))
     lecteur.add_argument("--dossier", default=None, help="dossier partagé avec l'EA (par défaut : dossier commun de MetaTrader)")
     lecteur.add_argument("--sans-navigateur", action="store_true")
@@ -344,7 +305,7 @@ def main(arguments=None):
             return 0
         print(f"Le port {options.port} est pris par un autre programme. Essaie : python etrave/etrave.py --port {options.port + 1}")
         return 1
-    print(f"{pont.NOM} — l'EA ORB v6 (Nasdaq) et le bot BTC (Binance)")
+    print(f"{pont.NOM} — l'EA Strategy V10 (indices US)")
     print(f"  page     : {serveur.url}   (cet ordinateur uniquement)")
     print(f"  dossier  : {dossier}")
     print("  Laisse cette fenêtre ouverte tant que tu utilises la page. La fermer n'arrête ni l'EA ni ses alertes.")

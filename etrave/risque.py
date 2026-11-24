@@ -1,6 +1,6 @@
 """Un risque par trade et un levier rejoués sur les trades de référence : gain par an, pire baisse, jours où la marge manque.
 
-Les trades viennent de etrave/reference.json : un backtest de la v6 (ajout de 2 unités à +2R) rejouée minute par
+Les trades viennent de etrave/reference.json : un backtest de l'ANCIENNE v6, pas encore de la V10 (ajout de 2 unités à +2R) rejouée minute par
 minute sur le Nasdaq CFD de Dukascopy (M1 bid et ask, 2018-01 -> 2026-11, glissement 0,1 point), avec pour chaque trade
 sa date, son résultat en R, la largeur du range rapportée au prix et si la pyramide s'est déclenchée. Le capital est
 composé trade après trade, avec en plus la marge :

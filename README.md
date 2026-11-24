@@ -1,157 +1,178 @@
-# Étrave — deux bots de trading et leur interface
+# Strategy V10 — cassure de l'ouverture de New York
 
-- **ORB v6 sur le Nasdaq** (NAS100) : cassure du range d'ouverture de New York (bougie M5 de 9:30), dans le sens de
-  l'élan de l'ouverture, avec une pyramide quand le trade avance. Expert Advisor MetaTrader 5 et script TradingView.
-  Heures de New York (9:30 NY = 15:30 à Paris la plupart de l'année).
-- **Bot BTC** sur Binance : 9 indicateurs journaliers votent, une tendance 4h confirme, taille réglée sur la volatilité.
-- **Étrave** : une page web locale qui règle et surveille les deux.
+Un robot de trading intrajournalier pour les **indices américains**, en deux versions qui suivent les mêmes règles :
 
-Le dépôt contient trois dossiers :
+- `robot/Strategy-V10.mq5` : l'Expert Advisor MetaTrader 5 (version 10.00). C'est la version de référence, car il voit le bid et l'ask.
+  `robot/Strategy-V10.ex5` est le même robot déjà compilé.
+- `robot/Strategy-V10.pine` : le script TradingView (Pine v6), avec ses alertes et le calcul du lot à passer chez le courtier.
+
+**Où il tourne.** Il est en service sur le **Nasdaq (NAS100)**. Le Dow Jones et le S&P 500 sont à l'étude : rien n'est encore
+validé sur ces deux indices (voir « Limites connues »).
+
+**Étrave** (`etrave/`) est une page web locale qui règle et surveille l'EA : risque par trade, levier, Telegram, clôture d'un trade
+et lancement de MetaTrader.
+
+Toutes les heures sont celles de New York (9:30 NY = 15:30 à Paris la plupart de l'année). Ce n'est pas un conseil en investissement.
 
 | Dossier | Contenu |
 |---|---|
-| `nasdaq/` | La stratégie ORB v6 : `ORB-v6.mq5`, l'Expert Advisor MetaTrader 5 (version 6.10), et `ORB-v6.pine`, la même stratégie pour TradingView (Pine v6), avec alertes Telegram et calcul du lot. |
-| `bitcoin/` | Le bot BTC (Binance) : voir [bitcoin/LISEZMOI.md](bitcoin/LISEZMOI.md). Avec le code de sa stratégie (`btc.py`, `indicateurs.py`, `donnees.py`). |
-| `etrave/` | **Étrave**, la page web locale qui pilote les deux : **⛵ Nasdaq** (l'EA : risque, levier, Telegram, suivi et clôture des trades, lancement de MetaTrader) et **₿ Bitcoin** (le bot : tableau de bord, 9 votes, levier ×1 à ×10, clé API Binance, démarrer / arrêter / tout fermer). On la lance avec `etrave/Etrave.bat`. |
+| `robot/` | Le robot : `.mq5`, `.ex5` et `.pine` |
+| `etrave/` | L'interface locale de l'EA (Python, sans dépendance) et ses tests |
+| `recherche/` | Les rapports de recherche, le journal, les idées écrites avant les tests, et les trades simulés de la V10 qui servent de référence |
+| `CLAUDE.md` | Les consignes de travail sur ce dépôt |
 
-Ce n'est pas un conseil en investissement. Fais tourner l'EA et le bot en démo (ou en papier) avant le réel.
+## Les règles
 
-## ORB v6 (Nasdaq) : les règles
+**Le trade de cassure (A)**
+1. **Range** : le plus haut et le plus bas de la bougie M5 de 9:30.
+2. **Filtres** : l'achat est permis si le RSI14 M5 de cette bougie est au-dessus de 50 **et** si son plus haut dépasse le plus haut
+   de 9:00-9:30. La vente suit la règle inverse. Si aucun côté n'est permis, pas de trade.
+3. **Ordres** : à 9:35, un achat stop sur le haut et/ou une vente stop sur le bas, valables jusqu'à 9:45. Le premier exécuté annule
+   l'autre.
+4. **Stop élargi (profil Confort)** : 3 ranges au-delà du niveau de cassure. La taille est 3 fois plus petite qu'avec un stop d'un
+   range, donc la somme risquée (1 R) ne change pas.
+5. **Gestion** :
+   - le stop passe au prix d'entrée dès +1,5 R ;
+   - **pyramide** : quand une bougie clôture à +2 R, on ajoute 2 unités et le stop de l'ensemble monte à 1 R sous le prix de l'ajout ;
+   - sortie à 15:50, ou à 12:45 les jours fériés américains et les demi-séances.
+6. **Mémoire** : après un trade de cassure qui finit à plus de +1 R, le signal suivant n'est pas pris.
+7. **Jours sans trade** : décisions de la Fed (FOMC), jours fériés américains et demi-séances.
 
-1. **Range** : high et low de la bougie M5 de 9:30.
-2. **Filtres** : achat permis si le RSI14 M5 de cette bougie est au-dessus de 50 **et** si son high dépasse le plus haut de
-   9:00-9:30 ; vente si le RSI est sous 50 et le low sous le plus bas de 9:00-9:30. Aucun côté permis : pas de trade.
-3. **Ordres** : achat sur le high et/ou vente sur le low, valables 2 bougies (jusqu'à 9:45). Le premier exécuté annule
-   l'autre. Si un seul côté est permis et que l'autre est touché d'abord, pas de trade ce jour-là. Depuis l'EA 6.10, ce
-   sont de vrais ordres Buy Stop / Sell Stop posés chez le courtier à 9:35 (avec leur stop) : son serveur les exécute
-   sans attendre l'EA, ce qui réduit le glissement.
-4. **Stop** de l'autre côté du range. 1R = taille de départ × range.
-5. **Stop au prix d'entrée** dès +1,5R, décidé à la clôture d'une bougie après celle de l'entrée.
-6. **Pyramide** : quand une bougie clôture à +2R ou plus, deux unités sont ajoutées et le stop de l'ensemble monte à 1R
-   sous le prix de l'ajout. Le pire cas reste −1R : la première unité a au moins +1R d'acquis, les deux unités ajoutées
-   risquent 1R chacune. Un seul ajout par trade.
-7. **Sortie** à 15:50. Un seul trade par jour.
-8. **Jours fériés américains et demi-séances** (le marché ferme vers 13:00) : sortie à 12:45, plus de pyramide ensuite.
-   Le calendrier est calculé par l'EA et par le script (jour de l'an, Martin Luther King, Presidents' Day, vendredi
-   saint, Memorial Day, Juneteenth, 4 juillet, Labor Day, Thanksgiving, Noël ; lendemain de Thanksgiving, veille de
-   Noël, veille du 4 juillet).
+**Les entrées de plus, seulement les jours où la cassure est prise, et dans son sens**
+- **B · repli VWAP** : la première bougie M5 qui revient toucher le prix moyen de séance (à 0,1 range près), puis clôture du bon
+  côté. Entrée au marché, jusqu'à 14:00.
+- **D1, D2, D3 · continuations** : à la clôture des bougies de 9:35, 9:40 et 9:45, un ordre stop est posé sur l'extrême de la
+  bougie, valable 10 minutes. Elles ne sont armées que si l'autre bord du range n'a pas été touché depuis la cassure.
+- **C · entrée de 10:00** : coupée par défaut.
+- B et D suivent la même gestion que A et ne risquent jamais plus de 1 R chacune. On peut avoir jusqu'à 5 positions ouvertes en même
+  temps, toutes dans le même sens.
 
-## Installer
+**Garde-fou coût** : aucun ordre ce jour-là si le spread plus 2 glissements pèse plus de 25 % du risque.
 
-1. Installe Python 3 ([python.org](https://www.python.org/downloads/), coche « Add python.exe to PATH »). Rien d'autre.
-2. Double-clique sur `etrave/Etrave.bat` : la page s'ouvre sur `http://127.0.0.1:8788` (ailleurs que sous Windows :
-   `python etrave/etrave.py`).
-3. Onglet **Connexions** : « Installer ou mettre à jour l'EA » le copie dans `MQL5\Experts\Etrave` et le compile ; les
-   erreurs éventuelles s'affichent dans la page. À la main : copie `nasdaq/ORB-v6.mq5` dans `MQL5/Experts`, ouvre-le dans
-   MetaEditor, F7.
-4. Dans MetaTrader, glisse l'EA sur un graphique du Nasdaq (une seule fois, MetaTrader s'en souvient) et coche
-   « Autoriser le trading algorithmique ».
-5. **Heure du serveur** : la plupart des courtiers sont à GMT+2 en hiver avec l'heure d'été américaine (réglages par
-   défaut). Si ce n'est pas le cas du tien, corrige « Décalage GMT du serveur » et « Heure d'été du serveur ». L'EA
-   compare en continu avec l'heure réelle du serveur ; la page affiche une alerte rouge en cas d'écart.
-6. Compte en mode **hedging** conseillé. MetaTrader doit rester ouvert de 9:30 à 15:50 New York.
+**Profil Tendance (la V9)** : largeur du stop = 1 et « gagnant au-delà de » = 0,05. Il gagne moins souvent, avec des pertes en série
+plus longues.
 
-## L'interface Étrave
+**Risque par défaut** : 0,25 % du solde par trade. Le remonter double les gains comme les baisses. Si Étrave donne un risque, c'est
+lui qui est utilisé.
 
-- **Vue d'ensemble** : solde, trade en cours et résultat cumulé en argent, en % et en R, courbe des trades pris, liste
-  des trades, case du Nasdaq (décochée : plus de nouveau trade), bouton « Clôturer le trade ». Les blocs se replient d'un
-  clic sur leur titre.
-- **Risque** : le seul réglage, de 0,05 % à 20 % du solde par trade, avec le levier de ton courtier. Pour la valeur
-  choisie, la page rejoue les trades de référence de `etrave/reference.json` (un backtest de la stratégie) : gain par
-  an, pire baisse, pire série de pertes, part des trades que la marge aurait obligé à réduire (la marge doit porter
-  3 unités). Au-delà de 1 %, il faut taper le mot RISQUE.
-- **Connexions** : Telegram (jeton, « Trouver ma discussion et tester », « Essai depuis MetaTrader » qui dit si
-  MetaTrader bloque l'adresse) ; MetaTrader 5 (connexion à un compte, installation de l'EA, ouverture automatique de
-  MetaTrader au démarrage d'Étrave, lancement d'Étrave à l'ouverture de la session Windows).
+## MetaTrader 5
 
-L'interface et l'EA se parlent par des fichiers du dossier commun de MetaTrader
-(`…\MetaQuotes\Terminal\Common\Files\Etrave`) : la page écrit `reglages.txt`, l'EA le relit toutes les 2 secondes et écrit
-son état et ses trades. L'interface ne passe aucun ordre ; on peut la fermer sans rien changer à l'EA ni à ses alertes.
+1. Hors séance et sans trade ouvert, retire tout ancien robot (ORB v6, V9…) du graphique.
+2. Copie `robot/Strategy-V10.mq5` dans `MQL5\Experts\Etrave`, ouvre-le dans MetaEditor et appuie sur F7 (tu dois lire « 0 errors »).
+   Tu peux aussi copier `Strategy-V10.ex5` directement, ou cliquer sur « Installer ou mettre à jour l'EA » dans Étrave.
+3. Glisse Strategy-V10 sur le graphique **M5** du Nasdaq et coche « Autoriser le trading algorithmique ».
+4. Vérifie l'heure de New York affichée par le panneau. Si elle est fausse, corrige « Décalage GMT du serveur » et « Heure d'été du
+   serveur ». Vérifie aussi la ligne « Entrées V10 : B … · C coupée · D … ».
 
-- Un nouveau risque vaut pour le trade suivant, jamais pour un trade ouvert.
-- **Marge** : la position, ajout de la pyramide compris, ne demande jamais plus de 90 % de la marge libre. Si le risque
-  demandé est trop grand pour le levier, l'EA réduit la taille et le dit dans le message « Ordres placés ».
-- **Clôturer** : l'EA ferme le trade au marché (ou annule les ordres du jour) dans les 2 secondes ; une demande de plus de
-  2 minutes est ignorée.
-- **Telegram** : dans MetaTrader, Outils > Options > Expert Advisors, coche « Autoriser WebRequest pour les URL listées »
-  et ajoute `https://api.telegram.org`. Exemple de message : `✅ ACHAT CLÔTURÉ : +1,3R · +0,65 % · +65,20 USD`.
-- **Sécurité** : écoute sur 127.0.0.1 uniquement, jeton tiré au hasard à chaque lancement, aucune ressource extérieure.
-  Le jeton Telegram n'est plus jamais affiché une fois enregistré ; le mot de passe du compte n'est écrit que dans un
-  fichier provisoire effacé une minute après le lancement de MetaTrader. Sur un VPS, ouvre la page par le Bureau à
-  distance : n'ouvre jamais le port 8788 sur internet.
+À savoir :
+- **Compte « hedging » obligatoire.** Sur un compte « netting », B et D sont coupées et seule la cassure est prise.
+- **Numéros magiques** : A = 50930 (réglage), B = +1, C = +2, D1 à D3 = +3 à +5. Ce sont les mêmes que la V9 : ne fais jamais
+  tourner les deux sur le même compte.
+- **Dates FOMC** : celles de 2018 à 2026 sont dans le code. Pour 2027 et après, saisis-les dans « Jours FOMC après 2026 » dès que la
+  Fed les publie, au format `2027.01.27` séparé par des virgules. Sinon le robot trade ces jours-là.
+- **État** : le robot repart d'un état neuf (préfixe `StratV10_`). Installe-le un jour sans position.
+- **Telegram** : dans Outils > Options > Expert Advisors, autorise `https://api.telegram.org` pour WebRequest.
+- **Où le faire tourner** : ton ordinateur pour la démo (sans mise en veille), un VPS Windows pour le réel. MetaTrader doit rester
+  ouvert de 9:30 à 15:50 New York.
 
-**Où faire tourner l'EA** : ton ordinateur pour la démo (sans mise en veille), un VPS Windows pour le réel. Le VPS intégré
-à MetaTrader n'a pas d'écran et ne lance aucun autre programme : l'EA y tourne, sans l'interface.
+### Le test à faire dans le testeur de stratégie
+1. Ouvre Affichage > Testeur de stratégie et règle-le ainsi :
+   - Expert : `Etrave\Strategy-V10`, symbole : ton Nasdaq, période : M5 ;
+   - dates : les 12 derniers mois ;
+   - modélisation : « Chaque tick basé sur des ticks réels » ;
+   - compte hedging, levier 1:100.
+2. Dans le Journal, tu dois voir passer « ORDRES PLACÉS … 1R = … », « entrée D1 guettée », « ACHAT D1 exécuté(e) »…
+3. Enregistre le rapport en HTML pour le comparer trade par trade à
+   `recherche/resultats/trades_V10_confort_2018_2026_1pt.csv`.
+   - **Ordre de grandeur simulé** du 20 novembre 2025 au 19 novembre 2026 : environ 410 trades sur 122 jours, environ 50 % de gagnants
+     et +76 R.
+   - **Si le testeur ne colle pas**, ne passe pas en réel : c'est le cas avec nettement moins de trades, moins de 35 % de gagnants ou
+     un résultat négatif.
 
-Tests : `python -m pytest` à la racine du dépôt (Étrave, son accord avec l'EA et le script Pine, et le bot BTC). Ils
-vérifient aussi que l'EA et l'interface emploient les mêmes noms de fichiers, de clés et les mêmes bornes. Seuls
-`pytest` et, pour le bot, `numpy` et `pandas` sont nécessaires.
+### L'interrupteur : quand couper le robot
+Sur 60 jours de trade (environ 6 mois), coupe le robot et fais le point si l'un de ces seuils est franchi :
+- moins de 28 % de jours gagnants (16 ou moins sur 60) ;
+- un total pire que −40 R ;
+- une baisse de plus de 66 R depuis le dernier plus haut.
+
+Ces seuils ne sont pas codés dans le robot. Le détail est dans `recherche/resultats/83_surveillance.md`.
 
 ## TradingView
 
-Colle `nasdaq/ORB-v6.pine` dans l'éditeur Pine, sur un graphique **M5** du NAS100 avec les bougies hors séance. Dans
-« Propriétés », ajoute une commission égale au spread de ton courtier. Alertes Telegram : une alerte sur la stratégie,
-condition « Uniquement les appels de la fonction alert() », webhook `https://api.telegram.org/bot<TOKEN>/sendMessage`.
-Après chaque mise à jour du script, supprime et recrée l'alerte.
+1. Ouvre un graphique **M5** du NAS100, avec les bougies hors séance. Dans l'éditeur Pine, colle tout `robot/Strategy-V10.pine`, puis
+   « Ajouter au graphique ». Dans « Propriétés », ajoute une commission égale au spread de ton courtier.
+2. Crée une alerte sur la stratégie, avec la condition « Appels de la fonction alert() uniquement ». Pour Telegram, utilise le webhook
+   `https://api.telegram.org/bot<TOKEN>/sendMessage` et renseigne le Chat ID dans les réglages. Après chaque mise à jour du script,
+   supprime puis recrée l'alerte.
+3. **Lot à passer chez le courtier** (groupe « Lots chez le courtier ») :
+   - renseigne la taille de contrat (20 pour le NAS100 chez FundingPips : 1 lot = 20 $ par point) et le solde de ton compte ;
+   - le script affiche alors le lot à saisir, déjà divisé par 3 avec le stop élargi.
 
-**Lot à passer chez le courtier** (réglages, groupe « Lots chez le courtier ») : à 9:35, le script calcule le lot à
-saisir dans MetaTrader : solde × risque ÷ (range × taille de contrat), arrondi vers le bas au pas de lot. Il l'affiche
-dans le tableau, sur les ordres et dans l'alerte « Ordres placés », avec le lot de l'ajout de la pyramide (2 fois le
-lot de départ). Renseigne la taille de contrat (20 sur FundingPips pour le NAS100 : 1 lot = 20 $ par point) et le solde
-de ton compte (par exemple 100000 pour un compte de 100K). Avec 0, le script prend le capital de la stratégie
-TradingView, qui n'est pas celui de ton compte. Exemple : 100 000 $, 0,5 % de risque, range de 30 points → 500 $ ÷
-(30 × 20) = 0,83 lot, ajout de 1,66 lot. L'EA, lui, calcule le lot tout seul à partir de la spécification du symbole.
+**Lire le graphique**
 
-## Ce que l'EA ne fait pas exactement comme le script TradingView
-
-Les règles sont les mêmes. Les écarts viennent du spread, que TradingView ne voit pas (il n'a qu'un prix par bougie) :
-
-| | Script TradingView | EA |
+| Ce que tu vois | Ce que ça veut dire | Ce que tu fais |
 |---|---|---|
-| Déclenchement d'un achat | quand le prix du graphique atteint le high | ordre Buy Stop chez le courtier : exécuté quand l'**ask** atteint le high (un spread plus tôt) |
-| Vente : seuils de +1,5R et de +2R, côté bloqué touché | mesurés sur le prix du graphique | mesurés sur l'**ask** (le prix auquel une vente se rachète) : un spread plus exigeants |
-| Stop de la pyramide | 1R sous la clôture de la bougie | 1R sous le prix réel de l'ajout, pris au premier tick de la bougie suivante |
-| Filtre d'élan | une bougie entre 9:00 et 9:30 suffit | il en faut au moins deux |
-| Taille | capital × risque ÷ range | la même, puis plafonnée par la marge (90 % de la marge libre, pyramide comprise) |
-| Heure de New York | donnée par TradingView | calculée à partir de l'heure du serveur du courtier : dépend de deux réglages |
-| En plus dans l'EA | — | risque et pause réglés depuis Étrave, clôture demandée depuis Étrave |
+| Rectangle gris « 9:30 » et tirets verts / rouges « Achat stop · prix · lot » | les ordres de la cassure (A) sont à poser | poser l'ordre stop au prix indiqué, avec le lot affiché ; stop sur la ligne « SL » (3 ranges plus loin) |
+| **Ligne orange** | le prix moyen de la séance (VWAP) depuis 9:30 | rien, c'est le repère de B |
+| **Bande bleue** collée à la ligne orange | B est guettée | surveiller |
+| **Étiquette bleue « ACHAT B »** (ou « VENTE B ») | signal B : la bougie a touché la bande et clôturé du bon côté | entrer au marché ; stop sur la ligne bleue « SL B » ; lot dans l'infobulle et l'alerte |
+| **Tirets vert foncé « D1 stop · prix »**, juste après 9:40 | une continuation est guettée pendant 10 minutes | poser un ordre stop à ce prix, dans le sens de la cassure, avec le stop indiqué |
+| Alerte « ACHAT D1 EXÉCUTÉ » | l'ordre a été touché | vérifier que le stop est en place |
+| Tirets qui disparaissent sans exécution | pas de dépassement en 10 minutes, ou stop touché d'abord | annuler l'ordre s'il est encore chez le courtier |
+| Petite étiquette « + » | pyramide sur cette entrée | ajouter 2 fois la taille de départ, remonter le stop au prix indiqué |
+| « ⏸ mémoire », « ⏸ FOMC », « ⏸ férié » au-dessus du range | pas de trade aujourd'hui, et pourquoi | rien |
 
-Les deux exécutent les mêmes règles ; l'EA, qui voit le bid et l'ask, est la version de référence.
+Le tableau en haut à droite dit la même chose en clair, ligne par ligne : A, B, C (« coupée »), D, Mémoire, puis l'historique en R et
+le lot.
+
+**Écarts avec l'EA.** TradingView ne voit que des bougies de 5 minutes et ne compte pas le spread : ses résultats sont un peu plus
+beaux. Le VWAP dépend du volume, qui diffère d'un fournisseur à l'autre : le signal B peut se décaler d'une bougie. L'EA reste la
+version de référence.
+
+## Étrave (l'interface de l'EA)
+
+1. Installe Python 3 ([python.org](https://www.python.org/downloads/), coche « Add python.exe to PATH »). Rien d'autre n'est nécessaire.
+2. Double-clique sur `etrave/Etrave.bat`. La page s'ouvre sur `http://127.0.0.1:8788` (ailleurs que sous Windows :
+   `python etrave/etrave.py`).
+
+Ce qu'on trouve dans la page :
+- **Vue d'ensemble** : solde, trade en cours, résultat cumulé en argent, en % et en R, courbe et liste des trades. La case du Nasdaq,
+  une fois décochée, empêche tout nouveau trade. Le bouton « Clôturer » ferme toutes les positions du jour (A, B, D).
+- **Risque** : le risque par trade (de 0,05 % à 20 % ; au-delà de 1 %, il faut taper RISQUE) et le levier du courtier.
+  **Attention** : la simulation de cette page rejoue encore les trades de l'ancienne ORB v6 (`etrave/reference.json`), pas ceux de la V10.
+- **Connexions** :
+  - **Telegram** : jeton, recherche de la discussion, essai depuis MetaTrader.
+  - **MetaTrader 5** : connexion à un compte, installation de l'EA (copie et compilation de `robot/Strategy-V10.mq5`), ouverture
+    automatique de MetaTrader et lancement au démarrage de Windows.
+
+L'interface et l'EA se parlent par des fichiers du dossier commun de MetaTrader (`…\MetaQuotes\Terminal\Common\Files\Etrave`). L'interface
+ne passe aucun ordre : on peut la fermer sans rien changer à l'EA.
+
+Côté sécurité, elle n'écoute que sur 127.0.0.1, avec un jeton tiré au hasard à chaque lancement, et le jeton Telegram n'est jamais
+réaffiché. N'ouvre jamais le port 8788 sur internet.
+
+Tests : `python -m pytest etrave`, à la racine du dépôt. Ils vérifient l'interface et son accord avec l'EA et le script Pine : mêmes
+fichiers, mêmes clés, mêmes bornes, même calendrier des jours fériés.
 
 ## Limites connues
 
-- **L'EA ORB-v6 n'a jamais été compilé ni exécuté** : il a été modifié sans MetaTrader. Compile-le, corrige ce que le
-  compilateur signale, et fais-le tourner en démo.
-- Le lancement de MetaTrader, la connexion à un compte, l'installation de l'EA depuis la page et le lancement au démarrage
-  de Windows n'ont jamais été essayés sous Windows.
-- Le script TradingView a lui aussi été modifié les 15 et 17 novembre 2026 (sortie des jours fériés, taille de l'ajout)
-  sans pouvoir être compilé : si l'éditeur Pine signale une erreur, renvoie-la. Ses réglages déjà enregistrés sur un
-  graphique gardent l'ancienne taille d'ajout : remets « Taille de l'ajout » à 2 ou réinitialise les paramètres.
-- Jours fériés : le calendrier a été contrôlé sur les fermetures de 2022 à 2025. Une fermeture exceptionnelle (deuil
-  national, panne) n'y figure pas : ce jour-là la position passerait la fermeture. À l'inverse, environ deux fois par
-  décennie il sort à 12:45 un jour normal (31 décembre quand le 1er janvier tombe un samedi).
-- EA lancé entre 9:35 et 9:40 avec le prix déjà au-delà du range : il entre au marché, quelle que soit la distance. Même
-  chose si le prix est trop près du niveau à 9:35 pour que le courtier accepte un ordre en attente : ce côté est alors
-  surveillé par l'EA, avec un ordre au marché (plus de glissement).
-- Ne supprime pas à la main les ordres Buy Stop / Sell Stop de l'EA (onglet Trading de MetaTrader) : 10 secondes après
-  leur disparition sans exécution, l'EA renonce au trade du jour. Le message « exécuté » donne le glissement de chaque
-  entrée : relève-le sur quelques semaines pour connaître le coût réel chez ton courtier.
-- Après un plantage de MetaTrader, l'état de l'EA peut être ancien (stop de référence, pyramide).
-- **Passer de la v5 à la v6** : fais-le hors séance, sans trade ouvert (la v6 ne reprend pas l'état d'un trade de la
-  v5). Retire ORB-v5 de ses graphiques, supprime `ORB-v5.mq5` et `ORB-v5.ex5` de `MQL5\Experts\Etrave`, installe la v6
-  depuis Étrave (onglet Connexions) et pose ORB-v6 sur le graphique du Nasdaq. Sur TradingView, supprime l'ancien script
-  et son alerte, colle `nasdaq/ORB-v6.pine` et recrée l'alerte.
-- Arrondi des lots faux si le pas de volume du courtier n'est pas 1, 0,1 ou 0,01.
-- Le journal des trades de l'interface commence avec la version 5.10 de l'EA ; la v6 continue le même journal.
-
-## Mettre à jour une copie d'avant le 17 novembre 2026
-
-Les dossiers s'appelaient alors `interface/` (avec `Etrave.bat` à la racine), `mt5/`, `pine/` et `crypto/bot/`.
-Arrête le bot BTC et ferme Étrave, récupère la nouvelle version, puis lance `etrave/Etrave.bat`. Au premier lancement,
-Étrave déplace tout seul, sans rien écraser, les réglages et l'état du bot (`crypto/bot/config.json` et
-`crypto/bot/etat/`) dans `bitcoin/`, les données locales de `crypto/donnees/` vers `donnees/crypto/`, et fait pointer le
-lancement au démarrage de Windows vers `etrave/Etrave.bat`. Si tu lançais le bot sans Étrave :
-`bitcoin/bot.py --config bitcoin/config.json`.
-
-L'EA déjà installé dans MetaTrader ne change pas : il reste dans `MQL5\Experts\Etrave`, et ses fichiers d'échange avec
-Étrave ne bougent pas. « Installer ou mettre à jour l'EA » prend désormais `nasdaq/ORB-v6.mq5`.
+- **Le robot n'a jamais été vu en train de tourner.** Le `.mq5` compile sans erreur (MetaEditor, 21 novembre 2026) et le `.pine` passe
+  l'analyseur de TradingView, mais personne ne l'a encore vu passer un ordre. Il faut le testeur de stratégie, puis une démo, avant
+  tout argent réel.
+- **Nasdaq seulement, pour l'instant.**
+  - Le Dow Jones testé tel quel ne gagne rien.
+  - Le S&P 500 n'a eu qu'un contrôle de la version précédente, avec un avantage qui disparaît à coûts doublés.
+  - Sur ces deux indices, l'EA ne se règle pas depuis Étrave, qui ne connaît que le Nasdaq.
+  - Plusieurs réglages sont en points d'indice, calibrés pour le Nasdaq : glissement supposé et marge du stop de B dans l'EA, coût
+    du garde-fou dans le script.
+- **Le glissement réel décide de tout.** Les tests supposent 1 point par exécution. Avec 3 points, le gain baisse d'environ 37 % et la
+  pire baisse double. Relève le glissement que l'EA annonce dans le message « exécuté ».
+- **Plateaux.** Le profil Confort a des baisses peu profondes, mais le capital peut stagner longtemps : jusqu'à 20 mois dans les tests
+  2018-2026.
+- **Le profil Confort a été réglé après avoir vu tout l'historique du Nasdaq.** Ses chiffres (`recherche/rapport-session4.md`) ne sont
+  pas une preuve.
+- **Jours fériés.** Une fermeture exceptionnelle de la Bourse (deuil national, panne) n'est pas dans le calendrier : ce jour-là, la
+  position passerait la fermeture.
+- **Ordres en attente.** Ne supprime pas à la main les ordres Buy Stop / Sell Stop de l'EA : 10 secondes après leur disparition, il
+  renonce au trade du jour.
+- **Après un plantage de MetaTrader**, l'état de l'EA peut être ancien.
