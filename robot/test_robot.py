@@ -135,3 +135,56 @@ def test_l_alerte_tradingview_donne_le_stop_elargi():
 def test_le_garde_fou_cout_est_decrit_par_rapport_au_risque():
     assert "part du range (0 = coupé)" not in PINE and "cette part du range (0 = coupé)" not in EA
     assert "InpStopMult * (gOrH - gOrL)" in EA and "costPts / (stopMult * dist)" in PINE
+
+
+def fonction(signature):
+    """Corps d'une fonction de l'EA, de sa signature à l'accolade fermante en début de ligne."""
+    debut = EA.index(signature)
+    return EA[debut:EA.index("\n  }\n", debut) + 4]
+
+
+def test_filet_de_securite_ferme_les_positions_oubliees():
+    """Tri du 24/11/2026 : une jambe B/D perdue de vue (réponse perdue, redémarrage) n'avait ni sortie de 15:50 ni clôture."""
+    filet = fonction("int CloseOrphans(string why, bool toutes)")
+    assert "mg < InpMagic || mg > InpMagic + 2 + D_MAX" in filet                    # cassure, B, C, D1 à D7
+    assert "trade.PositionClose(tk, InpDeviation)" in filet
+    tick = fonction("void OnTick()")
+    assert tick.index("V8OnTick();") < tick.index("CloseOrphans(") < tick.index("FlushNotifs();")
+    assert "NYMin(nyS) >= FlatMin(nyS)" in tick and "TimeCurrent() - sweepAt >= 60" in tick
+    assert 'CloseOrphans("clôture demandée depuis l\'interface", true);' in fonction("void UiClose()")
+
+
+def test_pas_d_entree_doublee_apres_une_reponse_perdue():
+    """X-12 : ordre stop posé malgré un délai dépassé, puis ordre au marché en plus."""
+    pose = fonction("bool PlaceStop(int d)")
+    assert pose.index("if(!placed && HasPending(d))") < pose.index("return placed;")
+    entrees = fonction("void CheckEntries()")
+    assert entrees.index("if(HasPending(d))") < entrees.index("trade.Buy(gLots")
+
+
+def test_jambe_reprise_quand_la_reponse_est_perdue():
+    ouverture = fonction("bool LegOpen(SLeg &g, int dir, double stop, string quoi)")
+    assert "LegFindOpen(g.magic, volPos)" in ouverture
+    assert ouverture.index("LegFindOpen(g.magic, volPos)") < ouverture.index("g.enPos = true;")
+
+
+def test_redemarrage_etat_ecrit_et_pyramide_comptee():
+    """X-03 : état non écrit sur le disque, ajout repris comme trade de départ, second ajout possible."""
+    sauve = fonction("void SaveState()")
+    assert "GlobalVariablesFlush();" in sauve and 'Sv("pyrtoday", gUsePyrToday);' in sauve
+    assert 'gUsePyrToday = Ld("pyrtoday", 1) != 0;' in fonction("void LoadState()")
+    assert "t < t0" in fonction("ulong FindPos()")                                  # la plus ancienne
+    assert "gPyr     = CountPos() > 1;" in fonction("void SyncPosition()")
+
+
+def test_ajout_calcule_sur_le_volume_reellement_ouvert():
+    """X-15 : après une exécution partielle, l'ajout restait de 2 fois le volume demandé."""
+    assert "base = MathMin(gLots, PositionGetDouble(POSITION_VOLUME));" in fonction("void DoPyramid(double curR)")
+    assert "base = MathMin(g.lots, volPos);" in fonction("void LegPyramid(SLeg &g, double curR)")
+
+
+def test_un_message_a_la_fois():
+    """X-08 : toute la file de messages partait d'un coup, jusqu'à 5 s par message, pendant que les sorties attendaient."""
+    envoi = fonction("void FlushNotifs()")
+    assert "for(int i = 0; i < n; i++)" not in envoi and "ArrayResize(gQueue, n - 1);" in envoi
+    assert ", 5000, data, res, hdr)" not in EA

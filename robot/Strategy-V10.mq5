@@ -556,7 +556,7 @@ void SendWhatsApp(string msg)
    char   data[], res[];
    string hdr;
    ResetLastError();
-   int code = WebRequest("GET", url, "", 5000, data, res, hdr);
+   int code = WebRequest("GET", url, "", 3000, data, res, hdr);
    if(code == -1)
       WebFail("WhatsApp", "https://api.callmebot.com");
    else if(code != 200)
@@ -572,7 +572,7 @@ string SendTelegram(string msg)   // "ok", "bloque" (MetaTrader interdit l'adres
    int len = StringToCharArray(body, data, 0, WHOLE_ARRAY, CP_UTF8);
    ArrayResize(data, len - 1);   // sans le zéro final
    ResetLastError();
-   int code = WebRequest("POST", url, "Content-Type: application/x-www-form-urlencoded\r\n", 5000, data, res, hdr);
+   int code = WebRequest("POST", url, "Content-Type: application/x-www-form-urlencoded\r\n", 3000, data, res, hdr);
    if(code == -1)
      {
       WebFail("Telegram", "https://api.telegram.org");
@@ -609,20 +609,23 @@ void Notify(string msg)
      }
   }
 
+// Correctif X-08 (revue du 17/11/2026) : un envoi bloque l'EA jusqu'à la réponse du serveur. Avant, toute la file partait d'un
+// coup (jusqu'à 5 s par message et par canal) pendant que les sorties attendaient. Désormais : un seul message par appel
+// (le suivant à la cotation ou au passage du minuteur suivants), avec une attente de 3 s au plus par canal.
 void FlushNotifs()
   {
    int n = ArraySize(gQueue);
    if(n == 0)
       return;
    bool wa = InpWhatsApp && InpWaPhone != "" && InpWaKey != "";
-   for(int i = 0; i < n; i++)
-     {
-      if(wa)
-         SendWhatsApp(gQueue[i]);
-      if(gTgOn)
-         gTgLast = SendTelegram(gQueue[i]);
-     }
-   ArrayResize(gQueue, 0);
+   string msg = gQueue[0];
+   for(int i = 1; i < n; i++)
+      gQueue[i - 1] = gQueue[i];
+   ArrayResize(gQueue, n - 1);
+   if(wa)
+      SendWhatsApp(msg);
+   if(gTgOn)
+      gTgLast = SendTelegram(msg);
   }
 
 //+------------------------------------------------------------------+
@@ -647,6 +650,9 @@ void SaveState()
    Sv("pyr", gPyr); Sv("posid2", (double)gPosId2); Sv("vstop", gVStop); Sv("bal0", gBalStart);
    Sv("n", gN); Sv("win", gWin); Sv("streak", gStreak); Sv("worst", gWorst);
    Sv("sumr", gSumR); Sv("peak", gPeak); Sv("dd", gDD);
+   // Correctif X-03 (revue du 17/11/2026) : après un plantage, l'état relu pouvait être plus ancien que le trade.
+   Sv("pyrtoday", gUsePyrToday);
+   GlobalVariablesFlush();
   }
 
 void LoadState()
@@ -664,6 +670,7 @@ void LoadState()
    gEntry = Ld("entry", 0); gSL = Ld("sl", 0); gRisk = Ld("risk", 0); gBE = Ld("be", 0) != 0; gTPset = Ld("tpset", 1) != 0;
    gFillBar = (datetime)Ld("fillbar", 0); gPosDay = (int)Ld("posday", 0);
    gPyr = Ld("pyr", 0) != 0; gPosId2 = (long)Ld("posid2", 0); gVStop = Ld("vstop", 0); gBalStart = Ld("bal0", 0);
+   gUsePyrToday = Ld("pyrtoday", 1) != 0;
    gCloseSeen = (long)Ld("closeseen", 0);
    gN = (int)Ld("n", 0); gWin = (int)Ld("win", 0); gStreak = (int)Ld("streak", 0); gWorst = (int)Ld("worst", 0);
    gSumR = Ld("sumr", 0); gPeak = Ld("peak", 0); gDD = Ld("dd", 0);
@@ -731,17 +738,39 @@ void DropDayDraw()
 //+------------------------------------------------------------------+
 //| Position                                                          |
 //+------------------------------------------------------------------+
+// Correctif X-03 (revue du 17/11/2026) : la position de départ est la PLUS ANCIENNE de l'EA. Avant, la plus récente était prise :
+// après un redémarrage avec un état ancien, l'ajout de la pyramide pouvait être repris comme trade de départ.
 ulong FindPos()
   {
+   ulong    best = 0;
+   datetime t0   = 0;
    for(int i = PositionsTotal() - 1; i >= 0; i--)
      {
       ulong tk = PositionGetTicket(i);
       if(tk == 0)
          continue;
-      if(PositionGetString(POSITION_SYMBOL) == _Symbol && (ulong)PositionGetInteger(POSITION_MAGIC) == InpMagic)
-         return tk;
+      if(PositionGetString(POSITION_SYMBOL) != _Symbol || (ulong)PositionGetInteger(POSITION_MAGIC) != InpMagic)
+         continue;
+      datetime t = (datetime)PositionGetInteger(POSITION_TIME);
+      if(best == 0 || t < t0 || (t == t0 && tk < best))
+        {
+         best = tk;
+         t0   = t;
+        }
      }
-   return 0;
+   return best;
+  }
+
+int CountPos()   // positions du trade de cassure (départ + ajout éventuel)
+  {
+   int n = 0;
+   for(int i = PositionsTotal() - 1; i >= 0; i--)
+     {
+      ulong tk = PositionGetTicket(i);
+      if(tk != 0 && PositionGetString(POSITION_SYMBOL) == _Symbol && (ulong)PositionGetInteger(POSITION_MAGIC) == InpMagic)
+         n++;
+     }
+   return n;
   }
 
 //+------------------------------------------------------------------+
@@ -827,6 +856,10 @@ bool PlaceStop(int d)
       trade.SetTypeFilling(ORDER_FILLING_RETURN);   // certains courtiers n'acceptent que ce mode pour un ordre en attente
      }
    trade.SetTypeFillingBySymbol(_Symbol);
+   // Correctif X-12 (revue du 17/11/2026) : une réponse perdue (délai dépassé) ne veut pas dire que l'ordre n'est pas posé.
+   // S'il est bien chez le courtier, il compte comme posé ; sinon l'EA aurait aussi envoyé un ordre au marché (risque doublé).
+   if(!placed && HasPending(d))
+      placed = true;
    return placed;
   }
 
@@ -881,6 +914,30 @@ void ClosePos(string why)   // ferme l'unité de départ et l'ajout
       if(!trade.PositionClose(tk, InpDeviation))
          PrintFormat("Fermeture refusée (%d) : %s", trade.ResultRetcode(), trade.ResultRetcodeDescription());
      }
+  }
+
+// Filet de sécurité (tri du 24/11/2026 : jambes perdues de vue, X-03) : ferme les positions de ce symbole qui portent un numéro
+// magique de l'EA (cassure, B, C, D1 à D7), même si l'état de l'EA ne les connaît plus (réponse du courtier perdue, redémarrage
+// avec un état ancien). toutes = vrai : toutes (15:50, clôture demandée) ; faux : seulement celles ouvertes un jour précédent
+// (heure de New York), qu'aucune règle ne garde la nuit. Renvoie le nombre de fermetures demandées.
+int CloseOrphans(string why, bool toutes)
+  {
+   int n = 0, today = NYDate(ToNY(TimeCurrent()));
+   for(int i = PositionsTotal() - 1; i >= 0; i--)
+     {
+      ulong tk = PositionGetTicket(i);
+      if(tk == 0 || PositionGetString(POSITION_SYMBOL) != _Symbol)
+         continue;
+      ulong mg = (ulong)PositionGetInteger(POSITION_MAGIC);
+      if(mg < InpMagic || mg > InpMagic + 2 + D_MAX)
+         continue;
+      if(!toutes && NYDate(ToNY((datetime)PositionGetInteger(POSITION_TIME))) >= today)
+         continue;
+      n++;
+      if(!trade.PositionClose(tk, InpDeviation))
+         PrintFormat("Fermeture de sécurité refusée (%d) : %s", trade.ResultRetcode(), trade.ResultRetcodeDescription());
+     }
+   return n;
   }
 
 // Pose le même stop sur toutes les positions de l'EA ; false si une pose a été refusée (l'EA surveille alors lui-même)
@@ -1010,9 +1067,22 @@ void SyncPosition()
             LegSave(gD[kd]);
            }
         }
-      gPyr     = false;
-      gUsePyrToday = true;
+      // Correctif X-03 (revue du 17/11/2026) : si l'ajout de la pyramide existe déjà (état relu plus ancien que le trade, après
+      // un plantage), la pyramide est comptée comme faite : pas de second ajout, et l'ajout est suivi comme tel.
+      gPyr     = CountPos() > 1;
+      gUsePyrToday = !gPyr;
       gPosId2  = 0;
+      if(gPyr)
+        {
+         gBE = true;
+         for(int ip = PositionsTotal() - 1; ip >= 0; ip--)
+           {
+            ulong tp = PositionGetTicket(ip);
+            if(tp != 0 && tp != tk && PositionGetString(POSITION_SYMBOL) == _Symbol && (ulong)PositionGetInteger(POSITION_MAGIC) == InpMagic)
+               gPosId2 = PositionGetInteger(POSITION_IDENTIFIER);
+           }
+         PositionSelectByTicket(tk);
+        }
       gVStop   = 0;
       gTPset   = InpTgtR <= 0;
       gPend    = false;
@@ -1350,6 +1420,17 @@ void CheckEntries()
       CancelDay("prix déjà trop loin du niveau de cassure : " + DoubleToString(riskN / riskP, 2) + " R de risque au lieu de 1 R", I_WARN + "PAS D'ENTRÉE");
       return;
      }
+   // Correctif X-12 : un ordre stop de ce côté est finalement chez le courtier (posé malgré une réponse perdue) : c'est lui qui
+   // s'exécute, pas d'ordre au marché en plus.
+   if(HasPending(d))
+     {
+      if(d == 1)
+         gSrvL = true;
+      else
+         gSrvS = true;
+      SaveState();
+      return;
+     }
    double sl = NormalizeDouble(StopA(d), _Digits);
    bool ok = d == 1 ? trade.Buy(gLots, _Symbol, 0, sl, 0, InpComment) : trade.Sell(gLots, _Symbol, 0, sl, 0, InpComment);
    uint rc = trade.ResultRetcode();
@@ -1415,7 +1496,12 @@ void DoPyramid(double curR)
    double step = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_STEP);
    double vmin = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MIN);
    int    vd   = VolDigits(step);
-   double lots = NormalizeDouble(MathFloor(gLots * InpPyrSize / step + 0.000001) * step, vd);
+   // Correctif X-15 (revue du 17/11/2026) : après une exécution partielle, l'ajout se calcule sur le volume réellement ouvert,
+   // pas sur le volume demandé (sinon l'ajout pesait plus que 2 fois la position et le pire cas dépassait -1R).
+   double base = gLots;
+   if(gPos > 0 && PositionSelectByTicket(gPos))
+      base = MathMin(gLots, PositionGetDouble(POSITION_VOLUME));
+   double lots = NormalizeDouble(MathFloor(base * InpPyrSize / step + 0.000001) * step, vd);
    gPyr = true;   // une seule tentative par trade
    gBE  = true;
    // stop de l'ensemble : InpPyrGap R sous le prix de l'ajout (ask pour un achat, bid pour une vente)
@@ -1660,9 +1746,21 @@ bool LegOpen(SLeg &g, int dir, double stop, string quoi)
    trade.SetExpertMagicNumber(InpMagic);
    if(!(ok && (rc == TRADE_RETCODE_DONE || rc == TRADE_RETCODE_DONE_PARTIAL || rc == TRADE_RETCODE_PLACED)))
      {
-      Notify(I_WARN + "ENTRÉE " + g.nom + " REFUSÉE par le courtier\n" + rcTx);
-      LegSave(g);
-      return false;
+      // Correctif (tri du 24/11/2026) : une réponse perdue ne veut pas dire que l'ordre n'est pas passé. Si une position de cette
+      // jambe existe, elle est reprise et gérée normalement (stops, pyramide, sortie de 15:50) ; sinon c'est un vrai refus.
+      double volPos = 0;
+      double pxPos  = LegFindOpen(g.magic, volPos);
+      if(pxPos <= 0)
+        {
+         Notify(I_WARN + "ENTRÉE " + g.nom + " REFUSÉE par le courtier\n" + rcTx);
+         LegSave(g);
+         return false;
+        }
+      fill = pxPos;
+      deal = 0;
+      if(volPos > 0)
+         lots = volPos;
+      Notify(I_WARN + "ENTRÉE " + g.nom + " : réponse du courtier perdue (" + rcTx + "), la position ouverte est reprise par l'EA");
      }
    g.enPos = true; g.dir = dir; g.entry = fill > 0 ? fill : px; g.sl = sl; g.risk = MathAbs(g.entry - sl);
    if(g.risk <= 0)
@@ -1691,13 +1789,34 @@ bool LegOpen(SLeg &g, int dir, double stop, string quoi)
    return true;
   }
 
+// Prix d'ouverture (et volume) de la position de la jambe au numéro magique « magic » ; 0 s'il n'y en a pas
+double LegFindOpen(ulong magic, double &vol)
+  {
+   vol = 0;
+   for(int i = PositionsTotal() - 1; i >= 0; i--)
+     {
+      ulong tk = PositionGetTicket(i);
+      if(tk != 0 && PositionGetString(POSITION_SYMBOL) == _Symbol && (ulong)PositionGetInteger(POSITION_MAGIC) == magic)
+        {
+         vol = PositionGetDouble(POSITION_VOLUME);
+         return PositionGetDouble(POSITION_PRICE_OPEN);
+        }
+     }
+   return 0;
+  }
+
 // Pyramide de la jambe : ajout au marché, puis stop de l'ensemble InpPyrGap R (de la jambe) sous le prix de l'ajout
 void LegPyramid(SLeg &g, double curR)
   {
    double step = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_STEP);
    double vmin = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MIN);
    int    vd   = VolDigits(step);
-   double lots = NormalizeDouble(MathFloor(g.lots * InpPyrSize / step + 0.000001) * step, vd);
+   // Correctif X-15 : l'ajout se calcule sur le volume réellement ouvert de la jambe (exécution partielle possible)
+   double volPos = 0;
+   double base   = g.lots;
+   if(LegFindOpen(g.magic, volPos) > 0 && volPos > 0)
+      base = MathMin(g.lots, volPos);
+   double lots = NormalizeDouble(MathFloor(base * InpPyrSize / step + 0.000001) * step, vd);
    g.pyrFree = false;   // une seule tentative par trade
    double mkt  = g.dir == 1 ? SymbolInfoDouble(_Symbol, SYMBOL_ASK) : SymbolInfoDouble(_Symbol, SYMBOL_BID);
    double lock = PyrLock(g.dir, g.entry, g.risk, mkt);
@@ -2382,6 +2501,8 @@ void UiClose()
      }
    else if(gPend)
       CancelDay("ordres annulés depuis l'interface", I_HAND + "ORDRES ANNULÉS depuis l'interface");
+   // filet de sécurité : toute position de l'EA que son état ne connaissait plus est fermée aussi
+   CloseOrphans("clôture demandée depuis l'interface", true);
    // V8 : après une demande de clôture, plus d'entrée B ni C aujourd'hui
    gB.done = true;
    gC.done = true;
@@ -2711,6 +2832,22 @@ void OnTick()
      }
    // V8. entrées B et C : sorties, stops surveillés, fin de journée, entrée C à l'heure dite
    V8OnTick();
+
+   // Filet de sécurité, une fois par minute, après les sorties normales : à partir de la sortie de fin de journée, toute position
+   // de l'EA encore ouverte est fermée ; à toute heure, celles ouvertes un jour précédent.
+   static datetime sweepAt = 0;
+   if(TimeCurrent() - sweepAt >= 60)
+     {
+      sweepAt = TimeCurrent();
+      datetime nyS = ToNY(TimeCurrent());
+      int nS = CloseOrphans("filet de sécurité", NYMin(nyS) >= FlatMin(nyS));
+      static int sweepNote = 0;
+      if(nS > 0 && sweepNote != NYDate(nyS))
+        {
+         sweepNote = NYDate(nyS);
+         Notify(I_WARN + "FERMETURE DE SÉCURITÉ : " + IntegerToString(nS) + " position(s) de l'EA restée(s) ouverte(s) après la sortie prévue (ou d'un jour précédent), fermée(s) au marché");
+        }
+     }
 
    // 5. messages WhatsApp / Telegram, une fois les ordres passés
    FlushNotifs();
