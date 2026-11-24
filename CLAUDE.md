@@ -25,11 +25,18 @@ Les règles et l'installation sont dans `README.md`.
 ```
 robot/       Strategy-V10.mq5, Strategy-V10.pine, test_robot.py (contrôles du code de l'EA et du Pine)
 etrave/      interface web locale de l'EA (Python sans dépendance) + test_interface.py
-recherche/   rapports des sessions 2 à 4, journal (notes/nasdaq-progress.md), trades V10 de référence
+recherche/   rapports des sessions 2 à 4, journal (notes/nasdaq-progress.md), trades V10 de référence,
+             critique-v10.md, simulateur/ (backtest de la V10, retrouve les trades de référence à l'identique)
 ```
 
 Commandes, à lancer depuis la racine du dépôt :
-- Tests : `.venv/bin/python -m pytest robot etrave -q` (52 tests ; il faut seulement pytest). Le `.venv` du dépôt tourne sous Python 3.15.
+- Tests : `.venv/bin/python -m pytest robot etrave recherche/simulateur -q` (60 tests). Le `.venv` du dépôt tourne sous Python 3.15 ;
+  paquets du simulateur : `recherche/simulateur/requirements.txt` (pyarrow, numba facultatif).
+- Backtest de la V10 : `.venv/bin/python recherche/simulateur/reproduire_v10.py`. Il reconstruit `donnees/nasdaq_m1.parquet` à partir
+  des CSV du Bureau, rejoue la V10 Confort sur 2018-2026 et doit retrouver les 3 612 trades de référence (sortie 0) : à relancer
+  avant et après toute modification du simulateur. Chemins : `BOT_TRADING_BRUT`, `BOT_TRADING_DONNEES` (voir `sim_chemins.py`).
+  Le simulateur reproduit la recherche, pas l'EA corrigé le 24/11 : quelques trades peuvent différer dans le testeur MT5.
+  Deux réglages y sont en points du Nasdaq (marge du stop de B, glissement de 1 point) : à revoir avant le S&P 500.
 - Étrave : `.venv/bin/python etrave/etrave.py --sans-navigateur --port 8799 --dossier <dossier jetable>`, puis la page sur
   `http://127.0.0.1:8799`.
 
@@ -127,7 +134,8 @@ Commandes, à lancer depuis la racine du dépôt :
   `…-2026-11-19.csv`, horodatage en ms UTC), avec la même chose en zip à côté.
 - **L'archive complète de la recherche** est `~/Desktop/Strategy v10.zip` (identique à `~/Desktop/sortie 3/`). Elle contient les
   scripts, tous les résultats et les versions V7 à V9.
-  - Les scripts pointent vers `/workspace` et demandent numba et des fichiers parquet : il faut les adapter avant de les relancer.
+  - Le simulateur de la V10 est maintenant dans `recherche/simulateur/`. Les autres scripts de l'archive pointent encore vers
+    `/workspace` : il faut les adapter avant de les relancer.
   - Le téléchargement Dukascopy (Dow, S&P…) passe par `scripts/68_dukascopy_api.py`, qui interroge l'API des graphiques
     freeserv.dukascopy.com.
 - Les anciennes données v5 (zips M1 Nasdaq 2018-2026) et l'étude des stops v5 sont dans la branche `archive/etude-stops-v5`.

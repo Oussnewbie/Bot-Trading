@@ -21,12 +21,13 @@ Ce dossier garde la partie utile de la recherche menée sur la plateforme Claude
 | `resultats/registre_*` | Le comptage des essais |
 | `resultats/v10_confort_contre_v9.png` | La figure du rapport |
 
-**Ce qui n'est pas ici.** Le reste des résultats, les scripts (simulateur `moteur.py`, `v9lib.py`, `v10lib.py`, téléchargement
-Dukascopy…) et les versions V7 à V9 sont dans l'archive `Strategy v10.zip`, sur le Bureau. Les rapports citent parfois ces fichiers :
-ils sont là-bas.
+**Le simulateur de la V10** (`simulateur/`, depuis le 24/11/2026) : les modules de l'archive (`moteur.py`, `commun.py`, `v9lib.py`,
+`v10lib.py`), adaptés seulement pour leurs chemins. `simulateur/reproduire_v10.py` reconstruit les données à partir des CSV du Bureau
+et retrouve les 3 612 trades de référence à l'identique (+477 R). Mode d'emploi : `simulateur/LISEZMOI.md`.
 
-**Pourquoi les scripts n'ont pas été repris.** Ils pointent vers `/workspace` (le bac à sable de la plateforme) et demandent numba
-ainsi que des fichiers parquet absents de l'archive. Les données de prix n'y sont pas non plus.
+**Ce qui n'est pas ici.** Le reste des résultats, les autres scripts (téléchargement Dukascopy, préparation des autres marchés,
+HistData 2010-2017…) et les versions V7 à V9 sont dans l'archive `Strategy v10.zip`, sur le Bureau. Les rapports citent parfois ces
+fichiers : ils sont là-bas.
 
 **Règle à garder en tête.** Tout l'historique du Nasdaq de 2010 à 2026 a déjà été vu. Un nouveau réglage trouvé dessus serait
 de l'ajustement sur le passé. Le détail est dans `../CLAUDE.md`.

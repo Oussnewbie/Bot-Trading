@@ -1,0 +1,13 @@
+# Paquets du simulateur (recherche/simulateur), à installer dans le .venv du dépôt :
+#   .venv/bin/pip install -r recherche/simulateur/requirements.txt
+# Versions vérifiées le 24/11/2026 sous Python 3.15.2 (macOS arm64).
+
+# En plus de ce que le .venv avait déjà :
+pyarrow==26.0.1     # lecture et écriture des fichiers parquet
+numba==0.68.1       # facultatif : sans lui, sim_jit.py rend njit inactif (mêmes résultats, un peu plus lent)
+llvmlite==0.50.0    # dépendance de numba
+
+# Déjà dans le .venv (numba 0.68 demande numpy < 2.6) :
+numpy==2.5.4
+pandas==3.1.1
+pytest==9.2.0
