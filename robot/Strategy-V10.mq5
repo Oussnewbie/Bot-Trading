@@ -1392,6 +1392,22 @@ void RaiseStop(double lvlPx, string why)
       SetStopAll(sl);
   }
 
+// Correctif EA-07 / EA-10 (revue du 17/11/2026) : stop de l'ensemble après une pyramide. Il est normalement InpPyrGap R sous
+// le prix de l'ajout ; mais si le prix a reculé entre la clôture de la bougie (+2R) et l'ajout, ce stop tombait sous +1R et
+// le pire cas du trade dépassait -1R. Plancher : entrée + (InpPyrSize × InpPyrGap - 1) R, qui garde le pire cas à -1R au plus.
+// Renvoie 0 quand le prix est déjà trop près de ce plancher pour ajouter : la pyramide est alors abandonnée.
+double PyrLock(int dir, double entry, double risk, double mkt)
+  {
+   double lock = mkt - dir * InpPyrGap * risk;
+   double flo  = entry + dir * (InpPyrSize * InpPyrGap - 1.0) * risk;
+   if((lock - flo) * dir < 0)
+      lock = flo;
+   double lvl = SymbolInfoInteger(_Symbol, SYMBOL_TRADE_STOPS_LEVEL) * _Point;
+   if((mkt - lock) * dir <= MathMax(lvl, 0.1 * risk))
+      return 0;
+   return NormalizeDouble(lock, _Digits);
+  }
+
 // Pyramide : ajout au marché, avec son stop, puis stop de l'ensemble au même niveau
 void DoPyramid(double curR)
   {
@@ -1403,12 +1419,14 @@ void DoPyramid(double curR)
    gBE  = true;
    // stop de l'ensemble : InpPyrGap R sous le prix de l'ajout (ask pour un achat, bid pour une vente)
    double mkt  = gDir == 1 ? SymbolInfoDouble(_Symbol, SYMBOL_ASK) : SymbolInfoDouble(_Symbol, SYMBOL_BID);
-   double lock = NormalizeDouble(mkt - gDir * InpPyrGap * gRisk, _Digits);
+   double lock = PyrLock(gDir, gEntry, gRisk, mkt);
    double lockR = (lock - gEntry) * gDir / gRisk;
-   if(lots < vmin)
+   if(lots < vmin || lock == 0)
      {
-      // ajout trop petit pour le broker : le trade continue comme sans pyramide
-      Notify(I_WARN + "Pyramide impossible : taille trop petite pour le courtier, le trade continue sans ajout");
+      // ajout trop petit pour le broker, ou prix revenu trop près du plancher : le trade continue comme sans pyramide
+      Notify(I_WARN + (lots < vmin ? "Pyramide impossible : taille trop petite pour le courtier" :
+                                     "Pyramide abandonnée : le prix est revenu trop près de +1R depuis la clôture de la bougie") +
+             ", le trade continue sans ajout");
       gPyr = false;
       gUsePyrToday = false;
       gBE  = gVStop > 0;
@@ -1443,7 +1461,7 @@ void DoPyramid(double curR)
    RaiseStop(lock, "Stop remonté");
    Notify(I_ADD + "PYRAMIDE : clôture à " + RTxt(curR) + "\nAjout de " + DoubleToString(lots, vd) + " lot" + (apx > 0 ? " à " + Px(apx) : "") +
           "\nStop de l'ensemble : " + Px(lock) + " (" + RTxt(lockR) + ")" +
-          "\nPire cas du trade : " + RTxt(lockR - InpPyrSize * InpPyrGap));
+          "\nPire cas du trade : " + RTxt(lockR - InpPyrSize * (mkt - lock) * gDir / gRisk));
    SaveState();
   }
 
@@ -1681,10 +1699,11 @@ void LegPyramid(SLeg &g, double curR)
    double lots = NormalizeDouble(MathFloor(g.lots * InpPyrSize / step + 0.000001) * step, vd);
    g.pyrFree = false;   // une seule tentative par trade
    double mkt  = g.dir == 1 ? SymbolInfoDouble(_Symbol, SYMBOL_ASK) : SymbolInfoDouble(_Symbol, SYMBOL_BID);
-   double lock = NormalizeDouble(mkt - g.dir * InpPyrGap * g.risk, _Digits);
-   if(lots < vmin)
+   double lock = PyrLock(g.dir, g.entry, g.risk, mkt);
+   if(lots < vmin || lock == 0)
      {
-      Notify(I_WARN + "Entrée " + g.nom + " : pyramide impossible (taille trop petite), le trade continue sans ajout");
+      Notify(I_WARN + "Entrée " + g.nom + " : pyramide " + (lots < vmin ? "impossible (taille trop petite)" : "abandonnée (prix revenu trop près de +1R)") +
+             ", le trade continue sans ajout");
       LegSave(g);
       return;
      }

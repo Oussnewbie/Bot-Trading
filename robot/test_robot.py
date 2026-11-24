@@ -86,3 +86,35 @@ def test_entree_au_marche_bornee_a_1_25_R():
     garde = entrees.index("riskN > 1.25 * riskP")
     assert entrees.index("if(gObserve)") < garde < entrees.index("trade.Buy(gLots")    # après la règle mémoire, avant l'ordre
     assert "CancelDay(" in entrees[garde:garde + 200]
+
+
+def pyr_lock(direction, entree, risque, marche, ecart=1.0, taille=2.0, niveau=0.0):
+    """Copie en Python de PyrLock() de l'EA (0 = pyramide abandonnée)."""
+    lock = marche - direction * ecart * risque
+    plancher = entree + direction * (taille * ecart - 1.0) * risque
+    if (lock - plancher) * direction < 0:
+        lock = plancher
+    if (marche - lock) * direction <= max(niveau, 0.1 * risque):
+        return 0
+    return lock
+
+
+def test_pyramide_pire_cas_jamais_sous_moins_1R():
+    """EA-07 / EA-10 : si le prix recule entre la clôture à +2R et l'ajout, le pire cas dépassait -1R."""
+    for direction in (1, -1):
+        entree, risque = 20000.0, 90.0
+        for r_marche in (3.0, 2.4, 2.0, 1.8, 1.5, 1.2, 1.1, 1.05, 0.9):
+            marche = entree + direction * r_marche * risque
+            lock = pyr_lock(direction, entree, risque, marche)
+            if lock == 0:
+                continue                                    # ajout abandonné : le pire cas reste celui d'avant (-1R)
+            unite = (lock - entree) * direction / risque                   # première unité, stoppée au lock
+            ajout = 2.0 * (lock - marche) * direction / risque             # deux unités ajoutées, stoppées au lock
+            assert unite + ajout >= -1.0 - 1e-9, (direction, r_marche, unite + ajout)
+
+
+def test_les_deux_pyramides_ont_le_plancher():
+    assert re.search(r"^double PyrLock\(int dir, double entry, double risk, double mkt\)", EA, re.M)
+    assert "PyrLock(gDir, gEntry, gRisk, mkt)" in EA                     # trade de cassure
+    assert "PyrLock(g.dir, g.entry, g.risk, mkt)" in EA                  # entrées B, C, D
+    assert "mkt - gDir * InpPyrGap * gRisk" not in EA and "mkt - g.dir * InpPyrGap * g.risk" not in EA
