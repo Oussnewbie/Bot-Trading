@@ -5,6 +5,7 @@ Ce dossier garde la partie utile de la recherche menée sur la plateforme Claude
 
 | Fichier | Contenu |
 |---|---|
+| `critique-v10.md` | **La critique de la V10 (24/11/2026)** : ce qu'elle lit du marché, ce que disent ses trades (ventes plus faibles, stops des jours à petit range), ce qui a déjà été essayé et 5 axes d'amélioration. Chiffres refaits par `scripts/critique_v10.py`. |
 | `rapport-session4.md` | Le rapport de la V10 : cause des stops, profil Confort, test sur 6 autres marchés, interrupteur. C'était `rapport.md` dans l'archive. |
 | `rapport-session3.md` | L'examen sur 2010-2017 (données jamais vues à l'époque), les continuations D et la V9, le contrôle sur le S&P 500 |
 | `rapport-session2.md` | La V7 (mémoire, FOMC, fériés) et la V8 (repli VWAP B, entrée de 10:00 C) |

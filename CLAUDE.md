@@ -63,6 +63,8 @@ Commandes, à lancer depuis la racine du dépôt :
 4. Le risque par trade (0,25 % ou plus) se décide une fois le glissement réel connu. C'est la décision de l'utilisateur.
 
 ## Discipline de recherche (à respecter)
+- **Avant toute recherche, lis `recherche/critique-v10.md`** (24/11/2026) : objectif de l'utilisateur (perdre moins souvent, bien
+  lire les baisses comme les hausses), constats sur les trades, liste de ce qui a déjà été essayé, axes retenus et données pour les juger.
 - Environ 2 000 essais ont déjà été faits. Tout chiffre trouvé sur l'historique est un **candidat**, pas une preuve.
 - **Nasdaq** : 2010 → 18/11/2026 inclus a été vu en entier (Dukascopy 2018-2026, HistData 2010-2017). **Ne règle plus rien sur le
   Nasdaq à partir du backtest.** Les seules données neuves sont celles qui commencent le 19/11/2026, et les trades de démo.
