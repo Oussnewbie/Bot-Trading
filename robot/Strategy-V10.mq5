@@ -1116,6 +1116,22 @@ bool Setup()   // true = terminé (trade préparé ou pas de trade), false = don
       return true;
      }
 
+   // Correctif EA-01 (revue du 17/11/2026) : si l'heure du serveur ne correspond pas aux réglages, l'heure de New York
+   // calculée est fausse et le range serait pris sur la mauvaise bougie (ex. : serveur à l'heure d'été européenne réglé
+   // « US »). Aucun ordre ce jour-là ; la règle mémoire n'est pas touchée. Pas de contrôle dans le testeur (heure simulée).
+   if(!MQLInfoInteger(MQL_TESTER))
+     {
+      CheckClock();
+      if(!gClockOk)
+        {
+         string whyH = "l'heure du serveur ne correspond pas aux réglages « Décalage GMT du serveur » et « Heure d'été du serveur »";
+         gDayTxt = "Pas de trade : " + whyH;
+         Notify(I_WARN + "PAS DE TRADE aujourd'hui\n" + whyH + ". Corrige-les : sinon le range serait pris sur la mauvaise bougie.");
+         SaveState();
+         return true;
+        }
+     }
+
    // v7 : aucun ordre les jours de décision de la Fed ni les jours fériés américains / demi-séances.
    // La règle mémoire n'est ni consommée ni armée ces jours-là.
    bool fomcD  = InpSkipFomc && IsFomc(day);

@@ -45,3 +45,16 @@ def test_l_ea_utilise_volDigits_partout():
     assert "MathLog10(step)" not in EA
     assert re.search(r"^int VolDigits\(double step\)", EA, re.M)
     assert EA.count("VolDigits(step)") == 4        # cassure, pyramide de la cassure, jambes B/C/D, pyramide des jambes
+
+
+def corps(fonction):
+    return re.search(rf"^bool {fonction}\(\).*?\n  }}\n", EA, re.S | re.M).group(0)
+
+
+def test_pas_d_ordre_si_l_heure_du_serveur_est_fausse():
+    """EA-01 : un mauvais réglage d'heure d'été n'était que signalé ; l'EA tradait la mauvaise bougie."""
+    setup = corps("Setup")
+    garde = setup.index("if(!gClockOk)")
+    assert "CheckClock();" in setup[:garde]
+    assert setup.index("if(!gActive)") < garde < setup.index("gObserve   = true;")   # avant tout ordre et avant la mémoire
+    assert "!MQLInfoInteger(MQL_TESTER)" in setup[:garde]                            # pas dans le testeur (heure simulée)
