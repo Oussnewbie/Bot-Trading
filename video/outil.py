@@ -90,9 +90,13 @@ def verifier(config):
     dossier_sons = os.path.expanduser(config.get("sons") or "")
     presents = [n for n, s in sons.items() if dossier_sons and os.path.exists(os.path.join(dossier_sons, s["fichier"]))]
     point(len(presents) == len(sons), f"bruitages : {len(presents)} sur {len(sons)} dans « sons »", "python3 video/outil.py sons")
-    point(bool(config.get("voix_id")), "voix_id (le clone ElevenLabs de ta voix)", "sans lui, la vidéo est faite sans voix")
+    point(bool(config.get("voix_id")), "voix_id (le clone ElevenLabs de ta voix)", "sans lui, aucune vidéo (jamais de vidéo muette)")
     point(os.path.exists(os.path.expanduser(config.get("cle_elevenlabs", "~/.config/elevenlabs/cle"))), "clé ElevenLabs (fichier privé)",
           "écris la clé seule dans ~/.config/elevenlabs/cle, puis chmod 600")
+    if config.get("voix_id") and shutil.which("curl"):      # VID-22 : la clé, la voix et les crédits, avant le soir (lectures gratuites)
+        import voix
+        for bon, texte in voix.controle_compte(config):
+            point(bon, texte)
     d = os.path.expanduser(config["dossier_journaux"])
     point(os.path.isdir(d), f"journaux de l'EA ({d or 'introuvable'})", "réglage « dossier_journaux » : le dossier …\\Common\\Files\\Etrave")
     if os.path.isdir(d):
@@ -193,7 +197,12 @@ def main(arguments=None):
     sortie = os.path.join(os.path.expanduser(config["sortie"]), f"recap-{j['jour'].isoformat()}{'-essai' if args.testeur else ''}")
     os.makedirs(sortie, exist_ok=True)
     print(f"Séance du {j['jour']} : {j['trades']} position(s) sur {len(j['marches'])} marché(s).")
-    print("Vidéo :", recap.fabriquer(j, config, sortie, print))
+    import voix
+    try:          # VID-18 : pas de vidéo muette sans le demander (--sans-voix)
+        print("Vidéo :", recap.fabriquer(j, config, sortie, print, exiger_voix=not args.sans_voix))
+    except voix.VoixIndisponible as err:
+        print(f"Pas de voix : {err}. Pas de vidéo. Pour un essai sans voix : --sans-voix.")
+        return 4
     return 0
 
 

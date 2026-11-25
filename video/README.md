@@ -131,8 +131,11 @@ python3 video/outil.py installer
 - Le journal du mode automatique est `recap-auto.log`, dans le dossier de l'outil copié
   (`~/Library/Application Support/Etrave/outil-video`). Sous Windows, c'est l'historique des tâches « Etrave recap auto » du
   Planificateur de tâches.
-- Une séance dont la voix n'a pas pu être faite (réseau, quota ElevenLabs) n'est pas publiée muette : elle est refaite au lancement
-  suivant. Une semaine ou un mois attend que toutes ses séances soient lisibles.
+- **Jamais de vidéo muette** (seul `recap --sans-voix`, pour un essai, en fait une). Si la voix échoue, la séance n'est pas publiée
+  et elle est refaite au lancement suivant. Une coupure du réseau ou une surcharge d'ElevenLabs est réessayée tout de suite (3 essais
+  sur 40 s). La notification et `recap-auto.log` disent la cause et quoi faire : crédits épuisés, clé refusée, voix introuvable,
+  pas de connexion. `python3 video/outil.py verifier` contrôle la clé, la voix et les crédits restants sans rien dépenser.
+  Une semaine ou un mois attend que toutes ses séances soient lisibles.
 - La photo de l'historique n'est prise qu'avant 17:00 à New York (minuit du serveur du courtier) : après, l'onglet « Aujourd'hui »
   montrerait le jour suivant et la ligne du solde. Le lancement de 22:20 la prend, sauf les semaines où l'heure d'été américaine et
   européenne diffèrent (mi-mars, fin octobre) : la vidéo se fait alors sans photo.
@@ -151,7 +154,7 @@ que lui :
 | Réglage | Rôle |
 |---|---|
 | `dossier_journaux` | le dossier `…\Common\Files\Etrave` de MetaTrader (trouvé tout seul sous Windows et avec MetaTrader pour Mac) |
-| `voix_id`, `modele_voix`, `cle_elevenlabs` | la voix (sans `voix_id`, la vidéo est faite sans voix) |
+| `voix_id`, `modele_voix`, `cle_elevenlabs` | la voix (sans `voix_id`, aucune vidéo : jamais de vidéo muette) |
 | `voix_tempo`, `voix_pause_max` | le rythme de la voix : 1,1 (10 % plus rapide) et 0,3 s de silence au plus entre deux mots |
 | `sons` | le dossier des bruitages Mixkit |
 | `musique` | un morceau ou un dossier de morceaux pour la musique de fond (facultatif) |

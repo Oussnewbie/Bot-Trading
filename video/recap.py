@@ -1080,10 +1080,10 @@ def _index(scenes, duree):
 """
 
 
-def fabriquer(j, config, dossier_sortie, journal=print, rendre=True, exiger_voix=False):
+def fabriquer(j, config, dossier_sortie, journal=print, rendre=True, exiger_voix=True):
     """Écrit le projet HyperFrames, le rend, pose la voix, les bruitages et la musique. Rend le chemin de la vidéo finale (avec
     rendre=False : s'arrête au projet écrit, pour le regarder dans HyperFrames, et rend son dossier). exiger_voix : une voix
-    indisponible lève VoixIndisponible au lieu de faire une vidéo muette (mode automatique, VID-03)."""
+    indisponible lève VoixIndisponible au lieu de faire une vidéo muette (VID-03 ; VID-18 : par défaut, seul --sans-voix l'ôte)."""
     global POLICE
     unite = unite_du_jour(j, config.get("unite", "auto"))
     textes = repliques(j, unite)
@@ -1095,7 +1095,8 @@ def fabriquer(j, config, dossier_sortie, journal=print, rendre=True, exiger_voix
     except voix.VoixIndisponible as err:
         if exiger_voix:
             raise
-        sans_voix, reps = str(err), [None] * len(textes)
+        sans_voix, reps = f"{err} : vidéo sans voix (--sans-voix).", [None] * len(textes)
+    voix.controle_pistes(reps if exiger_voix else [])
     if sans_voix:
         journal(sans_voix)
     police_fichier = os.path.expanduser(config.get("police", police.DEFAUT))

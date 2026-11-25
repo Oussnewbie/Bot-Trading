@@ -500,3 +500,161 @@ def test_semaine_a_cheval_sur_deux_mois_et_minutes_au_feminin():
     assert nombres.heure(15, 41) == "quinze heures quarante et une" and nombres.heure(9, 31) == "neuf heures trente et une"
     assert nombres.heure(15, 11) == "quinze heures onze" and nombres.heure(1, 1) == "une heure une"
     assert "du {debut} au {p['fin'].day}" in source_de("publication.py")
+
+
+# ───────────────────────── la voix, « absolument » (VID-18 à VID-22, 25/11/2026) ─────────────────────────
+# Aucun appel réel à ElevenLabs : curl et ffprobe sont remplacés, aucun crédit n'est dépensé.
+def config_voix(tmp_path):
+    cle = tmp_path / "cle"
+    cle.write_text("cle-de-test\n", encoding="utf-8")
+    return {"voix_id": "voix-de-test", "cle_elevenlabs": str(cle), "cache_voix": str(tmp_path / "cache")}
+
+
+def reponse_ok(texte="Bonjour à toi"):
+    caracteres = list(texte)
+    t = [i * 0.05 for i in range(len(caracteres))]
+    return json.dumps({"audio_base64": "SUQzAAAA", "alignment": {"characters": caracteres, "character_start_times_seconds": t,
+                                                                 "character_end_times_seconds": [x + 0.05 for x in t]}}).encode()
+
+
+def test_voix_pannes_passageres_reessayees_et_causes_claires(tmp_path, monkeypatch):
+    """VID-19 : pas de réseau puis panne 503 : réessayé dans le même lancement ; une clé refusée ou des crédits épuisés ne sont
+    pas réessayés (chaque essai peut coûter) et la cause dit quoi faire."""
+    import voix
+    monkeypatch.setattr(voix, "ATTENTES", (0, 0))
+    monkeypatch.setattr(voix, "duree", lambda chemin: 1.5)
+    reponses = [("000", b"", b"curl: (6) Could not resolve host: api.elevenlabs.io"), ("503", b'{"detail":"down"}', b""),
+                ("200", reponse_ok(), b"")]
+    appels = []
+    monkeypatch.setattr(voix, "appeler", lambda url, cle, corps=None: appels.append(url) or reponses[len(appels) - 1])
+    rep = voix.replique("Bonjour à toi", config_voix(tmp_path))
+    assert len(appels) == 3 and [m["mot"] for m in rep["mots"]] == ["Bonjour", "à", "toi"]
+    assert os.path.exists(rep["fichier"]) and not glob.glob(str(tmp_path / "cache" / "*.part"))
+    for code, corps, attendu in [("401", b'{"detail":{"status":"quota_exceeded","message":"This request exceeds your quota"}}',
+                                  "crédits ElevenLabs épuisés"),
+                                 ("401", b'{"detail":{"status":"invalid_api_key","message":"Invalid API key"}}', "clé ElevenLabs refusée"),
+                                 ("404", b'{"detail":{"status":"voice_not_found","message":"not found"}}', "vérifier voix_id")]:
+        appels.clear()
+        monkeypatch.setattr(voix, "appeler", lambda url, cle, corps=None, c=code, r=corps: appels.append(url) or (c, r, b""))
+        with pytest.raises(voix.VoixIndisponible, match=attendu):
+            voix.replique("Un autre texte " + code + attendu, config_voix(tmp_path))
+        assert len(appels) == 1
+    assert "Could not resolve host" in voix.cause("000", b"", b"curl: (6) Could not resolve host: x")
+    assert "connexion Internet" in voix.cause("000", b"", b"") and "panne chez ElevenLabs" in voix.cause("502", b"<html>")
+
+
+def test_voix_reponse_illisible_jamais_gardee_en_cache(tmp_path, monkeypatch):
+    """VID-20 : une réponse 200 sans son ou sans l'heure des mots est refusée et n'entre pas dans le cache."""
+    import voix
+    monkeypatch.setattr(voix, "duree", lambda chemin: 1.5)
+    for corps in (b"pas du json", json.dumps({"audio_base64": "SUQz", "alignment": None}).encode(), json.dumps({"x": 1}).encode()):
+        monkeypatch.setattr(voix, "appeler", lambda url, cle, c=None, r=corps: ("200", r, b""))
+        with pytest.raises(voix.VoixIndisponible, match="prochain lancement"):
+            voix.replique("Bonjour à toi", config_voix(tmp_path))
+        assert not glob.glob(str(tmp_path / "cache" / "*.json")) and not glob.glob(str(tmp_path / "cache" / "*.mp3"))
+
+
+def test_voix_cle_jamais_dans_la_commande(tmp_path, monkeypatch):
+    """La clé passe par un fichier d'en-têtes temporaire, effacé après l'appel ; jamais dans la ligne de commande."""
+    import voix
+    vus = []
+
+    class Sortie:
+        stdout, stderr = b'{"ok":1}\n200', b""
+
+    def faux_curl(commande, **k):
+        entetes = next(a[1:] for a in commande if a.startswith("@"))
+        vus.append((commande, open(entetes).read(), entetes))
+        return Sortie()
+    monkeypatch.setattr(voix.subprocess, "run", faux_curl)
+    assert voix.appeler("https://api.elevenlabs.io/v1/user/subscription", "cle-secrete") == ("200", b'{"ok":1}', b"")
+    commande, contenu, entetes = vus[0]
+    assert "cle-secrete" not in " ".join(commande) and contenu == "xi-api-key: cle-secrete\n" and not os.path.exists(entetes)
+
+
+def test_voix_prise_qui_ne_colle_pas_au_texte(tmp_path, monkeypatch):
+    """VID-21 : une prise dont les mots ne collent pas aux scènes est mise de côté et redemandée une fois ; si l'écart revient, la
+    prise reste (pas de crédits dépensés à chaque lancement) et le message demande une correction de l'outil."""
+    import voix
+    base = tmp_path / "abc"
+
+    def fausse_prise(texte, config):
+        for ext in (".mp3", ".json"):
+            (tmp_path / ("abc" + ext)).write_text("x")
+        return {"fichier": str(base) + ".mp3", "duree": 2.0, "mots": [{"mot": "un", "debut": 0, "fin": 0.2}]}
+    monkeypatch.setattr(voix, "replique", fausse_prise)
+    with pytest.raises(voix.VoixIndisponible, match="nouvelle prise au prochain lancement"):
+        voix.recit(["un deux", "trois"], {})
+    assert os.path.exists(str(base) + "-ecart.json") and not os.path.exists(str(base) + ".json")
+    with pytest.raises(voix.VoixIndisponible, match="deux prises de suite"):
+        voix.recit(["un deux", "trois"], {})
+    assert os.path.exists(str(base) + ".json")
+
+
+def test_voix_ffmpeg_jamais_de_fichier_tronque(tmp_path, monkeypatch):
+    """VID-21 : un morceau de voix est écrit sous un nom provisoire, contrôlé, puis renommé ; un morceau vide n'est jamais gardé
+    (avant, il était repris tel quel aux lancements suivants)."""
+    import voix
+    monkeypatch.setattr(voix.subprocess, "run", lambda *a, **k: None)
+    monkeypatch.setattr(voix, "duree", lambda chemin: 0.0)
+    sortie = str(tmp_path / "x-s0.wav")
+    with pytest.raises(voix.VoixIndisponible, match="vide"):
+        voix._ffmpeg(["-i", "entree.mp3"], sortie)
+    assert not os.path.exists(sortie)
+    (tmp_path / "y.wav").write_bytes(b"RIFF")
+    voix.controle_pistes([{"fichier": str(tmp_path / "y.wav"), "duree": 1.0}])
+    with pytest.raises(voix.VoixIndisponible, match="scène 2"):
+        voix.controle_pistes([{"fichier": str(tmp_path / "y.wav"), "duree": 1.0}, None])
+    with pytest.raises(voix.VoixIndisponible, match="scène 1"):
+        voix.controle_pistes([{"fichier": str(tmp_path / "y.wav"), "duree": 0.0}])
+
+
+def test_jamais_de_video_muette(tmp_path, monkeypatch):
+    """VID-18 : la voix est exigée par défaut, en mode automatique même sans voix_id (une nouvelle installation publiait muet), et
+    à la main sauf --sans-voix. La notification dit la cause."""
+    import inspect
+    import outil
+    import recap_periode
+    import voix
+    assert inspect.signature(recap.fabriquer).parameters["exiger_voix"].default is True
+    assert inspect.signature(recap_periode.fabriquer).parameters["exiger_voix"].default is True
+    journaux = tmp_path / "journaux"
+    journaux.mkdir()
+    ecrire_journee(str(journaux), datetime.date(2026, 4, 16))
+    demandes, notes = [], []
+
+    def sans_voix(j, config, sortie, journal=print, rendre=True, exiger_voix=False):
+        demandes.append(exiger_voix)
+        raise voix.VoixIndisponible(voix.cause("401", b'{"detail":{"status":"quota_exceeded"}}'))
+    monkeypatch.setattr(publication.recap, "fabriquer", sans_voix)
+    monkeypatch.setattr(publication, "prevenir", lambda titre, texte: notes.append(texte))
+    config = {"sortie": str(tmp_path / "rendus"), "dossier_publication": str(tmp_path / "bureau"), "auto_depuis": "2026-04-01"}
+    assert publication.auto(config, str(journaux), lambda t: None, datetime.date(2026, 4, 16)) == []
+    assert demandes == [True] and "crédits ElevenLabs épuisés" in notes[0]
+    assert not os.path.exists(tmp_path / "bureau" / "2026-04-16")
+    monkeypatch.setattr(recap, "fabriquer", sans_voix)
+    fichier = tmp_path / "config.json"
+    fichier.write_text(json.dumps({"sortie": str(tmp_path / "rendus"), "dossier_journaux": str(journaux), "police": "x"}))
+    assert outil.main(["recap", "--jour", "2026-04-16", "--config", str(fichier)]) == 4 and demandes[-1] is True
+    exiges = []                 # avec --sans-voix, la voix n'est plus exigée (un essai à la main)
+    monkeypatch.setattr(recap, "fabriquer", lambda *a, exiger_voix=True, **k: exiges.append(exiger_voix) or "video.mp4")
+    assert outil.main(["recap", "--jour", "2026-04-16", "--config", str(fichier), "--sans-voix"]) == 0
+    assert exiges == [False]
+
+
+def test_verifier_controle_la_voix_sans_depenser(tmp_path, monkeypatch):
+    """VID-22 : `verifier` lit la voix et les crédits restants (deux lectures gratuites, jamais de synthèse)."""
+    import voix
+    urls = []
+
+    def faux(url, cle, corps=None):
+        urls.append((url, corps))
+        if "subscription" in url:
+            return "200", json.dumps({"character_count": 9000, "character_limit": 30000}).encode(), b""
+        return "200", b"{}", b""
+    monkeypatch.setattr(voix, "appeler", faux)
+    lignes = voix.controle_compte(config_voix(tmp_path))
+    assert all(bon for bon, _ in lignes) and "21000 caractères restants" in lignes[1][1]
+    assert all(corps is None and "text-to-speech" not in url for url, corps in urls)
+    monkeypatch.setattr(voix, "appeler", lambda url, cle, corps=None: ("401", b'{"detail":{"status":"invalid_api_key"}}', b""))
+    assert not voix.controle_compte(config_voix(tmp_path))[0][0]

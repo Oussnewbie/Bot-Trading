@@ -175,16 +175,18 @@ def auto(config, dossier_journaux, journal=print, aujourd_hui=None):
         os.makedirs(sortie, exist_ok=True)
         journal(f"{jour} : {j['trades']} position(s), fabrication de la vidéo…")
         # Correctif VID-03 (audit du 25/11/2026) : sans voix (réseau coupé, quota ElevenLabs), la vidéo était faite muette et jamais
-        # refaite. Avec une voix réglée, la séance attend le lancement suivant, et la notification le dit.
+        # refaite : la séance attend le lancement suivant. VID-18 : la voix est exigée même sans voix_id dans la configuration (une
+        # nouvelle installation publiait muet). VID-19 : la notification dit la cause, pour la corriger, et toute panne prévient.
         try:
-            video = recap.fabriquer(j, config, sortie, journal, exiger_voix=bool(config.get("voix_id")))
+            video = recap.fabriquer(j, config, sortie, journal, exiger_voix=True)
             dossier = publier(j, video, config, journal)
         except voix.VoixIndisponible as err:
-            journal(f"{jour} : voix indisponible ({err}). Pas de vidéo muette : nouvel essai au prochain lancement.")
-            prevenir("Étrave", f"Récap du {nombres.date_courte(jour)} : voix indisponible, nouvel essai au prochain lancement.")
+            journal(f"{jour} : voix indisponible : {err}. Pas de vidéo muette : nouvel essai au prochain lancement.")
+            prevenir("Étrave : pas de voix", f"Récap du {nombres.date_courte(jour)} : {str(err)[:150]}")
             continue
         except Exception as err:       # une séance ratée ne doit pas bloquer les suivantes ; elle sera retentée au prochain lancement
             journal(f"{jour} : échec ({type(err).__name__} : {err}). Nouvel essai au prochain lancement.")
+            prevenir("Étrave : échec", f"Récap du {nombres.date_courte(jour)} : {type(err).__name__}, détail dans recap-auto.log")
             continue
         journal(f"{jour} : prêt dans {dossier}")
         prevenir("Étrave", f"Récap du {nombres.date_courte(jour)} prêt à publier (dossier « {os.path.basename(racine)} »).")
@@ -208,14 +210,15 @@ def auto(config, dossier_journaux, journal=print, aujourd_hui=None):
         os.makedirs(sortie, exist_ok=True)
         journal(f"{recap_periode.nom_dossier(p)} : {len(p['avec'])} jour(s) de trade, fabrication de la vidéo…")
         try:
-            video = recap_periode.fabriquer(p, config, sortie, journal, exiger_voix=bool(config.get("voix_id")))
+            video = recap_periode.fabriquer(p, config, sortie, journal, exiger_voix=True)
             dossier = publier_periode(p, video, config)
         except voix.VoixIndisponible as err:
-            journal(f"{recap_periode.nom_dossier(p)} : voix indisponible ({err}). Nouvel essai au prochain lancement.")
-            prevenir("Étrave", f"{recap_periode.nom_dossier(p)} : voix indisponible, nouvel essai au prochain lancement.")
+            journal(f"{recap_periode.nom_dossier(p)} : voix indisponible : {err}. Nouvel essai au prochain lancement.")
+            prevenir("Étrave : pas de voix", f"{recap_periode.nom_dossier(p)} : {str(err)[:150]}")
             continue
         except Exception as err:
             journal(f"{recap_periode.nom_dossier(p)} : échec ({type(err).__name__} : {err}). Nouvel essai au prochain lancement.")
+            prevenir("Étrave : échec", f"{recap_periode.nom_dossier(p)} : {type(err).__name__}, détail dans recap-auto.log")
             continue
         journal(f"{recap_periode.nom_dossier(p)} : prêt dans {dossier}")
         prevenir("Étrave", f"{recap_periode.nom_dossier(p)} : récap prêt à publier.")

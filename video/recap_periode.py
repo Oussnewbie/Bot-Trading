@@ -447,9 +447,9 @@ def nom_dossier(p):
     return f"Semaine du {p['debut'].isoformat()}" if p["genre"] == "semaine" else f"Mois {p['debut']:%Y-%m}"
 
 
-def fabriquer(p, config, dossier_sortie, journal=print, rendre=True, exiger_voix=False):
+def fabriquer(p, config, dossier_sortie, journal=print, rendre=True, exiger_voix=True):
     """Le projet HyperFrames, le rendu, la voix (une prise), les bruitages et la musique. Rend le chemin de la vidéo.
-    exiger_voix : comme recap.fabriquer (VID-03)."""
+    exiger_voix : comme recap.fabriquer (VID-03, VID-18)."""
     textes = repliques(p)
     try:
         reps = [voix.rythmer(r, config.get("voix_tempo", voix.TEMPO), config.get("voix_pause_max", voix.PAUSE_MAX))
@@ -458,8 +458,9 @@ def fabriquer(p, config, dossier_sortie, journal=print, rendre=True, exiger_voix
     except voix.VoixIndisponible as err:
         if exiger_voix:
             raise
-        journal(str(err))
+        journal(f"{err} : vidéo sans voix (--sans-voix).")
         reps, sans_voix = [None] * len(textes), True
+    voix.controle_pistes(reps if exiger_voix else [])
     police_fichier = os.path.expanduser(config.get("police", police.DEFAUT))
     recap.POLICE = police_fichier
     projet = os.path.join(dossier_sortie, "projet")
