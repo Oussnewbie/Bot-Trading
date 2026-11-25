@@ -26,8 +26,9 @@ Les règles, l'installation et les chiffres des tests sont dans `README.md`.
 robot/     Strategy-V10.mq5, Strategy-V10.pine, test_robot.py (contrôles du code de l'EA et du Pine),
            mt5/ (demo.ini, demo_1000.set, testeur.ini)
 etrave/    interface web locale de l'EA (Python sans dépendance), export.py (export trimestriel) + test_interface.py, test_export.py
+video/     (branche communication/outil-video) vidéos TikTok : récap de séance et présentation, `python3 video/outil.py` ; README
 ```
-- Tests : `.venv/bin/python -m pytest robot etrave -q` (82 tests). Le `.venv` du dépôt tourne sous Python 3.15.
+- Tests : `.venv/bin/python -m pytest robot etrave -q` (88 tests ; sur la branche `communication/outil-video`, ajouter `video`). Le `.venv` du dépôt tourne sous Python 3.15.
 - Étrave en essai : `.venv/bin/python etrave/etrave.py --sans-navigateur --port 8799 --dossier <dossier jetable>`, puis
   `http://127.0.0.1:8799`. Pour voir la page avec des données, écrire de faux `etat-<symbole>.txt` (format dans
   `etrave/test_interface.py`, `faux_etat`) et un `trades-<symbole>.csv`, et les réécrire toutes les 2 secondes (au-delà de 15 s sans
@@ -113,6 +114,19 @@ etrave/    interface web locale de l'EA (Python sans dépendance), export.py (ex
 - **Export trimestriel** (`etrave/export.py`) : `exports/<AAAA-Tn>/` dans le dossier d'Étrave, au démarrage puis toutes les 6 heures,
   pour chaque trimestre terminé depuis 3 jours (dates de New York) ; « Exporter le trimestre en cours » à la demande. Construit sous un
   nom provisoire puis renommé. C'est la matière des ajustements futurs : glissement réel, spread, excursions, jours sans trade.
+- **Journal des bougies** (`bougies-<symbole>.csv`, `BougiesRow`) : les bougies M5 de 30 min avant le range jusqu'à la sortie, écrites
+  une fois par jour avec la ligne « fin » (hors séance, une lecture). Sert la vidéo récap (`video/`). Testeur 12 mois NDX100 à 0,25 %
+  sur 300 000 $ avec ce journal : 448 trades, +64 931,85 $, identique à la référence.
+- **Vidéos** (`video/`) : rien de personnel ni de fichier sous licence dans le dépôt (prénom, montant, certificat, voix, clé, voix_id,
+  sons Mixkit, police DIN) : tout est dans `~/.config/etrave-video/config.json` et des dossiers locaux. Un test le vérifie en lisant
+  les valeurs dans cette configuration. Démo, réel ou testeur : seulement dans la description de la publication (choix de l'utilisateur), jamais dans la vidéo, la couverture ni les noms de fichiers. Les
+  raisons des filtres et le type d'entrée (A, B, D) ne sont jamais montrés : c'est le secret de la stratégie, à la demande de l'utilisateur.
+  Preuve : photo de l'onglet Historique de MetaTrader prise par l'outil le soir même (`video/historique.py`, à régler une fois),
+  épinglée avec le R en fin de vidéo ; jamais d'image fabriquée à la place. Récap : voix en une seule prise par vidéo (`voix.recit`, sinon le timbre change d'une scène à l'autre), chemin du prix en points
+  (mfe du journal d'exécution), mode automatique (`outil.py installer` : agent launchd
+  `com.etrave.recap-auto`, outil copié dans `~/Library/Application Support/Etrave/outil-video`, dossiers du jour sur le Bureau), vert et rouge réservés au résultat, caméra calée sur les mots de la voix (`voix.instant`), arrêts d'au moins 1,5 s,
+  étiquettes posées dans les zones sûres de TikTok (`police.py` mesure les textes ; un test le vérifie). Musique facultative
+  (`musique` de la configuration), jamais dans le dépôt.
 - Jours fériés et demi-séances : aucun trade (`InpSkipShort`), même si `FlatMin` prévoit une sortie à 12:45.
 - **Page d'Étrave (« carte marine », 25/11/2026)** : thème clair par défaut, mode nuit ; chiffres en DIN (Bahnschrift sous Windows,
   DIN Alternate en gras seulement sur Mac), aucune police extérieure (CSP). L'onglet Séance dessine les fenêtres des règles
@@ -126,6 +140,15 @@ etrave/    interface web locale de l'EA (Python sans dépendance), export.py (ex
   - R-04 : une bougie est perdue si `CopyRates` échoue ;
   - R-05 : l'achat se déclenche sur l'ask (voulu) ;
   - Pine : côté bloqué vu à la clôture, ajout au prix de clôture, pas de commission par défaut (limites du backtest TradingView) ;
+  - PINE-04 (25/11/2026) : `close_entries_rule = "ANY"` ajouté (en FIFO, le stop d'un D fermait A) : pas encore vérifié sur
+    TradingView ;
+  - X-13 (25/11/2026) : le stop des D se compte depuis le déclenchement, comme le Pine et le simulateur (il partait du prix
+    obtenu). Testeur 12 mois NDX100 à 0,25 % sur 300 000 $ : 449 trades, +65 324,88 $ (avant : 448, +64 931,85 $ ; 188 stops de D
+    changés). PINE-05 : la bougie de cassure compte pour le bord opposé (l'EA lit l'ask à la vente, le Pine n'a que le bid).
+    X-14 : même commentaire pour tous les ordres (il disait B, D1…, visible dans l'onglet Historique photographié pour la vidéo).
+    Reste voulu : `legQty` du Pine au moins un pas (une jambe peut dépasser 1R dans le backtest TradingView) ;
+- Test des stops (25/11/2026, pré-enregistré, historique déjà vu) : fermer B/D au stop de A ≈ neutre ; B/D à l'entrée dès +0,5R,
+  stop à +0,5R au lieu de l'entrée, A à l'entrée quand une jambe part : moins bons. Les stops restent tels quels.
   - R-06 : le prochain jour faux du calendrier est le 31/12/2027.
 
 ## Données et archives (hors dépôt)

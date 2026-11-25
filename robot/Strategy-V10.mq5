@@ -34,7 +34,8 @@
 // STRATEGY V8 = la v7 ci-dessus (trade A, la cassure) + deux entrées de plus, les jours où la cassure est prise :
 // 10. B — REPLI SUR LE VWAP : après la cassure, la première bougie M5 (après celle de la cassure) qui touche le prix
 //                moyen de séance (VWAP depuis 9:30, à 0,1 range près), clôture du bon côté du VWAP et dans le sens du
-//                trade déclenche une entrée au marché. Stop 1 point au-delà de l'extrême des 2 dernières bougies M5.
+//                trade déclenche une entrée au marché. Stop au-delà de l'extrême des 2 dernières bougies M5, avec une marge de
+//                0,5 pb du prix (B_BUF_PB : environ 1,3 point sur le Nasdaq, 0,35 point sur le S&P 500).
 //                Même gestion que la cassure (stop à l'entrée à +1,5R, pyramide à +2R), en multiples du stop de cette
 //                entrée. Jusqu'à 14:00 ; abandonné si une bougie M5 clôture de l'autre côté du range. Une fois par jour.
 // 11. C — ENTRÉE À 10:00 : si à 10:00 le prix est toujours au-delà du niveau de cassure et que le stop du range n'a
@@ -192,6 +193,9 @@ input group "Exécution"
 input ulong        InpMagic     = 50930;        // Numéro magique
 input int          InpDeviation = 30;           // Glissement maximal (points)
 input string       InpComment   = "Strategy V10";     // Commentaire des ordres
+// Correctif X-14 (25/11/2026) : le même commentaire pour tous les ordres. Il disait « B », « D1 »… et « pyramide », visibles dans
+// l'onglet Historique de MetaTrader, donc sur la photo de l'historique en fin de vidéo récap : le type d'entrée reste secret.
+// Le commentaire ne sert à rien d'autre : chaque jambe se reconnaît à son numéro magique.
 
 input group "Notifications"
 input bool         InpPush      = true;         // Notifications push MT5 (appli mobile MetaTrader 5)
@@ -1652,7 +1656,7 @@ void DoPyramid(double curR)
       return;
      }
    double tp = InpTgtR > 0 ? NormalizeDouble(gEntry + gDir * InpTgtR * gRisk, _Digits) : 0;
-   bool ok = gDir == 1 ? trade.Buy(lots, _Symbol, 0, lock, tp, InpComment + " pyramide") : trade.Sell(lots, _Symbol, 0, lock, tp, InpComment + " pyramide");
+   bool ok = gDir == 1 ? trade.Buy(lots, _Symbol, 0, lock, tp, InpComment) : trade.Sell(lots, _Symbol, 0, lock, tp, InpComment);
    uint rc = trade.ResultRetcode();
    if(!(ok && (rc == TRADE_RETCODE_DONE || rc == TRADE_RETCODE_DONE_PARTIAL || rc == TRADE_RETCODE_PLACED)))
      {
@@ -1826,19 +1830,24 @@ void LegRaiseStop(SLeg &g, double lvlPx, string why)
 // Ouvre la jambe au marché avec son stop. Taille plafonnée : pas plus de lots que le trade de cassure, pas plus de 1R de
 // risque, et la marge nécessaire (pyramide comprise). La jambe est marquée « jouée » quoi qu'il arrive : une seule
 // tentative par jour.
-bool LegOpen(SLeg &g, int dir, double stop, string quoi)
+bool LegOpen(SLeg &g, int dir, double stop, string quoi, double ref = 0)
   {
    g.done = true;
    double ask  = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
    double bid  = SymbolInfoDouble(_Symbol, SYMBOL_BID);
    double px   = dir == 1 ? ask : bid;
-   double dist = (px - stop) * dir;
+   // Correctif X-13 (25/11/2026) : le stop d'une continuation D se compte depuis son niveau de déclenchement (ref), comme dans le
+   // Pine et le simulateur des tests ; il se comptait depuis le prix obtenu, donc un peu plus loin à chaque glissement. B et C
+   // (entrées au marché) gardent le prix obtenu. La taille se calcule ensuite sur la distance réelle depuis ce prix.
+   double base = ref > 0 ? ref : px;
+   double dist = (base - stop) * dir;
    // V10 : stop élargi, du même multiple que la cassure ; la taille calculée plus bas est réduite d'autant (risque plafonné à 1R)
    if(gStopMult != 1.0 && dist > 0)
      {
       dist *= gStopMult;
-      stop  = px - dir * dist;
+      stop  = base - dir * dist;
      }
+   dist = (px - stop) * dir;
    double lvl  = SymbolInfoInteger(_Symbol, SYMBOL_TRADE_STOPS_LEVEL) * _Point;
    double tv   = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_VALUE_LOSS);
    if(tv <= 0)
@@ -1873,7 +1882,7 @@ bool LegOpen(SLeg &g, int dir, double stop, string quoi)
      }
    double sl = NormalizeDouble(stop, _Digits);
    trade.SetExpertMagicNumber(g.magic);
-   bool   ok   = dir == 1 ? trade.Buy(lots, _Symbol, 0, sl, 0, InpComment + " " + g.nom) : trade.Sell(lots, _Symbol, 0, sl, 0, InpComment + " " + g.nom);
+   bool   ok   = dir == 1 ? trade.Buy(lots, _Symbol, 0, sl, 0, InpComment) : trade.Sell(lots, _Symbol, 0, sl, 0, InpComment);
    uint   rc   = trade.ResultRetcode();
    double fill = trade.ResultPrice();
    ulong  deal = trade.ResultDeal();
@@ -1966,7 +1975,7 @@ void LegPyramid(SLeg &g, double curR)
       return;
      }
    trade.SetExpertMagicNumber(g.magic);
-   bool   ok   = g.dir == 1 ? trade.Buy(lots, _Symbol, 0, lock, 0, InpComment + " " + g.nom + " pyramide") : trade.Sell(lots, _Symbol, 0, lock, 0, InpComment + " " + g.nom + " pyramide");
+   bool   ok   = g.dir == 1 ? trade.Buy(lots, _Symbol, 0, lock, 0, InpComment) : trade.Sell(lots, _Symbol, 0, lock, 0, InpComment);
    uint   rc   = trade.ResultRetcode();
    double apx  = trade.ResultPrice();
    string rcTx = trade.ResultRetcodeDescription();
@@ -2264,7 +2273,7 @@ void V9TrigD()
       if(trg)
         {
          gD[k].arm = false;
-         LegOpen(gD[k], gV8Dir, gD[k].stp, "continuation, cassure de la bougie M5 à " + Px(gD[k].trig));
+         LegOpen(gD[k], gV8Dir, gD[k].stp, "continuation, cassure de la bougie M5 à " + Px(gD[k].trig), gD[k].trig);
         }
      }
   }
@@ -2797,6 +2806,9 @@ void AppendTrade(datetime tx, double r, double net, string why)
 #define JOURNAL_VERSION "1"
 #define EXEC_COLONNES   "version;source;id_position;jour_ny;symbole;entree;sens;lots;entree_utc_ms;entree_ny;prix_vise;prix_entree;glissement_entree;spread_entree;stop_initial;risque_prix;sortie_utc_ms;sortie_ny;stop_en_place;stop_virtuel;prix_sortie;glissement_sortie;raison;raison_courtier;mfe_prix;mae_prix;mfe_r;mae_r;excursion;frais;swap;resultat_net;r;range_prix;stop_mult;devise;complet"
 #define SEANCE_COLONNES "version;source;jour_ny;symbole;moment;heure_ny;range_bas;range_haut;range_prix;stop_mult;spread;cout_r;filtres;etat"
+// bougies-<symbole>.csv : les bougies M5 de la séance (de 30 min avant le range jusqu'à la sortie), heure de New York, écrites une
+// fois par jour avec la ligne « fin » : de quoi redessiner la journée (vidéo récap, contrôle à l'œil) sans capture d'écran.
+#define BOUGIES_COLONNES "version;source;jour_ny;symbole;heure_ny;ouverture;haut;bas;cloture;ticks"
 
 bool   JournalOn() { return MQLInfoInteger(MQL_TESTER) || InpUseUI; }
 string JournalName(string base) { return UI_DIR + (MQLInfoInteger(MQL_TESTER) ? "testeur\\" : "") + base + "-" + gSymFile + ".csv"; }
@@ -3073,6 +3085,37 @@ void SeanceRow(string moment)
    JournalWrite("seances", SEANCE_COLONNES, line);
   }
 
+// Les bougies M5 du jour gDay, de 30 min avant la bougie du range jusqu'à maintenant (appelée avec la ligne « fin », donc hors de la
+// séance) : une seule lecture de l'historique local, une seule écriture. Rien n'est écrit si la lecture échoue.
+void BougiesRow()
+  {
+   if(!JournalOn() || gDay <= 0 || gOrTime <= 0)
+      return;
+   MqlRates r[];
+   int n = CopyRates(_Symbol, PERIOD_M5, gOrTime - 30 * 60, TimeCurrent(), r);
+   if(n <= 0)
+     {
+      PrintFormat("Journal des bougies : lecture impossible (erreur %d)", GetLastError());
+      return;
+     }
+   string lines = "";
+   int    k     = 0;
+   for(int i = 0; i < n; i++)
+     {
+      datetime ny = ToNY(r[i].time);
+      if(NYDate(ny) != gDay)
+         continue;
+      if(k > 0)
+         lines += "\r\n";
+      lines += JOURNAL_VERSION + ";" + SourceTxt() + ";" + JourTxt(gDay) + ";" + gSymFile + ";" + TimeToString(ny, TIME_MINUTES) + ";" +
+               DoubleToString(r[i].open, _Digits) + ";" + DoubleToString(r[i].high, _Digits) + ";" + DoubleToString(r[i].low, _Digits) + ";" +
+               DoubleToString(r[i].close, _Digits) + ";" + IntegerToString(r[i].tick_volume);
+      k++;
+     }
+   if(k > 0)
+      JournalWrite("bougies", BOUGIES_COLONNES, lines);
+  }
+
 // Type d'une position d'après son numéro magique (positions que l'état de l'EA ne connaissait plus)
 string TypeOfMagic(ulong mg)
   {
@@ -3234,6 +3277,7 @@ int OnInit()
       FolderCreate("Etrave\\testeur", FILE_COMMON);
       FileDelete(JournalName("execution"), FILE_COMMON);
       FileDelete(JournalName("seances"), FILE_COMMON);
+      FileDelete(JournalName("bougies"), FILE_COMMON);
      }
    if(!MQLInfoInteger(MQL_TESTER) && InpUseUI)
      {
@@ -3367,6 +3411,7 @@ void OnTick()
       if(gDay == NYDate(nyS) && NYMin(nyS) >= FlatMin(nyS) + 2 && gSessFin != gDay)
         {
          SeanceRow("fin");
+         BougiesRow();          // les bougies de la séance, pour redessiner la journée (vidéo récap)
          gSessFin = gDay;
          Sv("sessfin", gSessFin);
         }

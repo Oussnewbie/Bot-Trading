@@ -28,9 +28,9 @@
 // STRATEGY V8 = la v7 ci-dessus (trade A, la cassure) + deux entrées de plus, les jours où la cassure est prise :
 // 10. B — REPLI SUR LE VWAP : après la cassure, la première bougie M5 (après celle de la cassure) qui touche le prix moyen
 //                de séance (VWAP depuis 9:30, à 0,1 range près), clôture du bon côté du VWAP et dans le sens du trade
-//                déclenche une entrée au marché à la clôture de cette bougie. Stop 1 point au-delà de l'extrême des 2
-//                dernières bougies. Même gestion que la cassure (stop à l'entrée à +1,5R, pyramide à +2R), en multiples
-//                du stop de cette entrée. Jusqu'à 14:00 ; abandonné si une bougie clôture de l'autre côté du range.
+//                déclenche une entrée au marché à la clôture de cette bougie. Stop au-delà de l'extrême des 2 dernières
+//                bougies, avec une marge de 0,5 pb du prix (B_BUF_PB). Même gestion que la cassure (stop à l'entrée à
+//                +1,5R, pyramide à +2R), en multiples du stop de cette entrée. Jusqu'à 14:00 ; abandonné si une bougie clôture de l'autre côté du range.
 // 11. C — ENTRÉE À 10:00 : si à 10:00 le prix est toujours au-delà du niveau de cassure et que le stop du range n'a pas
 //                été touché, entrée au marché, stop de l'autre côté du range, stop à l'entrée à +1,5R, sortie 15:50.
 // 12. TAILLE   : B et C ne prennent jamais plus d'unités que la cassure et ne risquent jamais plus qu'elle (1R).
@@ -76,8 +76,12 @@
 // CORRECTIFS DU 24/11/2026 : l'alerte « ORDRES ORB placés » donne le stop élargi (elle donnait l'autre bord du range) ; quand la
 // taille du backtest TradingView s'arrondit à zéro, elle est portée au pas minimum pour que les ordres et alertes restent affichés.
 // Version non passée par l'analyseur de TradingView au moment de ces correctifs.
+// CORRECTIF PINE-04 DU 25/11/2026 : close_entries_rule = "ANY". Par défaut (« FIFO »), TradingView ferme toujours la position la plus
+// ancienne : le stop d'une continuation D fermait la cassure A à sa place (étiquettes « D2 −1,3R » impossibles, A vue fermée trop
+// tôt, règle mémoire et stop à l'entrée de A calculés sur le mauvais trade). Chaque sortie ferme maintenant sa propre position,
+// comme dans l'EA. Non passé par l'analyseur de TradingView : à vérifier sur un graphique (chaque stop sous la bonne entrée).
 strategy("Strategy V10 — ORB New York, stop élargi (Confort) + repli VWAP + continuations", shorttitle = "Strategy V10", overlay = true,
-     initial_capital = 10000, currency = currency.USD, pyramiding = 20,
+     initial_capital = 10000, currency = currency.USD, pyramiding = 20, close_entries_rule = "ANY",
      process_orders_on_close = true, margin_long = 0, margin_short = 0, slippage = 2,
      max_lines_count = 500, max_boxes_count = 500, max_labels_count = 500)
 
@@ -1039,7 +1043,11 @@ for kD = 0 to 6
 
 if v8On
     // 2. le stop du range a-t-il été touché depuis la cassure ? (l'entrée C en dépend)
-    if not v8.stopHit and bar_index > v8.breakBar and (v8.dir == 1 ? low <= orL : high >= orH)
+    // Correctif PINE-05 (25/11/2026) : la bougie de la cassure compte aussi, comme dans l'EA (qui surveille chaque cotation dès
+    // l'entrée). Un bord opposé touché dans cette bougie l'a forcément été après l'entrée (sinon l'autre ordre serait parti, ou la
+    // journée annulée) : sans elle, le script armait des D que l'EA n'arme pas. Reste une différence : l'EA lit l'ask pour la
+    // vente, TradingView n'a que les prix bid.
+    if not v8.stopHit and bar_index >= v8.breakBar and (v8.dir == 1 ? low <= orL : high >= orH)
         v8.stopHit := true
 
     // 3. entrée B : repli sur le VWAP

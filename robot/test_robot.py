@@ -166,7 +166,7 @@ def test_pas_d_entree_doublee_apres_une_reponse_perdue():
 
 
 def test_jambe_reprise_quand_la_reponse_est_perdue():
-    ouverture = fonction("bool LegOpen(SLeg &g, int dir, double stop, string quoi)")
+    ouverture = fonction("bool LegOpen(SLeg &g, int dir, double stop, string quoi, double ref = 0)")
     assert "LegFindOpen(g.magic, volPos)" in ouverture
     assert ouverture.index("LegFindOpen(g.magic, volPos)") < ouverture.index("g.enPos = true;")
 
@@ -203,6 +203,35 @@ def test_le_script_affiche_les_ordres_meme_si_la_taille_tradingview_s_arrondit_a
     assert "float qty    = qtyMin ? qtyStep : qtyRaw" in PINE
     assert PINE.index("bool  qtyMin = not na(qtyRaw) and qtyRaw <= 0") < PINE.index("bool  go  = pDir != 2 and not na(qty) and qty > 0")
 
+
+
+def test_commentaire_des_ordres_sans_type_d_entree():
+    """X-14 : le commentaire des ordres (visible dans l'onglet Historique, photographié pour la vidéo) ne dit ni B, ni D, ni
+    « pyramide » : le type d'entrée reste secret."""
+    assert 'InpComment + " "' not in EA and 'InpComment + " pyramide"' not in EA
+    assert "CaptureJour" not in EA and "InpCapture" not in EA
+
+
+def test_stop_des_continuations_depuis_le_declenchement():
+    """X-13 : le stop d'un D se compte depuis son niveau de déclenchement (Pine, simulateur), plus depuis le prix obtenu."""
+    corps = fonction("bool LegOpen(SLeg &g, int dir, double stop, string quoi, double ref = 0)")
+    assert "double base = ref > 0 ? ref : px;" in corps and "stop  = base - dir * dist;" in corps and "dist = (px - stop) * dir;" in corps
+    assert "Px(gD[k].trig), gD[k].trig);" in EA
+
+
+def test_le_script_compte_la_bougie_de_cassure_pour_le_bord_oppose():
+    """PINE-05 : comme l'EA, le bord opposé touché dès la bougie de la cassure empêche d'armer les D."""
+    assert "if not v8.stopHit and bar_index >= v8.breakBar and (v8.dir == 1 ? low <= orL : high >= orH)" in PINE
+
+
+def test_chaque_sortie_du_script_ferme_sa_propre_position():
+    """PINE-04 : sans close_entries_rule = "ANY", TradingView ferme la plus ancienne position (FIFO) : le stop d'une continuation
+    fermait la cassure A, et le script suivait le mauvais trade (résultat, règle mémoire, stop à l'entrée)."""
+    entete = PINE[PINE.index("strategy(\"Strategy V10"):]
+    entete = entete[:entete.index(")\n")]
+    assert 'close_entries_rule = "ANY"' in entete
+    # le script retrouve chaque sortie par le nom de son entrée : c'est ce que « ANY » rend juste
+    assert "legIdx(strategy.closedtrades.entry_id(i)) == leg" in PINE
 
 
 def test_les_entrees_b_c_d_du_script_restent_affichees():
@@ -389,7 +418,7 @@ def test_journal_valeurs_inconnues_vides_et_divisions_gardees():
 def test_journal_prix_vises_gardes_au_redemarrage():
     assert 'Sv(k + "plan", g.plan); Sv(k + "pplan", g.pplan);' in EA and 'g.plan = Ld(k + "plan", 0); g.pplan = Ld(k + "pplan", 0);' in EA
     assert 'Sv("pyrplan", gPyrPlan);' in EA and 'gPyrPlan = Ld("pyrplan", 0);' in EA
-    assert 'g.plan = StringSubstr(g.nom, 0, 1) == "D" ? g.trig : px;' in fonction("bool LegOpen(SLeg &g, int dir, double stop, string quoi)")
+    assert 'g.plan = StringSubstr(g.nom, 0, 1) == "D" ? g.trig : px;' in fonction("bool LegOpen(SLeg &g, int dir, double stop, string quoi, double ref = 0)")
     assert "gPyrPlan = mkt;" in fonction("void DoPyramid(double curR)") and "g.pplan = mkt;" in fonction("void LegPyramid(SLeg &g, double curR)")
 
 
@@ -400,6 +429,19 @@ def test_journal_des_seances_et_dossier_du_testeur():
     assert 'return UI_DIR + (MQLInfoInteger(MQL_TESTER) ? "testeur\\\\" : "")' in EA
     init = fonction("int OnInit()")
     assert 'FileDelete(JournalName("execution"), FILE_COMMON);' in init and 'FolderCreate("Etrave\\\\testeur", FILE_COMMON);' in init
+
+
+def test_journal_des_bougies_une_fois_par_jour_hors_de_la_seance():
+    """Bougies M5 de la séance pour la vidéo récap : écrites avec la ligne « fin » (après la sortie), une lecture, une écriture."""
+    bougies = fonction("void BougiesRow()")
+    assert "CopyRates(_Symbol, PERIOD_M5, gOrTime - 30 * 60, TimeCurrent(), r)" in bougies
+    assert "if(NYDate(ny) != gDay)" in bougies                       # seulement les bougies du jour de la séance
+    assert bougies.count("JournalWrite(") == 1 and 'JournalWrite("bougies", BOUGIES_COLONNES, lines)' in bougies
+    tick = fonction("void OnTick()")
+    assert tick.index('SeanceRow("fin");') < tick.index("BougiesRow();") < tick.index("gSessFin = gDay;")
+    assert EA.count("BougiesRow();") == 1
+    assert 'FileDelete(JournalName("bougies"), FILE_COMMON);' in fonction("int OnInit()")
+    assert '#define BOUGIES_COLONNES "version;source;jour_ny;symbole;heure_ny;ouverture;haut;bas;cloture;ticks"' in EA
 
 
 def test_journal_ecrit_hors_de_la_seance():

@@ -42,19 +42,23 @@ demande de modifier le code et de recompiler.
 
 **Entrées supplémentaires**, seulement les jours où la cassure est prise, et dans son sens :
 - **B, repli sur le VWAP** : la première bougie M5 qui revient toucher le prix moyen de la séance (à 0,1 range près) puis clôture du
-  bon côté. Entrée au marché, jusqu'à 14:00.
+  bon côté. Entrée au marché, jusqu'à 14:00. Stop au-delà de l'extrême des 2 dernières bougies M5 (marge de 0,5 pb du prix), écart
+  multiplié par 3.
 - **D1, D2, D3, continuations** : à la clôture des bougies de 9:35, 9:40 et 9:45, le dépassement de l'extrême de la bougie est guetté
   pendant 10 minutes. L'EA surveille ce niveau et entre au marché ; aucun ordre n'apparaît chez le courtier. Elles ne sont armées que
-  si l'autre bord du range n'a pas été touché depuis la cassure.
-- B et D suivent la gestion de A et ne risquent jamais plus de 1 R chacune. Jusqu'à 5 positions peuvent être ouvertes ensemble, toutes
-  dans le même sens.
+  tant que la cassure est ouverte et que l'autre bord du range n'a pas été touché depuis. Stop à l'autre extrême de la bougie, écart
+  multiplié par 3.
+- B et D suivent la gestion de A, chacune dans son propre R (stop à l'entrée à +1,5 R, pyramide à +2 R avec un stop d'au moins
+  +1 R), et ne risquent jamais plus de 1 R chacune. Elles restent ouvertes si la cassure sort avant elles. Jusqu'à 5 positions peuvent
+  être ouvertes ensemble, toutes dans le même sens.
 
 **Jours sans trade** : décisions de la Fed (FOMC, codées jusqu'au 26 janvier 2028), jours fériés américains et demi-séances. Aucun
 ordre non plus si le spread plus deux glissements pèse plus de 25 % du risque du jour.
 
 **Taille** : 0,25 % du solde par trade par défaut. Sur un petit compte, le lot minimum du courtier dépasse ce risque : le réglage
 « Lots fixes pour la cassure » (`InpFixedLots`) impose alors la taille, par exemple 0,1 lot sur 1 000 $. Le risque en % suit alors la
-largeur du stop. B et D ne prennent jamais plus de lots ni plus de risque que la cassure.
+largeur du stop. B et D ne prennent jamais plus de lots ni plus de risque que la cassure : en lots fixes, une entrée B ou D dont le
+stop est plus large que celui de la cassure est sautée.
 
 ## Ce que disent les tests
 
