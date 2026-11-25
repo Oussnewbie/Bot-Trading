@@ -1,119 +1,73 @@
 ﻿//+------------------------------------------------------------------+
-//| Strategy-V10.mq5 — Cassure du range d'ouverture de New York (M5)|
-//| + repli sur le VWAP + continuations, avec un stop élargi.        |
-//| Mêmes règles que Strategy-V10.pine. V10 = V9 + largeur du stop   |
+//| Strategy-V10.mq5 — cassure du range d'ouverture de New York (M5),|
+//| repli sur le VWAP et continuations, stop à 3 ranges.             |
+//| Version de référence ; mêmes règles que Strategy-V10.pine.       |
 //+------------------------------------------------------------------+
 //
-// Règles (heure de New York, bougies M5 quel que soit l'horizon du graphique) :
-//  1. Range    : high et low de la bougie M5 de 9:30.
-//  2. Filtres  : achat permis si le RSI14 M5 de 9:30 > 50 ET si le high de 9:30 dépasse le plus haut de 9:00-9:30 ;
-//                vente permise si le RSI < 50 ET si le low de 9:30 passe sous le plus bas de 9:00-9:30.
-//  3. Entrée   : à 9:35, ordres Buy Stop au high et Sell Stop au low posés CHEZ LE COURTIER, avec leur stop, valables
-//                jusqu'à 9:45 : son serveur les exécute dès que l'ask (achat) ou le bid (vente) atteint le niveau, sans
-//                attendre l'EA. Un côté dont le prix est déjà au niveau (ou trop près pour un ordre en attente) est
-//                surveillé par l'EA, qui entre au marché. Une seule cassure par jour : le premier exécuté annule l'autre.
-//                Si un seul côté est permis et que le prix touche l'autre côté d'abord, plus de trade ce jour-là.
-//  4. Stop     : de l'autre côté du range, posé chez le broker dès l'entrée. 1R = somme perdue au stop (lots × range).
-//  5. Gestion  : à la clôture d'une bougie (après celle de l'entrée) qui a atteint +1,5R, stop au prix d'entrée.
-//                Sortie au marché à 15:50 NY (clôture de la bougie de 15:45) ; à 12:45 les jours fériés américains et
-//                les demi-séances, où le marché ferme vers 13:00.
-//  6. PYRAMIDE : quand une bougie M5 clôture à +2R ou plus, l'EA ajoute DEUX unités au marché et met le stop de
-//                l'ensemble à 1R sous le prix de l'ajout (donc au moins à +1R pour la première unité). Après l'ajout,
-//                le pire cas reste -1R, comme au départ : l'ajout perd 2R, la première unité gagne au moins 1R.
-//                Un seul ajout par trade.
-//  7. R affiché = résultat net de tout le trade (ajout, commission et swap compris) ÷ somme risquée au départ.
-//  8. v7 — MÉMOIRE : après un trade pris qui finit gagnant (plus de +0,05R), le signal suivant n'est pas pris (un seul).
-//                Ce jour-là l'EA ne pose aucun ordre : il observe seulement si la cassure permise se déclenche avant 9:45.
-//                Si elle se déclenche, la règle est consommée et le trading reprend au signal d'après. Sinon (pas de
-//                cassure, côté bloqué touché d'abord, filtres fermés), la règle reste en attente pour le jour suivant.
-//  9. v7 — Aucun ordre les jours de décision de la Fed (FOMC) ni les jours fériés américains / demi-séances.
-//                Ces jours-là ne changent rien à la règle mémoire.
-//     Ces règles viennent de la recherche du 20 novembre 2026 (2018-2024, vérifiées sur 2025-2026 jamais utilisés).
-//     Elles n'augmentent jamais le risque par trade : elles ne font que retirer des trades.
+// Marchés : Nasdaq 100 et S&P 500 seulement (MarcheAutorise : tout autre symbole est refusé au lancement), un graphique M5 chacun.
+// Compte « hedging » obligatoire. Règles VERROUILLÉES le 25/11/2026 à la demande de l'utilisateur : ce sont des constantes plus
+// bas ; seuls le compte, l'heure du serveur, les FOMC après janvier 2028, l'exécution, les notifications et l'affichage se règlent.
+// Heures de New York, bougies M5 quel que soit l'horizon du graphique.
 //
-// STRATEGY V8 = la v7 ci-dessus (trade A, la cassure) + deux entrées de plus, les jours où la cassure est prise :
-// 10. B — REPLI SUR LE VWAP : après la cassure, la première bougie M5 (après celle de la cassure) qui touche le prix
-//                moyen de séance (VWAP depuis 9:30, à 0,1 range près), clôture du bon côté du VWAP et dans le sens du
-//                trade déclenche une entrée au marché. Stop au-delà de l'extrême des 2 dernières bougies M5, avec une marge de
-//                0,5 pb du prix (B_BUF_PB : environ 1,3 point sur le Nasdaq, 0,35 point sur le S&P 500).
-//                Même gestion que la cassure (stop à l'entrée à +1,5R, pyramide à +2R), en multiples du stop de cette
-//                entrée. Jusqu'à 14:00 ; abandonné si une bougie M5 clôture de l'autre côté du range. Une fois par jour.
-// 11. C — ENTRÉE À 10:00 : si à 10:00 le prix est toujours au-delà du niveau de cassure et que le stop du range n'a
-//                pas été touché, entrée au marché, stop de l'autre côté du range, stop à l'entrée à +1,5R, sortie 15:50.
-// 12. TAILLE   : B et C ne prennent jamais plus de lots que la cassure et ne risquent jamais plus qu'elle (1R).
-//                Jusqu'à 3 positions ouvertes en même temps, dans le même sens : compte « hedging » obligatoire.
-//                La règle mémoire ne regarde que le trade de cassure. Numéros magiques : A = InpMagic, B = +1, C = +2.
+// CASSURE (A, numéro magique InpMagic)
+//  1. Range     : high et low de la bougie M5 de 9:30.
+//  2. Filtres   : achat permis si le RSI 14 M5 de 9:30 est au-dessus de 50 ET si le high de 9:30 atteint ou dépasse le plus haut de
+//                 9:00-9:30 ; vente permise si le RSI est sous 50 ET si le low de 9:30 atteint ou passe le plus bas de 9:00-9:30.
+//  3. Ordres    : à 9:35, Buy Stop au high et Sell Stop au low posés CHEZ LE COURTIER, valables jusqu'à 9:45. Un côté dont le prix est
+//                 déjà au niveau (ou trop près pour un ordre en attente) est surveillé par l'EA, qui entre au marché (pas au-delà de
+//                 1,25 R de risque réel). Le premier exécuté annule l'autre. Si un seul côté est permis et que le prix touche l'autre
+//                 côté d'abord, plus de trade ce jour-là.
+//  4. Stop      : 3 ranges au-delà du niveau de cassure (InpStopMult), lots divisés par 3 : la somme risquée (1R) ne change pas.
+//  5. Gestion   : à la clôture d'une bougie (après celle de l'entrée) qui a atteint +1,5R, stop au prix d'entrée. Sortie au marché à
+//                 15:50 (clôture de la bougie de 15:45).
+//  6. Pyramide  : quand une bougie M5 clôture à +2R ou plus, ajout de DEUX unités au marché et stop de l'ensemble à 1R sous le prix
+//                 de l'ajout (au moins +1R pour la première unité) : le pire cas reste −1R. Un seul ajout par trade.
+//  7. Mémoire   : après une cassure qui finit au-delà de +1R (ajout compris), le signal suivant n'est pas pris. Ce jour-là l'EA ne
+//                 pose aucun ordre et regarde seulement si la cassure permise se déclenche avant 9:45 : si oui, la règle est
+//                 consommée ; sinon elle attend le signal suivant. Les jours sans trade ci-dessous n'y changent rien.
+//  R affiché = résultat net du trade (ajout, commission et swap compris) ÷ somme risquée au départ.
 //
-// STRATEGY V9 = la V8 ci-dessus, revue après un examen sur 7 années jamais vues pendant la recherche (2010-2017) :
-// 13. D — CONTINUATIONS : tant que la cassure A est ouverte, à la clôture de chacune des 3 bougies M5 qui suivent celle
-//                du range (bougies de 9:35, 9:40 et 9:45), l'EA guette pendant 10 minutes la cassure de l'extrême de
-//                cette bougie dans le sens du trade (achat : son plus haut atteint par l'ask ; vente : son plus bas
-//                atteint par le bid). Entrée au marché, stop à l'autre extrême de la bougie. Guet annulé si le prix
-//                touche d'abord ce stop. Même gestion que la cassure (stop à l'entrée à +1,5R, pyramide à +2R), en
-//                multiples du stop de cette entrée. Taille : comme B (jamais plus de lots que A, jamais plus de 1R).
-// 14. C (entrée de 10:00) est COUPÉE PAR DÉFAUT : sur les données jamais vues elle ne gagne presque rien (+0,04 R par trade).
-// 15. GARDE-FOU COÛT : aucun ordre si le spread du moment + 2 glissements supposés pèse plus de 25 % du risque du jour
-//     (V10 : le risque vaut InpStopMult × range, soit 3 ranges par défaut).
-//                Ces jours-là ne changent rien à la règle mémoire.
-//     Numéros magiques : A = InpMagic, B = +1, C = +2, D1 = +3, D2 = +4, D3 = +5 (jusqu'à D7 = +9).
-//     Jusqu'à 5 positions ouvertes en même temps dans le même sens et 15 lots de A pyramides comprises (7 pour la V8) :
-//     compte « hedging » obligatoire, et risque par trade à régler plus bas qu'avec la V8.
-//     Ce que disent les tests (rapports de recherche hors dépôt depuis le 25/11/2026) :
-//       2018-2026, période de recherche, spread réel + 1 point         : V9 +1 614 R, pire baisse  56 R (V8 : +986 R, 38 R).
-//       2010-2017, JAMAIS VU, coûts ramenés à leur poids d'aujourd'hui : V9   +577 R, pire baisse 170 R (V8 : +281 R, 102 R).
-//       2010-2017 avec les coûts au poids de 2018                       : V9   -157 R (V8 : -159 R).
-//     Le backtest 2018-2026 est donc une vision optimiste, et la stratégie dépend du poids des coûts dans le range.
-//     Aucun gain n'est garanti. Testeur de stratégie puis compte démo avant tout argent réel.
+// ENTRÉES SUPPLÉMENTAIRES, seulement les jours où la cassure est prise, dans son sens (B = InpMagic + 1, D1 à D3 = + 3 à + 5) :
+//  8. B, repli sur le VWAP : la première bougie M5 après celle de la cassure qui touche le VWAP de la séance (depuis 9:30, à 0,1
+//                 range près), clôture du bon côté du VWAP et dans le sens du trade. Entrée au marché, jusqu'à 14:00, une fois par
+//                 jour ; abandonnée si une bougie clôture de l'autre côté du range. Stop au-delà de l'extrême des 2 dernières
+//                 bougies (marge B_BUF_PB = 0,5 pb du prix), écart multiplié par 3.
+//  9. D1 à D3, continuations : à la clôture des bougies de 9:35, 9:40 et 9:45, tant que A est ouverte et que l'autre bord du range
+//                 n'a pas été touché depuis la cassure, l'EA guette 10 minutes le dépassement de l'extrême de la bougie (aucun ordre
+//                 chez le courtier) et entre au marché. Stop à l'autre extrême de la bougie, écart multiplié par 3 et compté depuis le
+//                 déclenchement (X-13). Guet annulé si le prix touche d'abord ce stop.
+// 10. B et D suivent la gestion de A dans leur propre R (stop à l'entrée à +1,5R, pyramide à +2R), ne prennent jamais plus de
+//                 lots ni plus de risque que A (en lots fixes, une jambe au stop plus large que A est donc sautée) et restent
+//                 ouvertes si A sort avant elles. Jusqu'à 5 positions ensemble, toutes dans le même sens.
 //
-// STRATEGY V10 = la V9 ci-dessus + un réglage, « largeur du stop » (InpStopMult), né de l'autopsie des stops :
-//     sur 16 ans, un stop sur trois est suivi d'un mouvement de +2R ou plus DANS LE SENS du trade. La première cause des stops
-//     n'est pas le sens, c'est un stop trop court (un range de 5 minutes à l'heure la plus agitée).
-// 16. PROFIL CONFORT (par défaut, InpStopMult = 3) : mêmes signaux et mêmes entrées, mais le stop est 3 fois plus loin (pour la
-//                cassure : 3 ranges sous le niveau d'achat) et les lots 3 fois plus petits : la somme risquée par trade ne change pas.
-//                Le stop à l'entrée (+1,5R) et la pyramide (+2R) se comptent avec ce nouveau R. Mémoire : après un trade de cassure à
-//                plus de +1R, le signal suivant est sauté. Continuations D : armées seulement si l'autre bord du range n'a pas été
-//                touché depuis la cassure. Au plus 5 lots de la V9 ouverts en même temps (15 pour la V9).
-// 17. PROFIL TENDANCE = la V9 : InpStopMult = 1 et « gagnant au-delà de » = 0,05 R.
-// 18. RISQUE PAR TRADE : 0,25 % par défaut, comme la V9. Le remonter (0,5 % était le réglage des V6 à V8) double les gains ET les
-//                baisses : c'est ta décision. En Confort à 0,5 % : pire journée des tests -2,6 %, pire baisse 16 % (2018-2026) et 27 % (2010-2017).
-//     Ce que disent les tests sur le Nasdaq :
-//                                                        TENDANCE (V9)                 CONFORT
-//       2018-2026, spread réel + 1 point :   +1 614 R, 18 % de réussite, baisse 56 R | +477 R, 47 % de réussite, baisse 32 R
-//       2018-2026, 3 points de glissement :    +799 R, baisse 157 R                  | +301 R, baisse 70 R
-//       2010-2017, coûts au poids d'aujourd'hui : +577 R, 15 %, baisse 170 R         | +194 R, 44 %, baisse 53 R, 8 années sur 8
-//       2010-2017, coûts au poids de 2018 :    -157 R                                |  +23 R
-//     À pire baisse égale les deux profils rapportent à peu près autant ; le Confort gagne 2 à 3 fois plus souvent, a des séries
-//     de pertes 3 fois plus courtes et dépend beaucoup moins des coûts. Il a été mis au point APRÈS avoir vu tout l'historique
-//     du Nasdaq : ce n'est pas une preuve. NASDAQ UNIQUEMENT : appliqué tel quel au Dow Jones, au DAX, à l'or, au Bitcoin,
-//     à l'EUR/USD et au GBP/USD (test écrit à l'avance), ce robot ne gagne sur aucun.
+// JOURS SANS TRADE : décisions de la Fed (FOMC, codées jusqu'au 26/01/2028, puis InpFomc), jours fériés américains et
+// demi-séances, et garde-fou coût : aucun ordre si le spread plus deux
+// glissements (COST_SLIP_PB = 0,6 pb du prix chacun) pèse plus de 25 % du risque du jour (3 ranges).
+// TAILLE : InpRiskPct du solde (0,25 % par défaut ; le risque réglé dans Étrave passe avant), ou InpFixedLots lots fixes pour la
+// cassure. Lots arrondis vers le bas au pas du courtier, bornés au volume maximal par ordre, réduits si la marge manque.
+// Présents dans le code mais coupés : entrée C de 10:00, plancher de bruit (H1), tendance H4, SAR, sortie au temps.
 //
-// Nasdaq (NAS100) uniquement. Les données et le spread de chaque courtier diffèrent : vérifie dans le testeur de
-// stratégie (« Chaque tick basé sur des ticks réels ») et en démo avant le réel.
+// HISTOIRE : v7 (cassure, pyramide, mémoire, FOMC et fériés), V8 (+ B et C), V9 (+ D, C coupée, garde-fou coût), V10 (stop à
+// 3 ranges, mémoire à +1R, D armées tant que l'autre bord n'est pas touché, Nasdaq et S&P 500 ensemble). Chiffres des tests et
+// limites : README.md. Les tests ont servi à la mise au point : ils disent ce que les règles auraient fait, pas ce qu'elles feront.
 //
-// INTERFACE ÉTRAVE (etrave/etrave.py, lancée par etrave/Etrave.bat) : l'EA lit toutes les 2 secondes le fichier
-// Etrave\reglages.txt du dossier commun de MetaTrader (risque par trade, levier, case du Nasdaq, Telegram, demande de
-// clôture) et y écrit son état (Etrave\etat-<symbole>.txt) et ses trades (Etrave\trades-<symbole>.csv). Une clé absente
-// du fichier laisse la valeur saisie ici. Dans le testeur de stratégie, seuls les réglages saisis ici comptent.
+// INTERFACE ÉTRAVE (etrave/) : toutes les 2 secondes, l'EA lit Etrave\reglages.txt dans le dossier commun de MetaTrader (risque,
+// levier, une case marche / arrêt par marché, Telegram, demandes de clôture) et y écrit son état (etat-<symbole>.txt), ses trades
+// (trades-<symbole>.csv) et ses journaux (execution-, seances- et bougies-<symbole>.csv). Une clé absente laisse la valeur saisie
+// ici. Dans le testeur de stratégie, seuls les réglages saisis ici comptent, et les journaux vont dans Etrave\testeur\.
 //
-// Réglages à vérifier : décalage horaire du serveur (le panneau affiche l'heure de New York calculée : elle doit être
-// juste), compte en mode « hedging » OBLIGATOIRE pour les entrées B, C et D, et pour WhatsApp / Telegram autoriser l'adresse dans
-// Outils > Options > Expert Advisors > « Autoriser WebRequest pour les URL listées ».
-// CORRECTIFS D'EXÉCUTION DU 24/11/2026 (constats de la revue du 17/11/2026 ; règles de trading inchangées) :
-//  - heure du serveur différente des réglages : aucun ordre ce jour-là (avant : trade sur la mauvaise bougie) ;
-//  - RSI de 9:30 lu seulement quand l'indicateur a calculé la nouvelle bougie ;
-//  - arrondi des lots qui ne monte jamais (un pas de 0,5 arrondissait 0,5 lot à 1 lot : risque doublé) ;
-//  - ordres stop : l'expiration la plus courte acceptée ; supprimés quand l'EA est retiré ou MetaTrader fermé ;
-//  - entrée au marché refusée au-delà de 1,25 R de risque réel (EA lancé en retard, saut de prix) ;
-//  - pyramide : stop de l'ensemble jamais sous +1R, pire cas -1R ; ajout calculé sur le volume réellement ouvert ;
-//  - réponse du courtier perdue : pas d'ordre au marché en double, et une entrée B/C/D ouverte est reprise ;
-//  - redémarrage : état écrit sur le disque, position de départ = la plus ancienne, pyramide déjà faite comptée ;
-//  - filet de sécurité : une fois par minute, toute position de l'EA encore ouverte après la sortie de fin de journée
-//    (ou ouverte un jour précédent) est fermée ;
-//  - messages WhatsApp / Telegram envoyés un par un (3 s d'attente au plus), pour ne pas retarder les sorties.
-// Version non compilée au moment de ces correctifs : compiler (F7) et passer le testeur avant tout usage.
+// À vérifier à l'installation : l'heure de New York affichée par le panneau (sinon corriger InpSrvGMT / InpSrvDST) ; pour
+// WhatsApp et Telegram, autoriser l'adresse dans Outils > Options > Expert Advisors > « Autoriser WebRequest pour les URL listées ».
+//
+// CORRECTIFS : chaque constat de revue porte son numéro (EA-xx, X-xx) dans un commentaire, là où il est corrigé, et un contrôle
+// dans robot/test_robot.py. Correctifs d'exécution du 24/11/2026 (règles inchangées) : heure du serveur fausse = aucun ordre ;
+// RSI lu une fois l'indicateur à jour ; arrondi des lots jamais vers le haut ; ordres stop à l'expiration la plus courte et
+// supprimés à l'arrêt de l'EA ; entrée au marché refusée au-delà de 1,25 R ; pyramide jamais sous +1R et calculée sur le volume
+// ouvert ; réponse du courtier perdue sans ordre en double ; état sur le disque pour un redémarrage ; filet de sécurité qui ferme
+// chaque minute toute position restée après la sortie ; messages envoyés un par un.
 #property copyright   "Bot-Trading"
 #property version     "10.00"
-#property description "Strategy V10 : cassure du range de 9:30 (v7 : pyramide à +2R, règle mémoire, jours FOMC et fériés exclus) + repli sur le VWAP + 3 continuations (bougies de 9:35 à 9:45). Stop élargi (profil Confort) par défaut. Nasdaq uniquement."
+#property description "Strategy V10 : cassure du range de 9:30 New York (stop à 3 ranges, pyramide, mémoire, jours FOMC et fériés exclus), repli sur le VWAP et 3 continuations. Nasdaq 100 et S&P 500, compte hedging. Règles verrouillées."
 
 #include <Trade\Trade.mqh>
 
@@ -241,6 +195,7 @@ double   gOrH = 0, gOrL = 0;
 double   gLots      = 0;
 double   gRiskMoney = 0;        // somme risquée (lots × range), devise du compte
 int      gFails     = 0;
+uint     gAmbigMs   = 0;   // X-17 : moment (GetTickCount) d'une entrée au marché de A sans réponse claire du courtier ; 0 = aucune
 bool     gSrvL      = false;    // ordre Buy Stop posé chez le courtier aujourd'hui (sinon l'EA surveille le côté achat)
 bool     gSrvS      = false;    // ordre Sell Stop posé chez le courtier aujourd'hui
 bool     gDelDue    = false;    // des ordres en attente restent à supprimer (refus du courtier : réessayé à chaque cotation)
@@ -341,6 +296,7 @@ double   gBalStart  = 0;        // solde au moment de l'entrée (résultat du tr
 datetime gSweepAllAt = 0;        // heure du balayage complet demandé après une clôture depuis l'interface (CloseOrphans)
 bool     gGvDirty   = false;    // état modifié depuis la dernière écriture sur le disque (FlushState)
 string   gQueue[];              // messages WhatsApp / Telegram en attente : envoyés APRÈS le passage des ordres
+string   gTradeWait[];          // X-20 : lignes du journal des trades d'Étrave pas encore écrites (fichier verrouillé)
 
 //--- statistiques en R
 int    gN = 0, gWin = 0, gStreak = 0, gWorst = 0;
@@ -1565,6 +1521,13 @@ void CheckEntries()
       SaveState();
       return;
      }
+   // Correctif X-17 (audit du 25/11/2026) : une réponse perdue ne veut pas dire que l'ordre n'est pas passé. L'EA renvoyait un ordre
+   // dès la cotation suivante, avant que la position éventuellement ouverte soit visible : deux positions A, 2R de risque. Après
+   // une réponse sans verdict du courtier, il attend 3 s (SyncPosition reprend la position si elle existe). Un refus net
+   // (requote, prix changé) est réessayé tout de suite, comme avant.
+   if(gAmbigMs != 0 && GetTickCount() - gAmbigMs < 3000)
+      return;
+   gAmbigMs = 0;
    double sl = NormalizeDouble(StopA(d), _Digits);
    bool ok = d == 1 ? trade.Buy(gLots, _Symbol, 0, sl, 0, InpComment) : trade.Sell(gLots, _Symbol, 0, sl, 0, InpComment);
    uint rc = trade.ResultRetcode();
@@ -1574,6 +1537,8 @@ void CheckEntries()
       SaveState();
       return;
      }
+   if(rc == 0 || rc == TRADE_RETCODE_TIMEOUT || rc == TRADE_RETCODE_ERROR)
+      gAmbigMs = MathMax(GetTickCount(), (uint)1);
    gFails++;
    PrintFormat("Entrée refusée (%d) : %s", rc, trade.ResultRetcodeDescription());
    if(gFails >= 3)
@@ -1671,21 +1636,42 @@ void DoPyramid(double curR)
      }
    double apx = trade.ResultPrice();
    gPyrPlan = mkt;   // journal d'exécution : prix visé de l'ajout
-   // identifiant de la position de l'ajout (compte hedging : une deuxième position)
+   // identifiant de la position de l'ajout (compte hedging : une deuxième position). Correctif X-16 (audit du 25/11/2026) : il
+   // n'était cherché qu'ici, dans la liste des positions, qui peut ne pas montrer encore l'ajout au retour de l'ordre. Resté à 0,
+   // l'ajout manquait au résultat du trade (règle mémoire armée à tort, R faux dans le journal), au journal d'exécution, et le
+   // filet le prenait pour une position orpheline. Il est lu d'abord sur le deal, puis recherché à chaque cotation (FindAddId).
+   ulong adeal = trade.ResultDeal();
+   if(adeal != 0 && HistoryDealSelect(adeal))
+      gPosId2 = HistoryDealGetInteger(adeal, DEAL_POSITION_ID);
+   if(gPosId2 == gPosId)
+      gPosId2 = 0;
+   FindAddId();
+   RaiseStop(lock, "Stop remonté");
+   Notify(I_ADD + "PYRAMIDE : clôture à " + RTxt(curR) + "\nAjout de " + DoubleToString(lots, vd) + " lot" + (apx > 0 ? " à " + Px(apx) : "") +
+          "\nStop de l'ensemble : " + Px(lock) + " (" + RTxt(lockR) + ")" +
+          "\nPire cas du trade : " + RTxt(lockR - InpPyrSize * (mkt - lock) * gDir / gRisk));
+   SaveState();
+  }
+
+// X-16 : identifiant de la position de l'ajout de A, tant qu'il est inconnu : une position de l'EA dans le sens du trade, autre que
+// la position de départ.
+void FindAddId()
+  {
+   if(!gIn || !gPyr || (gPosId2 != 0 && gPosId2 != gPosId))
+      return;
    for(int i = PositionsTotal() - 1; i >= 0; i--)
      {
       ulong tk = PositionGetTicket(i);
       if(tk == 0 || PositionGetString(POSITION_SYMBOL) != _Symbol || (ulong)PositionGetInteger(POSITION_MAGIC) != InpMagic)
          continue;
       long id = PositionGetInteger(POSITION_IDENTIFIER);
-      if(id != gPosId)
+      if(id != gPosId && (PositionGetInteger(POSITION_TYPE) == POSITION_TYPE_BUY ? 1 : -1) == gDir)
+        {
          gPosId2 = id;
+         SaveState();
+         return;
+        }
      }
-   RaiseStop(lock, "Stop remonté");
-   Notify(I_ADD + "PYRAMIDE : clôture à " + RTxt(curR) + "\nAjout de " + DoubleToString(lots, vd) + " lot" + (apx > 0 ? " à " + Px(apx) : "") +
-          "\nStop de l'ensemble : " + Px(lock) + " (" + RTxt(lockR) + ")" +
-          "\nPire cas du trade : " + RTxt(lockR - InpPyrSize * (mkt - lock) * gDir / gRisk));
-   SaveState();
   }
 
 //+------------------------------------------------------------------+
@@ -1833,6 +1819,12 @@ void LegRaiseStop(SLeg &g, double lvlPx, string why)
 bool LegOpen(SLeg &g, int dir, double stop, string quoi, double ref = 0)
   {
    g.done = true;
+   // Correctif X-18 (audit du 25/11/2026) : l'état est écrit sur le disque au plus une fois par seconde. Après un plantage de
+   // MetaTrader juste après une entrée B ou D, l'état relu ne la connaissait pas, le même signal était revu à la relance et une
+   // deuxième position partait. Une position de cette jambe déjà ouverte est reprise, avec son propre stop, sans nouvel ordre.
+   double volOld = 0;
+   double pxOld  = LegFindOpen(g.magic, volOld);
+   double slOld  = pxOld > 0 ? LegOpenStop(g.magic) : 0;
    double ask  = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
    double bid  = SymbolInfoDouble(_Symbol, SYMBOL_BID);
    double px   = dir == 1 ? ask : bid;
@@ -1856,55 +1848,71 @@ bool LegOpen(SLeg &g, int dir, double stop, string quoi, double ref = 0)
    double step = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_STEP);
    double vmin = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MIN);
    int    vd   = VolDigits(step);
-   if(dist <= 0 || dist <= lvl || ts <= 0 || tv <= 0 || step <= 0)
+   double perLot = (ts > 0 && tv > 0) ? dist / ts * tv : 0;
+   double lots   = 0;
+   double sl     = NormalizeDouble(stop, _Digits);
+   double fill   = 0;
+   ulong  deal   = 0;
+   if(pxOld > 0)
      {
-      Notify(I_NONE + "PAS D'ENTRÉE " + g.nom + " (" + g.titre + ")\nStop trop proche du prix ou symbole mal décrit par le courtier");
-      LegSave(g);
-      return false;
+      fill = pxOld;
+      lots = volOld;
+      if(slOld > 0)
+         sl = slOld;
+      Notify(I_WARN + "ENTRÉE " + g.nom + " : position déjà ouverte (redémarrage de l'EA), reprise sans nouvel ordre");
      }
-   double perLot = dist / ts * tv;
-   double lots   = MathFloor(gV8RiskMoney / perLot / step) * step;   // au plus 1R de risque
-   lots = MathMin(lots, gV8Lots);                                    // au plus les lots du trade de cassure
-   double mLot  = MarginPerLot();
-   double units = 1.0 + ((g.pyrOk && InpUsePyr) ? InpPyrSize : 0.0);
-   if(mLot > 0)
+   else
      {
-      double cap = MathFloor(AccountInfoDouble(ACCOUNT_MARGIN_FREE) * MARGIN_USE / (mLot * units) / step) * step;
-      if(cap < lots)
-         lots = MathMax(cap, 0);
-     }
-   lots = NormalizeDouble(MathMin(lots, SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MAX)), vd);
-   if(lots < vmin)
-     {
-      Notify(I_NONE + "PAS D'ENTRÉE " + g.nom + " (" + g.titre + ")\nTaille trop petite pour le courtier (stop de " + Pts(dist) + ") ou marge insuffisante");
-      LegSave(g);
-      return false;
-     }
-   double sl = NormalizeDouble(stop, _Digits);
-   trade.SetExpertMagicNumber(g.magic);
-   bool   ok   = dir == 1 ? trade.Buy(lots, _Symbol, 0, sl, 0, InpComment) : trade.Sell(lots, _Symbol, 0, sl, 0, InpComment);
-   uint   rc   = trade.ResultRetcode();
-   double fill = trade.ResultPrice();
-   ulong  deal = trade.ResultDeal();
-   string rcTx = trade.ResultRetcodeDescription();
-   trade.SetExpertMagicNumber(InpMagic);
-   if(!(ok && (rc == TRADE_RETCODE_DONE || rc == TRADE_RETCODE_DONE_PARTIAL || rc == TRADE_RETCODE_PLACED)))
-     {
-      // Correctif (tri du 24/11/2026) : une réponse perdue ne veut pas dire que l'ordre n'est pas passé. Si une position de cette
-      // jambe existe, elle est reprise et gérée normalement (stops, pyramide, sortie de 15:50) ; sinon c'est un vrai refus.
-      double volPos = 0;
-      double pxPos  = LegFindOpen(g.magic, volPos);
-      if(pxPos <= 0)
+      if(dist <= 0 || dist <= lvl || ts <= 0 || tv <= 0 || step <= 0)
         {
-         Notify(I_WARN + "ENTRÉE " + g.nom + " REFUSÉE par le courtier\n" + rcTx);
+         Notify(I_NONE + "PAS D'ENTRÉE " + g.nom + " (" + g.titre + ")\nStop trop proche du prix ou symbole mal décrit par le courtier");
          LegSave(g);
          return false;
         }
-      fill = pxPos;
-      deal = 0;
-      if(volPos > 0)
-         lots = volPos;
-      Notify(I_WARN + "ENTRÉE " + g.nom + " : réponse du courtier perdue (" + rcTx + "), la position ouverte est reprise par l'EA");
+      // Correctif X-19 (audit du 25/11/2026) : la même marge d'arrondi que la cassure et la pyramide (+0,000001). Sans elle, une jambe
+      // au risque exactement égal à celui de A (lots fixes) pouvait donner 0,999… pas, donc 0 lot, et être sautée à tort.
+      lots = MathFloor(gV8RiskMoney / perLot / step + 0.000001) * step;   // au plus 1R de risque
+      lots = MathMin(lots, gV8Lots);                                    // au plus les lots du trade de cassure
+      double mLot  = MarginPerLot();
+      double units = 1.0 + ((g.pyrOk && InpUsePyr) ? InpPyrSize : 0.0);
+      if(mLot > 0)
+        {
+         double cap = MathFloor(AccountInfoDouble(ACCOUNT_MARGIN_FREE) * MARGIN_USE / (mLot * units) / step) * step;
+         if(cap < lots)
+            lots = MathMax(cap, 0);
+        }
+      lots = NormalizeDouble(MathMin(lots, SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MAX)), vd);
+      if(lots < vmin)
+        {
+         Notify(I_NONE + "PAS D'ENTRÉE " + g.nom + " (" + g.titre + ")\nTaille trop petite pour le courtier (stop de " + Pts(dist) + ") ou marge insuffisante");
+         LegSave(g);
+         return false;
+        }
+      trade.SetExpertMagicNumber(g.magic);
+      bool   ok   = dir == 1 ? trade.Buy(lots, _Symbol, 0, sl, 0, InpComment) : trade.Sell(lots, _Symbol, 0, sl, 0, InpComment);
+      uint   rc   = trade.ResultRetcode();
+      fill = trade.ResultPrice();
+      deal = trade.ResultDeal();
+      string rcTx = trade.ResultRetcodeDescription();
+      trade.SetExpertMagicNumber(InpMagic);
+      if(!(ok && (rc == TRADE_RETCODE_DONE || rc == TRADE_RETCODE_DONE_PARTIAL || rc == TRADE_RETCODE_PLACED)))
+        {
+         // Correctif (tri du 24/11/2026) : une réponse perdue ne veut pas dire que l'ordre n'est pas passé. Si une position de cette
+         // jambe existe, elle est reprise et gérée normalement (stops, pyramide, sortie de 15:50) ; sinon c'est un vrai refus.
+         double volPos = 0;
+         double pxPos  = LegFindOpen(g.magic, volPos);
+         if(pxPos <= 0)
+           {
+            Notify(I_WARN + "ENTRÉE " + g.nom + " REFUSÉE par le courtier\n" + rcTx);
+            LegSave(g);
+            return false;
+           }
+         fill = pxPos;
+         deal = 0;
+         if(volPos > 0)
+            lots = volPos;
+         Notify(I_WARN + "ENTRÉE " + g.nom + " : réponse du courtier perdue (" + rcTx + "), la position ouverte est reprise par l'EA");
+        }
      }
    g.enPos = true; g.dir = dir; g.entry = fill > 0 ? fill : px; g.sl = sl; g.risk = MathAbs(g.entry - sl);
    if(g.risk <= 0)
@@ -1947,6 +1955,18 @@ double LegFindOpen(ulong magic, double &vol)
          vol = PositionGetDouble(POSITION_VOLUME);
          return PositionGetDouble(POSITION_PRICE_OPEN);
         }
+     }
+   return 0;
+  }
+
+// X-18 : stop posé chez le courtier sur la position de la jambe au numéro magique « magic » ; 0 s'il n'y en a pas
+double LegOpenStop(ulong magic)
+  {
+   for(int i = PositionsTotal() - 1; i >= 0; i--)
+     {
+      ulong tk = PositionGetTicket(i);
+      if(tk != 0 && PositionGetString(POSITION_SYMBOL) == _Symbol && (ulong)PositionGetInteger(POSITION_MAGIC) == magic)
+         return PositionGetDouble(POSITION_SL);
      }
    return 0;
   }
@@ -2026,19 +2046,14 @@ void AppendLegTrade(SLeg &g, datetime tx, double r, double net, string why)
   {
    if(MQLInfoInteger(MQL_TESTER) || !InpUseUI)
       return;
-   int h = FileOpen(UI_DIR + "trades-" + gSymFile + ".csv", FILE_READ | FILE_WRITE | FILE_TXT | FILE_ANSI | FILE_COMMON | FILE_SHARE_READ, 0, CP_UTF8);
-   if(h == INVALID_HANDLE)
-      return;
-   FileSeek(h, 0, SEEK_END);
    datetime ny = ToNY(tx);
    string day = TimeToString(ny, TIME_DATE);
    StringReplace(day, ".", "-");
    string w = "V10 " + g.nom + " : " + why;
    StringReplace(w, ";", ",");
-   FileWrite(h, IntegerToString((long)(tx - ServerOffsetSec(tx))) + ";" + day + ";" + TimeToString(ny, TIME_MINUTES) + ";" + gSymFile + ";" +
-             IntegerToString(g.dir) + ";" + DoubleToString(g.lots, 2) + ";" + DoubleToString(r, 4) + ";" + DoubleToString(net, 2) + ";" +
-             DoubleToString(g.balStart, 2) + ";" + w + ";" + (g.pyr ? "1" : "0") + ";" + AccountInfoString(ACCOUNT_CURRENCY));
-   FileClose(h);
+   TradesWrite(IntegerToString((long)(tx - ServerOffsetSec(tx))) + ";" + day + ";" + TimeToString(ny, TIME_MINUTES) + ";" + gSymFile + ";" +
+               IntegerToString(g.dir) + ";" + DoubleToString(g.lots, 2) + ";" + DoubleToString(r, 4) + ";" + DoubleToString(net, 2) + ";" +
+               DoubleToString(g.balStart, 2) + ";" + w + ";" + (g.pyr ? "1" : "0") + ";" + AccountInfoString(ACCOUNT_CURRENCY));
   }
 
 // La jambe n'a plus de position : résultat, statistiques, message. false = un deal de sortie manque encore, réessayer.
@@ -2776,21 +2791,40 @@ void AppendTrade(datetime tx, double r, double net, string why)
   {
    if(MQLInfoInteger(MQL_TESTER) || !InpUseUI)
       return;
-   int h = FileOpen(UI_DIR + "trades-" + gSymFile + ".csv", FILE_READ | FILE_WRITE | FILE_TXT | FILE_ANSI | FILE_COMMON | FILE_SHARE_READ, 0, CP_UTF8);
-   if(h == INVALID_HANDLE)
-     {
-      PrintFormat("Journal des trades de l'interface : écriture impossible (erreur %d)", GetLastError());
-      return;
-     }
-   FileSeek(h, 0, SEEK_END);
    datetime ny = ToNY(tx);
    string day = TimeToString(ny, TIME_DATE);
    StringReplace(day, ".", "-");
    StringReplace(why, ";", ",");
-   FileWrite(h, IntegerToString((long)(tx - ServerOffsetSec(tx))) + ";" + day + ";" + TimeToString(ny, TIME_MINUTES) + ";" + gSymFile + ";" +
-             IntegerToString(gDir) + ";" + DoubleToString(gLots, 2) + ";" + DoubleToString(r, 4) + ";" + DoubleToString(net, 2) + ";" +
-             DoubleToString(gBalStart, 2) + ";" + why + ";" + (gPyr ? "1" : "0") + ";" + AccountInfoString(ACCOUNT_CURRENCY));
+   TradesWrite(IntegerToString((long)(tx - ServerOffsetSec(tx))) + ";" + day + ";" + TimeToString(ny, TIME_MINUTES) + ";" + gSymFile + ";" +
+               IntegerToString(gDir) + ";" + DoubleToString(gLots, 2) + ";" + DoubleToString(r, 4) + ";" + DoubleToString(net, 2) + ";" +
+               DoubleToString(gBalStart, 2) + ";" + why + ";" + (gPyr ? "1" : "0") + ";" + AccountInfoString(ACCOUNT_CURRENCY));
+  }
+
+// Correctif X-20 (audit du 25/11/2026) : un fichier ouvert dans Excel est verrouillé sous Windows. La ligne du trade était perdue
+// (historique d'Étrave, export, interrupteur). Elle attend désormais et est réécrite toutes les 2 secondes (OnTimer), dans l'ordre.
+void TradesWrite(string line)
+  {
+   int n = ArraySize(gTradeWait);
+   if(line != "")
+     {
+      ArrayResize(gTradeWait, n + 1);
+      gTradeWait[n] = line;
+      n++;
+     }
+   if(n == 0)
+      return;
+   int h = FileOpen(UI_DIR + "trades-" + gSymFile + ".csv", FILE_READ | FILE_WRITE | FILE_TXT | FILE_ANSI | FILE_COMMON | FILE_SHARE_READ, 0, CP_UTF8);
+   if(h == INVALID_HANDLE)
+     {
+      if(line != "")
+         PrintFormat("Journal des trades de l'interface : écriture impossible (erreur %d), nouvel essai toutes les 2 s", GetLastError());
+      return;
+     }
+   FileSeek(h, 0, SEEK_END);
+   for(int i = 0; i < n; i++)
+      FileWrite(h, gTradeWait[i]);
    FileClose(h);
+   ArrayResize(gTradeWait, 0);
   }
 
 //+------------------------------------------------------------------+
@@ -2831,6 +2865,18 @@ string NyTxt(datetime srv)
    return v;
   }
 string UtcMs(long srvMsc) { return srvMsc > 0 ? IntegerToString(srvMsc - ServerOffsetSec((datetime)(srvMsc / 1000)) * 1000) : ""; }
+
+// X-20 : le journal s'ouvre-t-il en écriture ? (à tester avant de calculer les lignes : lire les ticks peut prendre du temps)
+bool JournalOpenable(string base)
+  {
+   if(!JournalOn())
+      return true;
+   int h = FileOpen(JournalName(base), FILE_READ | FILE_WRITE | FILE_TXT | FILE_ANSI | FILE_COMMON | FILE_SHARE_READ, 0, CP_UTF8);
+   if(h == INVALID_HANDLE)
+      return false;
+   FileClose(h);
+   return true;
+  }
 
 void JournalWrite(string base, string header, string line)
   {
@@ -3062,6 +3108,13 @@ void JournalFlush(bool force)
       int      m  = NYMin(ny);
       if(!(m >= FlatMin(ny) + 1 || m < mPre - 5) || gPend || EaPositions() > 0)
          return;
+     }
+   // X-20 : fichier verrouillé (ouvert dans Excel) : la file attend le passage suivant au lieu d'être vidée sans être écrite.
+   if(!JournalOpenable("execution"))
+     {
+      if(!force)
+         PrintFormat("Journal d'exécution : fichier verrouillé, %d ligne(s) en attente, nouvel essai dans une minute", ArraySize(gExecQ));
+      return;
      }
    for(int i = 0; i < ArraySize(gExecQ); i++)
       ExecRow(gExecQ[i].id, gExecQ[i].type, gExecQ[i].dir, gExecQ[i].plan, gExecQ[i].vstop, gExecQ[i].why, gExecQ[i].riskMoney,
@@ -3335,6 +3388,7 @@ void OnTimer()
      }
    CheckClock();
    FlushNotifs();
+   TradesWrite("");   // X-20 : lignes du journal des trades en attente
    FlushState();
    WriteState();
    Panel();
@@ -3366,7 +3420,10 @@ void OnTick()
    CheckEntries();
    SyncPosition();
    if(gIn)
+     {
       CloseOpposite();
+      FindAddId();   // X-16
+     }
 
    // 4. trade ouvert : stop à l'entrée géré par l'EA si le broker l'a refusé, sortie de fin de journée
    if(gIn)

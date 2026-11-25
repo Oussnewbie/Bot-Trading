@@ -461,8 +461,9 @@ def test_memes_noms_de_cles_des_deux_cotes(dossier):
 
 
 def test_journal_des_trades_meme_nombre_de_colonnes():
-    ecriture = re.search(r"void AppendTrade.*?FileWrite\(h,(.*?)\);\s*FileClose", EA, re.S).group(1)
-    assert ecriture.count('";"') + 1 == len(pont.COLONNES_TRADE)
+    for fonction in ("AppendTrade", "AppendLegTrade"):       # X-20 : les lignes passent par TradesWrite
+        ecriture = re.search(rf"void {fonction}\(.*?TradesWrite\((.*?)\);\n  }}", EA, re.S).group(1)
+        assert ecriture.count('";"') + 1 == len(pont.COLONNES_TRADE), fonction
 
 
 def sans_textes(source):

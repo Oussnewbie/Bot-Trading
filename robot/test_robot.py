@@ -452,3 +452,63 @@ def test_journal_ecrit_hors_de_la_seance():
     assert "JournalFlush(false);" in fonction("void OnTick()") and "JournalFlush(true);" in fonction("void OnDeinit(const int reason)")
     deinit = fonction("void OnDeinit(const int reason)")
     assert deinit.index("DeletePendings()") < deinit.index("JournalFlush(true);")   # les ordres d'abord
+
+
+# ───────────────────────── audit du 25/11/2026 (X-16 à X-20) ─────────────────────────
+def test_identifiant_de_l_ajout_de_A_retrouve():
+    """X-16 : l'ajout n'était cherché qu'au retour de l'ordre ; resté inconnu, il manquait au R (mémoire armée à tort)."""
+    pyr = fonction("void DoPyramid(double curR)")
+    assert "gPosId2 = HistoryDealGetInteger(adeal, DEAL_POSITION_ID);" in pyr and "FindAddId();" in pyr
+    cherche = fonction("void FindAddId()")
+    assert "if(!gIn || !gPyr || (gPosId2 != 0 && gPosId2 != gPosId))" in cherche
+    assert "id != gPosId && (PositionGetInteger(POSITION_TYPE) == POSITION_TYPE_BUY ? 1 : -1) == gDir" in cherche
+    tick = fonction("void OnTick()")
+    assert tick.index("CloseOpposite();") < tick.index("FindAddId();") < tick.index("// 4. trade ouvert")
+
+
+def test_pas_de_deuxieme_entree_A_apres_une_reponse_perdue():
+    """X-17 : après une réponse sans verdict, l'EA attend 3 s avant de renvoyer un ordre au marché ; un refus net est réessayé."""
+    corps_entrees = EA[EA.index("// Correctif X-17"):EA.index("gFails++;", EA.index("// Correctif X-17"))]
+    assert "if(gAmbigMs != 0 && GetTickCount() - gAmbigMs < 3000)\n      return;" in corps_entrees
+    assert corps_entrees.index("GetTickCount() - gAmbigMs < 3000") < corps_entrees.index("trade.Buy(gLots")
+    assert "if(rc == 0 || rc == TRADE_RETCODE_TIMEOUT || rc == TRADE_RETCODE_ERROR)" in corps_entrees
+    assert "TRADE_RETCODE_REQUOTE" not in corps_entrees
+
+
+def test_jambe_deja_ouverte_reprise_sans_nouvel_ordre():
+    """X-18 : après un plantage juste après une entrée B ou D, le même signal relu n'envoie pas une deuxième position."""
+    leg = fonction("bool LegOpen(SLeg &g, int dir, double stop, string quoi, double ref = 0)")
+    assert leg.index("double pxOld  = LegFindOpen(g.magic, volOld);") < leg.index("trade.Buy(lots")
+    assert "if(pxOld > 0)" in leg and "sl = slOld;" in leg and leg.index("if(pxOld > 0)") < leg.index("   else\n")
+    assert "double LegOpenStop(ulong magic)" in EA
+
+
+def test_arrondi_des_jambes_comme_la_cassure():
+    """X-19 : sans la marge +0,000001, une jambe au risque égal à celui de A (lots fixes) pouvait tomber à 0 lot."""
+    leg = fonction("bool LegOpen(SLeg &g, int dir, double stop, string quoi, double ref = 0)")
+    assert "lots = MathFloor(gV8RiskMoney / perLot / step + 0.000001) * step;" in leg
+    perlot = 40.12 / 0.01 * 0.01                                      # stop de 40,12 points, tick de 0,01 à 0,01 $
+    risque, pas = 0.1 * perlot, 0.1                                    # 1R de A : 0,1 lot fixe au même stop
+    assert math.floor(risque / perlot / pas) * pas == 0                # l'ancien calcul : 0,999… pas, donc 0 lot
+    assert abs(math.floor(risque / perlot / pas + 0.000001) * pas - 0.1) < 1e-12
+
+
+def test_journaux_verrouilles_ecrits_plus_tard():
+    """X-20 : un fichier ouvert dans Excel est verrouillé sous Windows : les lignes attendent au lieu d'être perdues."""
+    flush = fonction("void JournalFlush(bool force)")
+    assert flush.index('if(!JournalOpenable("execution"))') < flush.index("ExecRow(") < flush.index("ArrayResize(gExecQ, 0);")
+    ecrit = fonction("void TradesWrite(string line)")
+    assert "ArrayResize(gTradeWait, 0);" in ecrit and ecrit.index("FileClose(h);") < ecrit.index("ArrayResize(gTradeWait, 0);")
+    assert 'TradesWrite("");' in fonction("void OnTimer()")
+    for f in ("void AppendTrade(datetime tx, double r, double net, string why)", "void AppendLegTrade(SLeg &g, datetime tx, double r, double net, string why)"):
+        assert "TradesWrite(" in fonction(f) and "FileOpen(" not in fonction(f), f
+
+
+def test_en_tete_a_jour():
+    """Audit du 25/11/2026 : l'en-tête et la description disaient « Nasdaq uniquement », « stop de l'autre côté du range »,
+    « mémoire à +0,05R » et « version non compilée »."""
+    entete = EA[:EA.index("#property copyright")]
+    for ancien in ("NASDAQ UNIQUEMENT", "uniquement", "Version non compilée", "+0,05R", "de l'autre côté du range. 1R"):
+        assert ancien not in entete, ancien
+    assert "Nasdaq 100 et S&P 500" in entete and "3 ranges" in entete
+    assert "Nasdaq uniquement" not in re.search(r'#property description "([^"]*)"', EA).group(1)
