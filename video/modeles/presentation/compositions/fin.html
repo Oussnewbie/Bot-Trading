@@ -17,8 +17,8 @@
       <path id="fi-vagues" d="M3 33c2.8-2.3 5.7-2.3 8.5 0M28.5 33c2.8-2.3 5.7-2.3 8.5 0" fill="none" stroke="#2f7bd9" stroke-width="2.4" stroke-linecap="round" opacity="0.55" />
     </svg>
     <div id="fi-nom">ÉTRAVE</div>
-    <div id="fi-cta-1">Rejoins le Telegram :</div>
-    <div id="fi-cta-2">lien en bio</div>
+    <div id="fi-cta-1">Abonne-toi :</div>
+    <div id="fi-cta-2">chaque séance, ici</div>
     <div id="fi-mention">Pas un conseil en investissement. Le trading comporte un risque de perte en capital.</div>
   </div>
   <script>
@@ -37,7 +37,7 @@
     trace("fi-vagues", 0.65, 0.3);
     wipe("#fi-nom", 0.55, 0.4);
     wipe("#fi-cta-1", 0.95);
-    wipe("#fi-cta-2", 2.43);
+    wipe("#fi-cta-2", 1.8);           // sur « chaque séance » (réplique 6-fin, conformité TikTok : on reste sur TikTok)
     tl.fromTo("#fi-mention", { opacity: 0 }, { opacity: 1, duration: 0.3, ease: "power3.out" }, 1.0);
     window.__timelines["fin"] = tl;
   </script>

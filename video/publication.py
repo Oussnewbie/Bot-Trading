@@ -4,6 +4,7 @@ de couverture, plus le mode automatique qui fabrique ces dossiers chaque soir.
     <Bureau>/Étrave TikTok/2026-11-25/recap-2026-11-25.mp4
                                      description.txt      à coller dans TikTok (accroche, résultats, compte, mentions, hashtags)
                                      couverture.jpg       l'écran titre, pour choisir la couverture
+                                     avant-de-publier.txt les cases à cocher sur TikTok (conformité, 25/11/2026)
 
 La description (la bio de la publication) est le seul endroit qui dit de quel compte viennent les trades, d'après le journal de
 l'EA (« reel », « demo », « testeur ») : ni l'image, ni la couverture, ni le nom des fichiers. Rien de la méthode n'y figure.
@@ -29,6 +30,22 @@ COMPTE = {
 }
 
 
+# Conformité TikTok (25/11/2026) : ce qu'il faut cocher, ou pas, au moment de publier ; écrit dans chaque dossier de publication.
+AVANT_DE_PUBLIER = """Avant de publier sur TikTok :
+- Cocher « Contenu généré par l'IA » (la voix est un clone ElevenLabs).
+- NE PAS cocher « Contenu commercial » tant que rien n'est vendu (pas de signaux payants, pas de copie de trades, pas d'affiliation).
+- Coller description.txt tel quel (la ligne du compte, la mention de risque).
+- Publier à la main : pas d'outil de publication automatique.
+- Si un jour quelque chose devient payant : tout revoir avant (case « Contenu commercial », mention « Publicité » en France,
+  promotion des CFD interdite aux influenceurs rémunérés).
+"""
+
+
+def ecrire_avant_de_publier(dossier):
+    with open(os.path.join(dossier, "avant-de-publier.txt"), "w", encoding="utf-8") as f:
+        f.write(AVANT_DE_PUBLIER)
+
+
 def description(j, config):
     """Le texte de la publication TikTok."""
     unite = recap.unite_du_jour(j, config.get("unite", "r"))
@@ -47,7 +64,7 @@ def description(j, config):
     if unite == "r" and j["trades"]:
         lignes.append("1 R = le risque pris sur un trade.")
     lignes += ["", config.get("mention_compte") or COMPTE.get(j["source"], ""),
-               "Chaque séance, gains comme pertes, sur le Telegram : lien en bio.",
+               "Chaque séance, gains comme pertes, sur le Telegram (gratuit, rien à vendre) : lien en bio.",
                "Pas un conseil en investissement. Le trading comporte un risque de perte en capital.", "",
                " ".join(config.get("hashtags") or HASHTAGS)]
     return "\n".join(l for l in lignes if l is not None).strip() + "\n"
@@ -63,6 +80,7 @@ def publier(j, video, config, journal=print):
     os.replace(provisoire, os.path.join(dossier, nom))          # la vidéo n'apparaît que complète
     with open(os.path.join(dossier, "description.txt"), "w", encoding="utf-8") as f:
         f.write(description(j, config))
+    ecrire_avant_de_publier(dossier)
     # la couverture : l'écran titre, une fois la date et la couleur de la journée posées
     subprocess.run(["ffmpeg", "-v", "error", "-y", "-ss", "3.2", "-i", video, "-frames:v", "1", "-q:v", "2",
                     os.path.join(dossier, "couverture.jpg")], check=False)
@@ -89,7 +107,7 @@ def description_periode(p, config):
     if p["pire"] and p["pire"]["total"] < 0:
         lignes.append(f"Pire jour : {recap_periode._jour_court(p['pire']['jour'])}, {recap.ecran(p['pire']['total'], 'r')}")
     lignes += ["1 R = le risque pris sur un trade.", "", config.get("mention_compte") or COMPTE.get(p["source"], ""),
-               "Chaque séance, gains comme pertes, sur le Telegram : lien en bio.",
+               "Chaque séance, gains comme pertes, sur le Telegram (gratuit, rien à vendre) : lien en bio.",
                "Pas un conseil en investissement. Le trading comporte un risque de perte en capital.", "",
                " ".join(config.get("hashtags") or HASHTAGS)]
     return "\n".join(lignes).strip() + "\n"
@@ -106,6 +124,7 @@ def publier_periode(p, video, config):
     os.replace(provisoire, os.path.join(dossier, nom))
     with open(os.path.join(dossier, "description.txt"), "w", encoding="utf-8") as f:
         f.write(description_periode(p, config))
+    ecrire_avant_de_publier(dossier)
     subprocess.run(["ffmpeg", "-v", "error", "-y", "-ss", "3.2", "-i", video, "-frames:v", "1", "-q:v", "2",
                     os.path.join(dossier, "couverture.jpg")], check=False)
     return dossier

@@ -28,7 +28,7 @@ robot/     Strategy-V10.mq5, Strategy-V10.pine, test_robot.py (contrôles du cod
 etrave/    interface web locale de l'EA (Python sans dépendance), export.py (export trimestriel) + test_interface.py, test_export.py
 video/     (branche communication/outil-video) vidéos TikTok : récap de séance et présentation, `python3 video/outil.py` ; README
 ```
-- Tests : `.venv/bin/python -m pytest robot etrave video -q` (156 tests ; sur `main`, sans `video` : 108). Le `.venv` du dépôt tourne sous Python 3.15.
+- Tests : `.venv/bin/python -m pytest robot etrave video -q` (166 tests ; sur `main`, sans `video` : 108). Le `.venv` du dépôt tourne sous Python 3.15.
 - Étrave en essai : `.venv/bin/python etrave/etrave.py --sans-navigateur --port 8799 --dossier <dossier jetable>`, puis
   `http://127.0.0.1:8799`. Pour voir la page avec des données, écrire de faux `etat-<symbole>.txt` (format dans
   `etrave/test_interface.py`, `faux_etat`) et un `trades-<symbole>.csv`, et les réécrire toutes les 2 secondes (au-delà de 15 s sans
@@ -130,7 +130,16 @@ video/     (branche communication/outil-video) vidéos TikTok : récap de séanc
   (mfe du journal d'exécution), mode automatique (`outil.py installer` : agent launchd
   `com.etrave.recap-auto`, outil copié dans `~/Library/Application Support/Etrave/outil-video`, dossiers du jour sur le Bureau), vert et rouge réservés au résultat, caméra calée sur les mots de la voix (`voix.instant`), arrêts d'au moins 1,5 s,
   étiquettes posées dans les zones sûres de TikTok (`police.py` mesure les textes ; un test le vérifie). Musique facultative
-  (`musique` de la configuration), jamais dans le dépôt.
+  (`musique` de la configuration), jamais dans le dépôt. **Jamais de vidéo muette** (VID-18 à VID-22) : sans voix, pas de
+  publication, nouvel essai au lancement suivant, la notification dit la cause ; `outil.py verifier` lit la clé, la voix et les
+  crédits ElevenLabs sans rien dépenser.
+- **Conformité TikTok (25/11/2026, validée par l'utilisateur ; détail dans `video/README.md`)** : rien à vendre (plus d'annonce
+  de copy trading : la scène « Bilan public » de la présentation donne rendez-vous dans 3 mois) ; la voix et les écrans disent
+  « Abonne-toi », le Telegram n'est que dans la description (« gratuit, rien à vendre ») ; la prop firm n'est jamais nommée (ni
+  dans le dépôt, ni dans la vidéo : nom et logo du certificat floutés par `masques_certificat`, QR code laissé net, à la demande de
+  l'utilisateur ; les tests comparent une empreinte du nom) ; jamais de code promo ni de lien affilié ; « Les pertes font partie du
+  métier » ; `avant-de-publier.txt` dans chaque dossier de publication (« Contenu généré par l'IA » coché, « Contenu
+  commercial » non coché tant que rien n'est vendu, publication à la main).
 - Jours fériés et demi-séances : aucun trade (`InpSkipShort`), même si `FlatMin` prévoit une sortie à 12:45.
 - **Page d'Étrave (« carte marine », 25/11/2026)** : thème clair par défaut, mode nuit ; chiffres en DIN (Bahnschrift sous Windows,
   DIN Alternate en gras seulement sur Mac), aucune police extérieure (CSP). L'onglet Séance dessine les fenêtres des règles
@@ -147,7 +156,8 @@ video/     (branche communication/outil-video) vidéos TikTok : récap de séanc
     PINE-06 à PINE-08 (alertes d'annulation des D, de 15:50, lot de l'ajout des jambes), ET-05 à ET-15 (Étrave : un seul serveur par
     port sous Windows, aucun risque imposé par la page, dates de New York, export unique, encodages Windows), VID-01 à VID-17 (outil
     vidéo, sur sa branche : rendu et fuseaux sous Windows, jamais de vidéo muette ni de photo après 17:00 New York, semaines
-    complètes). En-têtes de l'EA et du Pine réécrits (ils disaient « Nasdaq uniquement »).
+    complètes), VID-18 à VID-22 (voix exigée partout, pannes passagères réessayées, cause claire, prise vérifiée avant le cache,
+    écritures sûres, contrôle de la clé et des crédits). En-têtes de l'EA et du Pine réécrits (ils disaient « Nasdaq uniquement »).
   - **Encore ouverts** :
     - X-11 / ET-04 : deux terminaux sur un même ordinateur partagent `reglages.txt` et les clôtures (règle d'usage dans le README) ;
     - X-02 : les sorties et le stop virtuel exigent un EA en marche (VPS) ;

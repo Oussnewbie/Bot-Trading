@@ -18,6 +18,9 @@ import nombres       # noqa: E402
 import presentation  # noqa: E402
 import recap         # noqa: E402
 
+sys.path.insert(0, os.path.join(ICI, "..", "robot"))
+import test_robot    # noqa: E402  (l'empreinte des noms de prop firm)
+
 UTC = datetime.timezone.utc
 
 
@@ -117,7 +120,7 @@ def test_voix_sans_secret_et_r_explique_une_fois(tmp_path):
                                 "La première vente part aussitôt contre nous : stop touché, quinze points plus haut. "
                                 "Les deux autres tiennent jusqu'à la fin de séance. Résultat : moins ")
     assert textes[0] == "Jeudi seize avril. Journée rouge pour le robot… on regarde ça !"
-    assert textes[-1].endswith("Chaque séance est sur le Telegram : lien en bio !") and recap.mot_du_jour(j, recap.total(j, "r")) in textes[-1]
+    assert textes[-1].endswith("Abonne-toi pour voir la séance de demain !") and recap.mot_du_jour(j, recap.total(j, "r")) in textes[-1]
 
 
 def test_meme_scenario_pas_raconte_deux_fois(tmp_path):
@@ -282,7 +285,7 @@ def _personnel():
         return []
     c = json.load(open(chemin, encoding="utf-8"))
     p = c.get("presentation", {})
-    return [v for v in (c.get("voix_id"), p.get("nom"), p.get("montant"), p.get("libelle_montant", "").split(" ")[-1]) if v and len(v) > 3]
+    return [v for v in (c.get("voix_id"), p.get("nom"), p.get("montant")) if v and len(v) > 3]
 
 
 def test_rien_de_personnel_ni_de_fichier_sous_licence_dans_video():
@@ -295,6 +298,7 @@ def test_rien_de_personnel_ni_de_fichier_sous_licence_dans_video():
         assert not re.search(r"sk_[A-Za-z0-9]{20,}", texte), chemin                                # une clé d'API
         for interdit in interdits:
             assert interdit not in texte, (chemin, "donnée personnelle")
+        assert not test_robot.noms_de_prop_firm(texte), (chemin, "prop firm nommée")       # conformité TikTok : jamais nommée
 
 
 # ───────────────────────── publication automatique ─────────────────────────
@@ -307,6 +311,7 @@ def test_description_tiktok_dit_le_compte_sans_rien_de_secret(tmp_path):
     assert texte.startswith("Journée verte : récap de la séance du jeudi 16 Avril 2026.")
     assert "Trades réels, sur mon compte." in texte and "Nasdaq 100 : +" in texte and "Pas un conseil en investissement." in texte
     assert "D2" not in texte and "RSI" not in texte and "élan" not in texte
+    assert "sur le Telegram (gratuit, rien à vendre) : lien en bio." in texte          # conformité TikTok : seulement ici
     j["source"] = "demo"
     assert "compte démo" in publication.description(j, {})
     assert "Mon texte" in publication.description(j, {"mention_compte": "Mon texte"})
@@ -329,7 +334,9 @@ def test_mode_automatique(tmp_path, monkeypatch):
     config = {"sortie": str(tmp_path / "rendus"), "dossier_publication": str(tmp_path / "bureau"), "auto_depuis": "2026-04-01"}
     dossiers = publication.auto(config, str(journaux), lambda t: None, datetime.date(2026, 4, 16))
     assert faites == [datetime.date(2026, 4, 16)] and len(dossiers) == 1
-    assert sorted(os.listdir(dossiers[0])) == ["description.txt", "recap-2026-04-16.mp4"]
+    assert sorted(os.listdir(dossiers[0])) == ["avant-de-publier.txt", "description.txt", "recap-2026-04-16.mp4"]
+    avant = open(os.path.join(dossiers[0], "avant-de-publier.txt"), encoding="utf-8").read()       # conformité TikTok
+    assert "Contenu généré par l'IA" in avant and "NE PAS cocher « Contenu commercial »" in avant and "Publier à la main" in avant
     assert publication.auto(config, str(journaux), lambda t: None, datetime.date(2026, 4, 16)) == []      # déjà publié
     assert publication.auto(dict(config, auto_depuis="2026-04-17"), str(journaux), lambda t: None) == []
     ecrire_journee(str(journaux), datetime.date(2026, 4, 16), positions=())                               # sans trade : rien
@@ -658,3 +665,63 @@ def test_verifier_controle_la_voix_sans_depenser(tmp_path, monkeypatch):
     assert all(corps is None and "text-to-speech" not in url for url, corps in urls)
     monkeypatch.setattr(voix, "appeler", lambda url, cle, corps=None: ("401", b'{"detail":{"status":"invalid_api_key"}}', b""))
     assert not voix.controle_compte(config_voix(tmp_path))[0][0]
+
+
+# ───────────────────────── conformité TikTok (25/11/2026) ─────────────────────────
+def test_conformite_tiktok_telegram_seulement_dans_la_description(tmp_path):
+    """La vidéo garde les gens sur TikTok : ni la voix ni les écrans ne parlent du Telegram (seulement la description) ; plus
+    d'annonce de copy trading dans la présentation."""
+    import recap_periode
+    j = _journee(tmp_path, positions=((1, "A", 9, 36, 100, 15, 50, 110, "Fin de journée"),))
+    textes = recap.repliques(j, recap.unite_du_jour(j))
+    assert "telegram" not in " ".join(textes).lower() and textes[-1].endswith("Abonne-toi pour voir la séance de demain !")
+    for nom in ("recap.py", "recap_periode.py"):
+        code = source_de(nom)
+        assert "Rejoins le Telegram" not in code and "lien en bio" not in code and "Chaque séance est sur le Telegram" not in code
+    assert "Abonne-toi pour la suite !" in source_de("recap_periode.py")
+    assert "sur le Telegram (gratuit, rien à vendre) : lien en bio." in publication.description(j, {})
+    modeles = ""
+    for chemin in glob.glob(os.path.join(ICI, "modeles", "**", "*.*"), recursive=True):
+        modeles += open(chemin, encoding="utf-8", errors="replace").read()
+    for interdit in ("Copy trading", "copy trading", "copier mes trades", "Abonné 1", "Telegram", "lien en bio"):
+        assert interdit not in modeles, interdit
+    assert os.path.exists(os.path.join(ICI, "modeles", "presentation", "compositions", "bilan.html"))
+    assert [n for n, _, _ in presentation.REPLIQUES][-3:] == ["5-bilan", "5b-bilan", "6-fin"]
+    assert "jeu" not in " ".join(m for l in recap.MOTS_DU_JOUR.values() for m in l).split()
+    assert not any(" jeu" in m for l in recap_periode.MOTS_PERIODE.values() for m in l)
+
+
+def test_presentation_minutage_d_accord():
+    """La durée de la présentation : la même dans presentation.py, index.html et bruitages.json ; les scènes se suivent sans trou ;
+    chaque réplique commence pendant sa scène."""
+    index = open(os.path.join(ICI, "modeles", "presentation", "index.html"), encoding="utf-8").read()
+    scenes = [(i, float(d), float(t)) for i, d, t in re.findall(r'<div id="(\w+)" data-composition-id="\w+" data-composition-src="[^"]+" '
+                                                                 r'data-start="([\d.]+)" data-duration="([\d.]+)"', index)]
+    assert [s[0] for s in scenes] == ["provoc", "preuve", "robot", "seance", "bilan", "fin"]
+    fin = scenes[-1][1] + scenes[-1][2]
+    assert abs(fin - presentation.DUREE) < 0.01 and f'data-duration="{presentation.DUREE:g}"' in index
+    bruitages = json.load(open(os.path.join(ICI, "modeles", "presentation", "bruitages.json"), encoding="utf-8"))
+    assert bruitages["duree"] == presentation.DUREE and all(b["t"] < presentation.DUREE for b in bruitages["bruitages"])
+    for (a, da, ta), (b, db, tb) in zip(scenes[3:], scenes[4:]):
+        assert abs(da + ta - db) < 0.01, (a, b)
+    debut = dict((n, t) for n, t, _ in presentation.REPLIQUES)
+    assert scenes[4][1] <= debut["5-bilan"] < debut["5b-bilan"] < scenes[5][1] <= debut["6-fin"] < presentation.DUREE
+
+
+def test_certificat_floute_quand_des_masques_sont_regles(tmp_path, monkeypatch):
+    """Conformité TikTok : avec `masques_certificat`, le certificat passe par un flou fort (ffmpeg) avant d'entrer dans la vidéo et
+    la couverture ; sans masque, il est copié tel quel."""
+    source = tmp_path / "certificat.png"
+    source.write_bytes(b"\x89PNG")
+    appels = []
+    monkeypatch.setattr(presentation.subprocess, "run", lambda commande, **k: appels.append(commande))
+    cible = tmp_path / "copie.png"
+    presentation.copier_certificat({"certificat": str(source)}, str(cible))
+    assert appels == [] and cible.read_bytes() == b"\x89PNG"
+    presentation.copier_certificat({"certificat": str(source), "masques_certificat": [[62, 36, 206, 60], [325, 258, 145, 150]]},
+                                   str(tmp_path / "floute.png"))
+    filtre = appels[0][appels[0].index("-filter_complex") + 1]
+    assert appels[0][0] == "ffmpeg" and "crop=206:60:62:36,boxblur=15:4" in filtre and "overlay=325:258" in filtre
+    assert source_de("presentation.py").count("copier_certificat(profil, os.path.join(") == 2      # fabriquer et couverture
+    exemple = json.load(open(os.path.join(ICI, "config.exemple.json"), encoding="utf-8"))["presentation"]
+    assert "<prop firm>" not in json.dumps(exemple) and exemple["libelle_montant"] == "de récompenses en prop firm"

@@ -10,6 +10,7 @@
                                                      description et couverture dans un dossier par jour (Bureau)
     python3 video/outil.py historique --essai        photographie la fenêtre de MetaTrader (Bureau) pour régler le cadre
                                                      du tableau de l'onglet Historique (voir historique.py)
+    python3 video/outil.py certificat --essai        écrit le certificat flouté sur le Bureau, pour régler `masques_certificat`
     python3 video/outil.py installer                 lance `auto` tout seul chaque soir de semaine (copie l'outil hors du dépôt)
     python3 video/outil.py desinstaller              retire ce lancement automatique
 
@@ -123,7 +124,7 @@ def telecharger_sons(config):
 def main(arguments=None):
     a = argparse.ArgumentParser(description="Étrave vidéo : récap de séance et présentation, en motion design.")
     a.add_argument("commande", choices=["verifier", "jours", "recap", "presentation", "sons", "auto", "installer", "desinstaller",
-                                        "historique"])
+                                        "historique", "certificat"])
     a.add_argument("--essai", action="store_true", help="historique : toute la fenêtre de MetaTrader, pour régler le cadre")
     a.add_argument("--jour", help="date de la séance (New York), AAAA-MM-JJ ; par défaut la dernière finie")
     a.add_argument("--testeur", action="store_true", help="journaux du testeur de stratégie")
@@ -151,6 +152,17 @@ def main(arguments=None):
         jour = datetime.date.fromisoformat(args.jour) if args.jour else datetime.date.today()
         j = journee.charger(dossier, jour, bougies_requises=False)
         print(historique.photographier_jour(config, dossier, jour, j["trades"], print) or "Pas de photo.")
+        return 0
+    if args.commande == "certificat":
+        import presentation
+        profil = config.get("presentation") or {}
+        if not profil.get("certificat"):
+            print("Pas de « certificat » dans la partie « presentation » de la configuration.")
+            return 1
+        cible = os.path.join(os.path.expanduser("~/Desktop"), "certificat-floute.png")
+        presentation.copier_certificat(profil, cible)
+        print(f"Certificat {'flouté' if profil.get('masques_certificat') else 'sans masque (masques_certificat vide)'} : {cible}. "
+              "Règle les rectangles [x, y, largeur, hauteur] (en pixels de l'image) dans « masques_certificat », puis relance.")
         return 0
     if args.commande == "installer":
         import installation

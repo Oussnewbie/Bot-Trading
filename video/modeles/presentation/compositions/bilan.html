@@ -1,0 +1,80 @@
+<template>
+  <style>
+    @font-face { font-family: "DIN Etrave"; src: url("assets/fonts/din-alternate-bold.ttf") format("truetype"); font-weight: 700; }
+    #root { position: absolute; inset: 0; font-family: "DIN Etrave", sans-serif; color: #18222e; }
+    #bl-titre { position: absolute; left: 120px; top: 300px; font-size: 130px; line-height: 1; }
+    .bl-sous { position: absolute; left: 124px; font-size: 60px; color: #46546a; }
+    #bl-sous-1 { top: 470px; } #bl-sous-2 { top: 540px; }
+    #bl-svg { position: absolute; left: 0; top: 0; width: 1080px; height: 1920px; overflow: visible; }
+    #bl-svg text { font-family: "DIN Etrave", sans-serif; }
+  </style>
+  <!-- Conformité TikTok (25/11/2026) : un rendez-vous public, rien à vendre. La ligne du compte (la ligne « Positions » de la frise)
+       monte, s'allonge sur 3 mois jusqu'au jalon du bilan, puis se coche trade par trade. Pas de vert ni de rouge (réservés au
+       résultat), pas de magenta (réservé à l'aiguille). -->
+  <div id="root" data-composition-id="bilan" data-width="1080" data-height="1920">
+    <div id="bl-titre">Bilan public</div>
+    <div id="bl-sous-1" class="bl-sous">dans 3 mois</div>
+    <div id="bl-sous-2" class="bl-sous">vérifié, trade par trade</div>
+    <svg id="bl-svg" viewBox="0 0 1080 1920" data-layout-allow-overflow>
+      <g id="bl-frise">
+        <line id="bl-axe" x1="432" y1="1066" x2="900" y2="1066" stroke="#94a3b2" stroke-width="3" />
+        <g id="bl-graduations" stroke="#94a3b2" stroke-width="3">
+          <line class="bl-grad" x1="432" y1="1060" x2="432" y2="1072" />
+          <line class="bl-grad" x1="588" y1="1060" x2="588" y2="1072" />
+          <line class="bl-grad" x1="744" y1="1060" x2="744" y2="1072" />
+          <line class="bl-grad" x1="900" y1="1060" x2="900" y2="1072" />
+        </g>
+        <g id="bl-mois" font-size="30" fill="#46546a" text-anchor="middle">
+          <text class="bl-m" x="588" y="1005">1 mois</text>
+          <text class="bl-m" x="744" y="1005">2 mois</text>
+          <text class="bl-m" x="900" y="1005">3 mois</text>
+        </g>
+      </g>
+      <!-- la ligne « Positions » de la frise, qui devient ton compte -->
+      <g id="bl-source">
+        <text x="120" y="1052" font-size="34" fill="#18222e">{{NOM}}</text>
+        <rect id="bl-barre" x="432.3" y="1031" width="467.7" height="18" rx="4" fill="#2f7bd9" />
+      </g>
+      <g id="bl-trades" fill="#18222e">
+        <rect class="bl-t" x="452" y="1025" width="4" height="30" rx="1" /><rect class="bl-t" x="476" y="1025" width="4" height="30" rx="1" />
+        <rect class="bl-t" x="500" y="1025" width="4" height="30" rx="1" /><rect class="bl-t" x="524" y="1025" width="4" height="30" rx="1" />
+        <rect class="bl-t" x="548" y="1025" width="4" height="30" rx="1" /><rect class="bl-t" x="572" y="1025" width="4" height="30" rx="1" />
+        <rect class="bl-t" x="596" y="1025" width="4" height="30" rx="1" /><rect class="bl-t" x="620" y="1025" width="4" height="30" rx="1" />
+        <rect class="bl-t" x="644" y="1025" width="4" height="30" rx="1" /><rect class="bl-t" x="668" y="1025" width="4" height="30" rx="1" />
+        <rect class="bl-t" x="692" y="1025" width="4" height="30" rx="1" /><rect class="bl-t" x="716" y="1025" width="4" height="30" rx="1" />
+        <rect class="bl-t" x="740" y="1025" width="4" height="30" rx="1" /><rect class="bl-t" x="764" y="1025" width="4" height="30" rx="1" />
+        <rect class="bl-t" x="788" y="1025" width="4" height="30" rx="1" /><rect class="bl-t" x="812" y="1025" width="4" height="30" rx="1" />
+        <rect class="bl-t" x="836" y="1025" width="4" height="30" rx="1" /><rect class="bl-t" x="860" y="1025" width="4" height="30" rx="1" />
+      </g>
+      <!-- le jalon du bilan, au bout des 3 mois -->
+      <circle id="bl-jalon" cx="900" cy="1040" r="17" fill="#f6f8fa" stroke="#2f7bd9" stroke-width="5" />
+    </svg>
+  </div>
+  <script>
+    const tl = gsap.timeline({ paused: true });
+    const wipe = (cible, t, d = 0.3) => tl.fromTo(cible, { clipPath: "inset(-30% 100% -40% 0)" }, { clipPath: "inset(-30% 0% -40% 0)", duration: d, ease: "power3.out" }, t);
+    gsap.set(["#bl-titre", "#bl-sous-1", "#bl-sous-2"], { clipPath: "inset(-30% 100% -40% 0)" });
+    gsap.set(["#bl-axe", ".bl-grad", ".bl-m", ".bl-t", "#bl-jalon"], { opacity: 0 });
+    // la barre a d'abord la longueur de la ligne « Positions » de la frise (399 px sur 467,7), pour enchaîner sans saut
+    gsap.set("#bl-barre", { scaleX: 399 / 467.7, transformOrigin: "0% 50%" });
+    // tout le dessin monte avec la ligne du compte (même mouvement que la ligne, 270 px)
+    gsap.set(["#bl-frise", "#bl-trades", "#bl-jalon"], { y: -270 });
+    tl.fromTo("#bl-source", { y: 0 }, { y: -270, duration: 0.45, ease: "power3.inOut" }, 0.2);
+    // « Dans trois mois » : la ligne redevient aujourd'hui (un bout), les 3 mois se graduent, le jalon attend au bout
+    tl.to("#bl-barre", { scaleX: 0.1, duration: 0.3, ease: "power2.inOut" }, 0.3);
+    tl.to("#bl-axe", { opacity: 1, duration: 0.2 }, 0.3);
+    tl.to(".bl-grad", { opacity: 1, duration: 0.12, stagger: 0.08 }, 0.32);
+    tl.to(".bl-m", { opacity: 1, duration: 0.15, stagger: 0.08 }, 0.42);
+    tl.fromTo("#bl-jalon", { opacity: 0, scale: 0.4, transformOrigin: "50% 50%" }, { opacity: 1, scale: 1, duration: 0.3, ease: "back.out(2)" }, 0.6);
+    // « je publie le bilan complet » : la ligne file jusqu'au jalon, qui se remplit sur « bilan » avec le titre
+    tl.to("#bl-barre", { scaleX: 1, duration: 0.45, ease: "power2.inOut" }, 0.95);
+    tl.to("#bl-jalon", { attr: { fill: "#2f7bd9" }, duration: 0.15 }, 1.38);
+    tl.to("#bl-jalon", { scale: 1.25, duration: 0.12, yoyo: true, repeat: 1, transformOrigin: "50% 50%" }, 1.38);
+    wipe("#bl-titre", 1.36, 0.35);
+    wipe("#bl-sous-1", 1.7);
+    // « Vérifié, trade par trade » : la ligne se coche, trade après trade
+    wipe("#bl-sous-2", 2.56);
+    tl.to(".bl-t", { opacity: 1, duration: 0.06, stagger: 0.035 }, 3.35);
+    window.__timelines["bilan"] = tl;
+  </script>
+</template>

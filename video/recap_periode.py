@@ -4,7 +4,7 @@
     barres   une barre par séance (vert : gain, rouge : perte, gris : pas de trade) ; la semaine est dite jour par jour, le mois
              en une phrase (séances, jours de trade, gagnants, perdants)
     courbe   le cumul en R séance après séance, le total qui compte jusqu'à sa valeur, le total de chaque marché
-    bilan    jours de trade, jours gagnants, meilleur et pire jour, le petit mot, le Telegram, la mention
+    bilan    jours de trade, jours gagnants, meilleur et pire jour, le petit mot, l'abonnement, la mention
 
 Les chiffres sont ceux des récaps de chaque jour : le résultat de chaque marché arrondi comme à l'écran (−1,50 R), le total d'un
 jour = la somme de ces valeurs, le total de la période = la somme des totaux des jours. Une période se lit dans les mêmes journaux
@@ -29,7 +29,7 @@ X0, X1, Y_HAUT, Y_BAS = 130, 950, 470, 790          # le graphique (au-dessus de
 
 MOTS_PERIODE = {
     "perte": ["{une} difficile. On la montre aussi, comme les autres.", "Le marché a gagné cette manche. On garde le cap.",
-              "Les pertes font partie du jeu. {la} suivante est déjà là."],
+              "Les pertes font partie du métier. {la} suivante est déjà là."],
     "gain": ["Le robot a fait sa part. On reste humble.", "{une} propre, sans forcer.", "Belle régularité. On continue."],
     "rien": ["Pas de trade, pas de perte : attendre, c'est aussi trader."],
 }
@@ -163,7 +163,7 @@ def repliques(p):
         bilan += f"Meilleur jour : {_jour_voix(p['meilleur']['jour'], p['genre'])}, {dit(p['meilleur']['total'], 'r')}. "
     if p["pire"] and p["pire"]["total"] < 0:
         bilan += f"Pire jour : {_jour_voix(p['pire']['jour'], p['genre'])}, {dit(p['pire']['total'], 'r')}. "
-    bilan += f"{mot_periode(p)} Chaque séance est sur le Telegram : lien en bio !"
+    bilan += f"{mot_periode(p)} Abonne-toi pour la suite !"          # conformité TikTok : le Telegram seulement dans la description
     return [titre, barres, courbe] + preuve + [bilan]
 
 
@@ -386,7 +386,7 @@ def scene_courbe(p, rep):
 
 
 def scene_bilan(p, rep, texte):
-    """Les records de la période, le petit mot, le Telegram et la mention : la même fin que le récap de chaque séance."""
+    """Les records de la période, le petit mot, l'abonnement et la mention : la même fin que le récap de chaque séance."""
     ident = "pi"
     entete, script_entete = _entete(ident, p, "Bilan de la semaine" if p["genre"] == "semaine" else "Bilan du mois")
     lignes, script, reperes = [], [], [{"t": 0.05, "son": "paper-page-turn-1104", "gain_db": -6}]
@@ -411,8 +411,8 @@ def scene_bilan(p, rep, texte):
     k_mot = len(texte.split(mot)[0].split())
     mots = (rep or {}).get("mots", [])
     t_mot = max(mots[k_mot]["debut"] if len(mots) > k_mot else 2.4, 0.3 + 0.18 * len(rangs) + 0.6)
-    t_tel = max(voix.instant(rep, "telegram", defaut=t_mot + 1.6), t_mot + 0.8)
-    t_bio = max(voix.instant(rep, "bio", defaut=t_tel + 0.8), t_tel + 0.4)
+    t_tel = max(voix.instant(rep, "abonne", apres=t_mot, defaut=t_mot + 1.6), t_mot + 0.8)
+    t_bio = max(voix.instant(rep, "suite", apres=t_tel, defaut=t_tel + 0.8), t_tel + 0.4)
     y_mention = recap.Y_FIN - 8 - 2 * 28 * 1.32
     y_bio = y_mention - 16 - 58 * 1.34
     y_tel = y_bio - 68
@@ -426,8 +426,8 @@ def scene_bilan(p, rep, texte):
     corps = f"""{entete}
     {''.join(lignes)}
     <div id="pi-mot" class="pastille" style="left:120px; top:{y_mot:.0f}px; font-size:42px; background:{COUL['jaune']}; color:{COUL['encre']}">{'<br>'.join(e(l) for l in lignes_mot)}</div>
-    <div id="pi-tel" class="pi-bas" style="top:{y_tel:.0f}px; font-size:56px">Rejoins le Telegram :</div>
-    {_pastille("pi-bio", "lien en bio", COUL["bleu"], COUL["blanc"], 58, 120, y_bio)}
+    <div id="pi-tel" class="pi-bas" style="top:{y_tel:.0f}px; font-size:56px">Abonne-toi :</div>
+    {_pastille("pi-bio", "la suite, ici", COUL["bleu"], COUL["blanc"], recap.taille_bio("la suite, ici"), 120, y_bio)}
     <div id="pi-mention" class="pi-bas" style="top:{y_mention:.0f}px">Pas un conseil en investissement. Le trading comporte un risque de perte en capital.</div>"""
     script_tete = f"""    gsap.set(["#pi-date", "#pi-nom", ".pi-ligne", "#pi-tel"], {{ clipPath: "inset(-30% 100% -40% 0)" }});
     gsap.set("#pi-mention", {{ opacity: 0 }});

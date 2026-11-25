@@ -9,7 +9,7 @@ encre, bleu du logo, chiffres en DIN) :
     s'arrête sur la cassure et l'entrée, sur les stops, sur les sorties de fin de séance, et le résultat en R qui compte jusqu'à
     sa valeur ;
   - le bilan de la journée ;
-- **la présentation de la chaîne** : 47,6 s, rejouée à l'identique à partir d'un profil local.
+- **la présentation de la chaîne** : 45,3 s, rejouée à l'identique à partir d'un profil local.
 
 La voix off est le clone ElevenLabs de ta voix, **en une seule prise par vidéo** (toutes les scènes demandées ensemble, puis
 coupées dans les silences) : des demandes séparées changeaient un peu le timbre d'une scène à l'autre. Mêmes réglages que la vidéo
@@ -30,8 +30,8 @@ Exemple de texte lu (tout est écrit à partir des journaux de l'EA, les heures 
 > Même scénario sur le S et P cinq cents. Une vente part aussitôt contre nous : stop touché, soixante-trois points plus haut. Les
 > quatre autres tiennent jusqu'à la fin de séance : jusqu'à soixante points en notre faveur, puis le prix remonte. Résultat : moins
 > zéro virgule cinquante-six R.
-> Bilan du jour : moins deux virgule zéro six R. Les pertes font partie du jeu. On les montre aussi. Chaque séance est sur le
-> Telegram : lien en bio !
+> Bilan du jour : moins deux virgule zéro six R. Les pertes font partie du métier. On les montre aussi. Abonne-toi pour voir la
+> séance de demain !
 
 - Les gains et les pertes sont montrés de la même façon.
 - **Les couleurs ont un seul sens chacune** :
@@ -59,6 +59,25 @@ Exemple de texte lu (tout est écrit à partir des journaux de l'EA, les heures 
   scène n'apparaît pas : jamais d'image à la place d'une vraie photo.
 - **Démo, réel ou testeur : seulement dans la description** (`description.txt`, la bio de la publication), d'après le journal de
   l'EA. Ni la vidéo, ni la couverture, ni le nom des fichiers n'en parlent.
+
+## Conformité TikTok (25/11/2026)
+
+D'après les règles de la communauté TikTok (activités commerciales réglementées, version du 24/09/2026), la loi influenceurs
+n° 2023-451 et la fiche AMF / ESMA sur les « finfluenceurs ». TikTok accepte l'information financière (montrer gains et pertes
+sans rien vendre). Il retire les promesses d'argent facile et ce qui envoie les gens hors de TikTok vers un service financier à
+risque.
+
+- **Rien à vendre.** La présentation n'annonce plus de copy trading : la scène « Bilan public » donne rendez-vous dans 3 mois
+  pour un bilan vérifié, trade par trade.
+- **On reste sur TikTok.** La voix et les écrans de fin disent « Abonne-toi » (« la séance de demain, ici », « la suite, ici »,
+  « chaque séance, ici »). Le Telegram n'est que dans la description, avec « gratuit, rien à vendre ».
+- **La prop firm n'est jamais nommée.** Le certificat et le montant restent ; le nom et le logo de la société sont floutés
+  (`masques_certificat`, réglés une fois avec `python3 video/outil.py certificat --essai`). Le QR code reste net : c'est la preuve
+  que le certificat est vrai. Jamais de code promo ni de lien affilié, nulle part.
+- **Petits mots** : « Les pertes font partie du métier » (« jeu » évoque le jeu d'argent).
+- **`avant-de-publier.txt`** dans chaque dossier de publication : cocher « Contenu généré par l'IA », ne pas cocher « Contenu
+  commercial » tant que rien n'est vendu, coller la description telle quelle, publier à la main. Si un jour quelque chose devient
+  payant, tout revoir avant.
 
 ## Installation (une fois)
 
@@ -94,6 +113,7 @@ python3 video/outil.py recap                       # le récap de la dernière s
 python3 video/outil.py recap --jour 2026-11-26     # une séance précise (date de New York)
 python3 video/outil.py recap --testeur --jour 2026-11-18   # une journée du testeur (dossier de travail « recap-…-essai »)
 python3 video/outil.py presentation                # la vidéo de présentation (profil « presentation » de la configuration)
+python3 video/outil.py certificat --essai          # le certificat flouté sur le Bureau, pour régler masques_certificat
 ```
 
 La vidéo arrive dans le dossier `sortie` de la configuration, `recap-AAAA-MM-JJ/recap-AAAA-MM-JJ.mp4`. Elle est en 1080 x 1920,
@@ -121,7 +141,8 @@ python3 video/outil.py installer
   - `recap-AAAA-MM-JJ.mp4`, la vidéo ;
   - `description.txt`, le texte à coller dans TikTok : l'accroche, le petit mot, les résultats, le compte (réel ou démo,
     d'après le journal de l'EA), les mentions et les hashtags ;
-  - `couverture.jpg`, l'écran titre.
+  - `couverture.jpg`, l'écran titre ;
+  - `avant-de-publier.txt`, les cases à cocher sur TikTok (conformité).
 - **Le récap de la semaine** (lundi-vendredi) et **le récap du mois** se font de la même façon, une fois la période finie :
   dossiers `Semaine du AAAA-MM-JJ/` et `Mois AAAA-MM/`. Une barre par séance, la courbe du cumul en R, le total de chaque marché,
   le meilleur et le pire jour. Leurs chiffres sont ceux des récaps de chaque jour (le total de la semaine est la somme des bilans
@@ -165,17 +186,17 @@ que lui :
 | `auto_depuis`, `auto_sans_trade` | mode automatique : première séance à faire (AAAA-MM-JJ) ; aussi les jours sans trade |
 | `historique` | le cadre du tableau de l'onglet Historique dans la photo de la fenêtre : `x`, `y`, `largeur`, `entete`, `ligne` (pixels) |
 | `mention_compte`, `hashtags` | la ligne sur le compte dans la description (sinon d'après le journal) ; les hashtags |
-| `presentation` | ton profil pour la vidéo de présentation (voir `presentation.py`) |
+| `presentation` | ton profil pour la vidéo de présentation (voir `presentation.py`) ; `masques_certificat` : les zones floutées du certificat |
 
 ## Fichiers
 
 ```
-outil.py         la commande (verifier, jours, recap, presentation, sons)
+outil.py         la commande (verifier, jours, recap, presentation, sons, auto, historique, certificat, installer)
 journee.py       lit une séance dans les journaux de l'EA (heures de Paris par les fuseaux horaires, jamais +6 h en dur)
 recap.py         écrit les scènes du récap et le minutage calé sur la voix, rend l'image, assemble le son
 presentation.py  remplit le modèle de la présentation avec le profil, rend et mixe
 voix.py          ElevenLabs (clone de ta voix) : une prise par vidéo coupée par scène, heure de chaque mot, rythme, cache
-publication.py   le dossier du jour (vidéo, description TikTok, couverture) et le mode automatique
+publication.py   le dossier du jour (vidéo, description TikTok, couverture, avant-de-publier.txt) et le mode automatique
 historique.py    la photo de l'onglet Historique de MetaTrader (Windows : PrintWindow ; Mac : screencapture), le cadre du tableau
 windows/         Deconnecter-sans-fermer.cmd : quitter le Bureau à distance du VPS sans éteindre l'écran
 recap_periode.py les récaps de la semaine et du mois (barres, courbe, bilan)

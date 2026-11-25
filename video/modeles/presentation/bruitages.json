@@ -1,6 +1,6 @@
 {
- "doc": "Bruitages de la présentation (v6, 47,62 s) : instant de départ, son du catalogue, gain (pic visé = -6 dB + gain), durée gardée, tranche [début, durée] du fichier, passe-haut, demi-tons.",
- "duree": 47.62,
+ "doc": "Bruitages de la présentation (v6, scène bilan et fin du 25/11/2026, 45,3 s) : instant de départ, son du catalogue, gain (pic visé = -6 dB + gain), durée gardée, tranche [début, durée] du fichier, passe-haut, demi-tons.",
+ "duree": 45.3,
  "bruitages": [
   {
    "t": 0.0,
@@ -256,62 +256,84 @@
    "note": "ta ligne monte"
   },
   {
-   "t": 37.47,
+   "t": 35.14,
+   "son": "click-interface-device-2577",
+   "gain_db": -14.0,
+   "max_dur": 0.17,
+   "note": "les 3 mois se graduent (trois mois)"
+  },
+  {
+   "t": 35.77,
    "son": "sweep-small-fast-166",
    "gain_db": -11.0,
    "max_dur": 0.66,
-   "note": "Copy trading (copy trading)"
+   "note": "la ligne file jusqu'au jalon (je publie)"
   },
   {
-   "t": 39.267,
+   "t": 36.2,
+   "son": "hit-wood-hard-2182",
+   "gain_db": -4.0,
+   "max_dur": 0.417,
+   "note": "le jalon se remplit, Bilan public (bilan)"
+  },
+  {
+   "t": 37.38,
+   "son": "click-typewriter-soft-1125",
+   "gain_db": -13.0,
+   "max_dur": 0.219,
+   "note": "vérifié (Vérifié)"
+  },
+  {
+   "t": 38.17,
    "son": "click-typewriter-soft-1125",
    "gain_db": -14.0,
    "max_dur": 0.219,
-   "note": "copie 1"
+   "note": "trade 1 (trade par trade)"
   },
   {
-   "t": 39.434,
+   "t": 38.31,
    "son": "click-classic-1117",
    "gain_db": -14.0,
    "max_dur": 0.288,
-   "note": "copie 2",
+   "note": "trade 2",
    "demi_tons": 2
   },
   {
-   "t": 39.507,
-   "son": "tick-clock-single-1061",
+   "t": 38.45,
+   "son": "click-typewriter-soft-1125",
    "gain_db": -14.0,
-   "max_dur": 0.849,
-   "note": "copie 3"
+   "max_dur": 0.219,
+   "note": "trade 3",
+   "demi_tons": 3
   },
   {
-   "t": 39.754,
+   "t": 38.59,
    "son": "click-classic-1117",
    "gain_db": -14.0,
    "max_dur": 0.288,
-   "note": "copie 4",
+   "note": "trade 4",
    "demi_tons": 5
   },
   {
-   "t": 42.09,
+   "t": 39.77,
    "son": "paper-page-turn-1104",
    "gain_db": -8.4,
    "max_dur": 0.452,
    "note": "carte de fin, la page tourne"
   },
   {
-   "t": 42.16,
+   "t": 39.84,
    "son": "water-sea-splash-1198",
    "gain_db": -8.0,
    "max_dur": 1.44,
    "note": "ETRAVE, carte de fin : la vague"
   },
   {
-   "t": 44.566,
+   "t": 41.7,
    "son": "bell-notification-933",
    "gain_db": -10.0,
    "max_dur": 2.0,
-   "note": "lien en bio (le lien est dans ma bio)"
+   "note": "chaque séance, ici (chaque séance)"
   }
  ]
 }

@@ -76,7 +76,7 @@ def unite_du_jour(j, demandee="r"):
 # Le petit mot du bilan : un par jour, choisi par la date (le même si on refait la vidéo), léger et sans moquerie.
 MOTS_DU_JOUR = {
     "perte": ["Le marché a gagné cette manche. On revient demain.", "Pas notre jour : le stop a fait son travail.",
-              "Une séance qui forge le caractère.", "Les pertes font partie du jeu. On les montre aussi.",
+              "Une séance qui forge le caractère.", "Les pertes font partie du métier. On les montre aussi.",
               "Le stop a fait son boulot. On garde le cap."],
     "gain": ["Le robot a bien travaillé. Moi, j'ai surtout regardé.", "Belle séance, sans forcer.",
              "Le robot a fait sa part. On reste humble.", "Belle séance. Le robot a mérité son café."],
@@ -303,7 +303,8 @@ def repliques(j, unite):
         textes.append("Les trades du jour, dans l'historique de MetaTrader.")
     t = total(j, unite)
     mot = mot_du_jour(j, t)
-    fin = "Chaque séance est sur le Telegram : lien en bio !"
+    # Conformité TikTok (25/11/2026) : la vidéo garde les gens sur TikTok ; le Telegram n'est que dans la description
+    fin = "Abonne-toi pour voir la séance de demain !"
     if not j["trades"]:
         textes.append(f"Bilan : pas de trade aujourd'hui. {mot} {fin}")
     elif t is not None:
@@ -341,6 +342,16 @@ def _composition(ident, style, corps, script):
 def _l(texte, taille):
     """Largeur d'une pastille (texte + marges de .pastille)."""
     return police.largeur(texte, taille, POLICE) + 0.84 * taille
+
+
+BIO_JOUR = "la séance de demain, ici"
+
+
+def taille_bio(texte, taille=58):
+    """La pastille du bas de l'écran de bilan bat (×1,07 depuis son bord gauche, x = 120) : elle reste dans la zone sûre de TikTok."""
+    while taille > 40 and 120 + _l(texte, taille) * 1.07 > X_DROITE_BAS:
+        taille -= 2
+    return taille
 
 
 def _pastille(ident, texte, fond, encre, taille, gauche, haut, classe=""):
@@ -898,9 +909,9 @@ def scene_bilan(j, rep, unite, texte):
     mots = (rep or {}).get("mots", [])
     t_mot = mots[k_mot]["debut"] if len(mots) > k_mot else t_total + 1.4
     t_mot = max(t_mot, t_total + 1.0)
-    t_tel = max(voix.instant(rep, "telegram", defaut=t_mot + 1.6), t_mot + 0.8)
-    t_bio = max(voix.instant(rep, "bio", defaut=t_tel + 0.8), t_tel + 0.4)
-    # le bas de l'écran se pose depuis la limite de TikTok (y = 1260) : la mention, « lien en bio », le Telegram ; le petit mot (un
+    t_tel = max(voix.instant(rep, "abonne", apres=t_mot, defaut=t_mot + 1.6), t_mot + 0.8)
+    t_bio = max(voix.instant(rep, "demain", apres=t_tel, defaut=t_tel + 0.8), t_tel + 0.4)
+    # le bas de l'écran se pose depuis la limite de TikTok (y = 1260) : la mention, la pastille, « Abonne-toi » ; le petit mot (un
     # autocollant jaune posé de travers, une phrase par ligne, chaque phrase sur ses mots) prend la place qui reste au-dessus.
     # Sous y = 840, tout reste à gauche de x = 780.
     y_mention = Y_FIN - 8 - 2 * 28 * 1.32
@@ -925,8 +936,8 @@ def scene_bilan(j, rep, unite, texte):
     {''.join(lignes)}
     {gros}
     <div id="bi-mot" class="pastille" style="left:120px; top:{y_mot:.0f}px; font-size:{taille_mot}px; background:{COUL['jaune']}; color:{COUL['encre']}">{'<br>'.join(f'<span class="bi-p{k}">{e(l)}</span>' for k, l in lignes_mot)}</div>
-    <div id="bi-tel" class="bi-bas" style="top:{y_tel:.0f}px; font-size:56px">Rejoins le Telegram :</div>
-    {_pastille("bi-bio", "lien en bio", COUL["bleu"], COUL["blanc"], 58, 120, y_bio)}
+    <div id="bi-tel" class="bi-bas" style="top:{y_tel:.0f}px; font-size:56px">Abonne-toi :</div>
+    {_pastille("bi-bio", BIO_JOUR, COUL["bleu"], COUL["blanc"], taille_bio(BIO_JOUR), 120, y_bio)}
     <div id="bi-mention" class="bi-bas" style="top:{y_mention:.0f}px">Pas un conseil en investissement. Le trading comporte un risque de perte en capital.</div>"""
     script_tete = """    gsap.set(["#bi-date", "#bi-titre", ".bi-ligne", ".bi-label", "#bi-tel"], { clipPath: "inset(-30% 100% -40% 0)" });
     gsap.set("#bi-mention", { opacity: 0 });

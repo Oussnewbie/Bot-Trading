@@ -318,9 +318,12 @@ def rythmer(rep, tempo=TEMPO, pause_max=PAUSE_MAX):
                 mots=[dict(m, debut=round(apres(m["debut"]), 3), fin=round(apres(m["fin"]), 3)) for m in rep["mots"]])
 
 
-def instant(rep, *cherches, defaut=None):
-    """Le début (s, dans la réplique) du premier mot qui commence par l'un des mots cherchés (sans majuscule ni ponctuation)."""
+def instant(rep, *cherches, defaut=None, apres=None):
+    """Le début (s, dans la réplique) du premier mot qui commence par l'un des mots cherchés (sans majuscule ni ponctuation) ;
+    avec `apres`, seulement parmi les mots qui commencent à cet instant ou après (le petit mot peut dire « demain » avant la fin)."""
     for m in (rep or {}).get("mots", []):
+        if apres is not None and m["debut"] < apres:
+            continue
         mot = m["mot"].lower().strip(".,:;!?…«»\"'")
         if any(mot.startswith(c.lower()) for c in cherches):
             return m["debut"]

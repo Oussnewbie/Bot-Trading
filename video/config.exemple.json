@@ -12,9 +12,10 @@
   "nom": "Prénom",
   "annees": 6,
   "montant": "12 345,67 $",
-  "libelle_montant": "de récompenses <prop firm>",
+  "libelle_montant": "de récompenses en prop firm",
   "certificat": "~/chemin/vers/certificat.png",
-  "alt_certificat": "Certificat de <prop firm>",
+  "alt_certificat": "Certificat de récompenses",
+  "masques_certificat": [[60, 40, 210, 55]],
   "voix": "~/chemin/vers/le/dossier/des/repliques"
  }
 }
