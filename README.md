@@ -70,7 +70,7 @@ feront.
 | Nasdaq 2018-2026, spread réel + 1 point de glissement | +477 R, 47 % de trades gagnants, pire baisse −32 R, pire journée −5,1 R |
 | Nasdaq 2010-2017, coûts au poids d'aujourd'hui | +194 R, 44 % de trades gagnants, pire baisse −53 R ; avec les coûts au poids de 2018, +23 R seulement |
 | Nasdaq + S&P 500, 2019-2026, 0,1 lot sur 1 000 $, prix d'aujourd'hui | environ +9 200 $, 43 % de trades gagnants, pire journée −322 $, pire baisse −643 $ |
-| Testeur MetaTrader, NDX100, 20/11/2025 → 19/11/2026, 0,1 lot | +1 887 $, 52 % de jours gagnants, pire jour −91 $, pire baisse −323 $ |
+| Testeur MetaTrader, NDX100, 20/11/2025 → 19/11/2026, 0,1 lot sur 1 000 $ | +1 885 $, 379 trades, 53 % de jours gagnants, pire jour −91 $, pire baisse −321 $ |
 
 - La dernière ligne est une bonne année (+76 R, contre environ +51 R pour une année médiane).
 - Le glissement réel compte beaucoup : avec 3 points par exécution au lieu de 1, le gain baisse d'environ 37 % et la pire baisse double.
