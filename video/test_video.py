@@ -113,15 +113,27 @@ def test_voix_sans_secret_et_r_explique_une_fois(tmp_path):
     for secret in ("RSI", "élan", "D1", " B ", "Range traité", "bloquée", "filtre"):
         assert secret not in tout
     assert tout.count("Un R, c'est le risque pris sur un trade.") == 1
-    assert "le prix sort de la zone par le bas à quinze heures trente-six. Trois positions à la vente : un stop touché, deux sorties en fin de séance." in textes[1]
-    assert textes[0] == "Récap de la séance du jeudi seize avril."
-    assert textes[-1].endswith("Chaque séance est sur le Telegram, lien en bio.") and recap.mot_du_jour(j, recap.total(j, "r")) in textes[-1]
+    assert textes[1].startswith("Nasdaq. Quinze heures trente-six : le prix casse la zone par le bas. Le robot vend : trois positions. "
+                                "Un stop touché… et deux sorties en fin de séance. Résultat : moins ")
+    assert textes[0] == "Jeudi seize avril. Journée rouge pour le robot… on regarde ça !"
+    assert textes[-1].endswith("Chaque séance est sur le Telegram : lien en bio !") and recap.mot_du_jour(j, recap.total(j, "r")) in textes[-1]
+
+
+def test_meme_scenario_pas_raconte_deux_fois(tmp_path):
+    j = _journee(tmp_path, positions=((1, "A", 9, 36, 100, 15, 50, 110, "Fin de journée"), (1, "D1", 9, 41, 101, 15, 50, 110, "Fin de journée")))
+    m = j["marches"][0]
+    j["marches"].append(dict(m, nom="S&P 500", voix="S et P cinq cents", symbole="SPX500", r=0.42))
+    textes = recap.repliques(j, "r")
+    assert textes[0].startswith("Jeudi seize avril. Journée verte")
+    assert "Le robot achète : deux positions. Les deux sortent en fin de séance." in textes[1]
+    assert textes[2].startswith("Même scénario sur le S et P cinq cents : les deux sortent en fin de séance. Résultat : plus zéro virgule quarante-deux R.")
+    assert "Un R, c'est le risque" not in textes[2]
 
 
 def test_jour_sans_trade_ne_dit_pas_pourquoi(tmp_path):
     j = _journee(tmp_path, positions=())
     textes = recap.repliques(j, "r")
-    assert "pas de trade aujourd'hui, les conditions n'étaient pas réunies." in textes[1]
+    assert "pas de trade aujourd'hui, les conditions n'étaient pas réunies." in textes[1] and "Journée sans trade" in textes[0]
     assert "RSI" not in " ".join(textes) and recap.mot_du_jour(j, None) in recap.MOTS_DU_JOUR["rien"]
 
 
@@ -162,9 +174,57 @@ def test_mention_exemple_seulement_pour_le_testeur(tmp_path):
 
 def test_les_scenes_n_affichent_pas_le_type_d_entree(tmp_path):
     j = _journee(tmp_path, positions=((1, "D2", 9, 40, 100, 15, 50, 110, "Fin de journée"),))
-    style, corps, script, reperes = recap.scene_marche(j, j["marches"][0], 0, None, "r", 7.0)
-    assert "D2" not in corps and "Achat" in corps and "Sortie de zone par le haut à 15:40" in corps
+    style, corps, script, reperes, fin = recap.scene_marche(j, j["marches"][0], 0, None, "r", 7.0)
+    assert "D2" not in corps and "Cassure par le haut" in corps and "Achat 15:40" in corps
     assert all(r["son"] in mixage.catalogue() for r in reperes)
+
+
+PASTILLE = re.compile(r'class="pastille[^"]*" style="left:(\d+)px; top:(\d+)px; font-size:(\d+)px[^"]*">([^<]+)<')
+
+
+@pytest.mark.parametrize("positions", [
+    ((1, "A", 9, 36, 100, 15, 50, 112.0, "Fin de journée"),),
+    ((-1, "A", 9, 36, 100, 10, 2, 112, "Stop"), (-1, "D1", 9, 41, 99, 15, 50, 90, "Fin de journée"),
+     (-1, "B", 9, 55, 98, 15, 50, 90, "Fin de journée"), (-1, "D2", 10, 30, 97, 15, 50, 90, "Fin de journée")),
+    (),
+])
+def test_etiquettes_dans_les_zones_sures_de_tiktok(tmp_path, positions):
+    """Chaque étiquette tient entre y = 240 et y = 1260 ; à gauche de x = 960 au-dessus de y = 840, de x = 780 en dessous."""
+    j = _journee(tmp_path, positions=positions)
+    morceaux = [recap.scene_marche(j, j["marches"][0], 0, None, "r", 7.0, True)[1], recap.scene_titre(j, None, "r")[1],
+                recap.scene_bilan(j, None, "r", recap.repliques(j, "r")[-1])[1]]
+    vues = 0
+    for corps in morceaux:
+        for gauche, haut, taille, texte in PASTILLE.findall(corps):
+            gauche, haut, taille = int(gauche), int(haut), int(taille)
+            droite, bas = gauche + recap._l(texte, taille), haut + taille * 1.34
+            assert haut >= 240 and bas <= 1260, texte
+            assert droite <= (780 if bas > 840 else 960) + 1, (texte, droite)
+            vues += 1
+    assert vues >= 3
+
+
+def test_couleur_du_resultat():
+    assert recap.couleur(1.2) == recap.COUL["vert"] and recap.couleur(-0.3) == recap.COUL["rouge"]
+    assert recap.couleur(0.001) == recap.couleur(None) == recap.COUL["encre2"]
+
+
+def test_camera_reste_dans_le_graphique():
+    for px, py in ((recap.X0, recap.Y_HAUT), (recap.X1, recap.Y_BAS), (500, 650)):
+        (tx, ty, s), (fx, fy) = recap.camera(px, py)
+        # les bords du graphique, une fois zoomés, restent hors du cadre : on ne voit jamais au-delà du graphique
+        assert s * recap.X0 + tx <= recap.X0 + 0.01 and s * recap.X1 + tx >= recap.X1 - 0.01
+        assert s * recap.Y_HAUT + ty <= recap.Y_HAUT + 0.01 and s * recap.Y_BAS + ty >= recap.Y_BAS - 0.01
+        assert recap.X0 - 0.01 <= fx <= recap.X1 + 0.01 and recap.Y_HAUT - 0.01 <= fy <= recap.Y_BAS + 0.01
+
+
+def test_musique_du_jour(tmp_path):
+    assert mixage.choisir_musique(None, datetime.date(2026, 11, 18)) is None
+    assert mixage.choisir_musique(str(tmp_path / "absent"), datetime.date(2026, 11, 18)) is None
+    for nom in ("b.mp3", "a.wav", "notes.txt"):
+        (tmp_path / nom).write_bytes(b"")
+    choix = {os.path.basename(mixage.choisir_musique(str(tmp_path), datetime.date(2026, 11, d))) for d in (17, 18)}
+    assert choix == {"a.wav", "b.mp3"}
 
 
 # ───────────────────────── présentation ─────────────────────────

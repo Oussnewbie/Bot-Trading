@@ -12,7 +12,8 @@ import os
 import subprocess
 import tempfile
 
-REGLAGES = {"stability": 0.45, "similarity_boost": 0.85, "style": 0.25, "use_speaker_boost": True}
+# Une voix qui a de l'énergie : moins stable (plus d'intonation), plus de style, un débit un peu plus rapide (1 = normal, 1,2 au plus)
+REGLAGES = {"stability": 0.32, "similarity_boost": 0.85, "style": 0.45, "use_speaker_boost": True, "speed": 1.08}
 
 
 class VoixIndisponible(Exception):

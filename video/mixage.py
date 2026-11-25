@@ -4,9 +4,13 @@ Les bruitages sont de vrais enregistrements (banque Mixkit, gratuite, usage comm
 seuls) : ils ne sont pas dans le dépôt. `sons.json` donne leur nom et la page où les télécharger ; le dossier `sons` de la configuration
 les contient. Un son absent est sauté (la vidéo se fait quand même, et la liste des sons manquants est affichée).
 
+La musique de fond (facultative, réglage `musique` : un fichier ou un dossier de morceaux, jamais dans le dépôt) est coupée à la durée
+de la vidéo, avec une entrée et une fin en fondu, et posée 16 dB sous la voix ; elle baisse encore quand la voix parle.
+
 Étapes : chaque son est ramené à un même pic (-6 dBFS) puis réglé par son gain, coupé à sa durée, filtré (passe-haut) et posé à son
-instant ; le groupe des bruitages passe dans un compresseur commandé par la voix (il baisse quand elle parle) ; voix + bruitages sont
-mesurés (LUFS intégrés) et amenés au niveau visé par un simple gain, puis un limiteur garde le pic sous -1,5 dBFS. Sortie en 48 kHz.
+instant ; le groupe des bruitages passe dans un compresseur commandé par la voix (il baisse quand elle parle), la musique aussi (plus
+doucement) ; le tout est mesuré (LUFS intégrés) et amené au niveau visé par un simple gain, puis un limiteur garde le pic sous
+-1,5 dBFS. Sortie en 48 kHz.
 """
 import json
 import os
@@ -17,6 +21,8 @@ ICI = os.path.dirname(os.path.abspath(__file__))
 NIVEAU_VISE = -15.0         # LUFS : la voix au premier plan, comme sur TikTok
 NIVEAU_SANS_VOIX = -18.0    # LUFS : les bruitages seuls restent discrets
 NIVEAU_VOIX = -15.0         # LUFS de la piste de voix avant le mélange : les gains des bruitages sont réglés pour elle
+NIVEAU_MUSIQUE = -31.0      # LUFS de la musique avant d'être baissée sous la voix : 16 dB sous la voix
+FORMATS_MUSIQUE = (".mp3", ".wav", ".m4a", ".aac", ".flac", ".ogg")
 
 
 def catalogue():
@@ -103,22 +109,72 @@ def piste_bruitages(reperes, dossier_sons, duree, sortie):
     return sortie, sorted(set(manquants))
 
 
-def assembler(video_muette, voix, bruitages, sortie, dossier_travail):
-    """La vidéo finale : l'image muette + la voix + les bruitages baissés sous la voix, au niveau visé, en AAC 48 kHz."""
-    melange = os.path.join(dossier_travail, "melange.wav")
-    if voix and bruitages:
-        filtre = ("[0:a]asplit=2[vx][cle];[1:a][cle]sidechaincompress=threshold=0.03:ratio=8:attack=8:release=280:makeup=1,"
-                  "asplit=2[sfx][sfx_seuls];[vx][sfx]amix=inputs=2:normalize=0[o]")
-        entrees = ["-i", voix, "-i", bruitages]
-    elif voix or bruitages:
-        filtre, entrees = "[0:a]anull[o]", ["-i", voix or bruitages]
-    else:
+def choisir_musique(reglage, jour):
+    """Le morceau du jour : le fichier donné, ou, pour un dossier, un de ses morceaux choisi par la date (le même si on refait la vidéo)."""
+    if not reglage:
+        return None
+    chemin = os.path.expanduser(reglage)
+    if os.path.isdir(chemin):
+        morceaux = sorted(f for f in os.listdir(chemin) if f.lower().endswith(FORMATS_MUSIQUE) and not f.startswith("."))
+        return os.path.join(chemin, morceaux[jour.toordinal() % len(morceaux)]) if morceaux else None
+    return chemin if os.path.exists(chemin) else None
+
+
+def piste_musique(reglage, jour, duree, sortie, journal=print):
+    """La musique de fond coupée à la durée de la vidéo (fondu d'entrée 0,4 s, de sortie 1,8 s), à NIVEAU_MUSIQUE. None sans musique."""
+    morceau = choisir_musique(reglage, jour)
+    if not morceau:
+        if reglage:
+            journal(f"Musique introuvable ({reglage}) : la vidéo est faite sans musique.")
+        return None
+    fin = max(0.0, duree - 1.8)
+    brute = sortie[:-4] + "-brute.wav"
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-stream_loop", "-1", "-i", morceau, "-t", f"{duree:.3f}", "-af",
+                    f"aresample=48000,aformat=channel_layouts=stereo,highpass=f=45,afade=t=in:d=0.4,afade=t=out:st={fin:.3f}:d=1.8",
+                    "-ar", "48000", "-c:a", "pcm_s24le", brute], check=True)
+    mesure = _lufs(brute)
+    gain = (NIVEAU_MUSIQUE - mesure) if mesure is not None and mesure > -70 else 0.0
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", brute, "-af", f"volume={gain:.2f}dB", "-ar", "48000", "-c:a", "pcm_s24le", sortie],
+                   check=True)
+    os.remove(brute)
+    return sortie
+
+
+def assembler(video_muette, voix, bruitages, sortie, dossier_travail, musique=None):
+    """La vidéo finale : l'image muette + la voix + les bruitages et la musique baissés sous la voix, au niveau visé, en AAC 48 kHz."""
+    pistes = [p for p in (voix, bruitages, musique) if p]
+    if not pistes:
         subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", video_muette, "-c", "copy", sortie], check=True)
         return sortie
-    sous_voix = ["-map", "[sfx_seuls]", "-ar", "48000", "-c:a", "pcm_s24le", os.path.join(dossier_travail, "bruitages-sous-voix.wav")] \
-        if voix and bruitages else []
-    subprocess.run(["ffmpeg", "-v", "error", "-y", *entrees, "-filter_complex", filtre, "-map", "[o]", "-ar", "48000",
-                    "-c:a", "pcm_s24le", melange, *sous_voix], check=True)
+    melange = os.path.join(dossier_travail, "melange.wav")
+    entrees, filtres, a_mixer, extra = [], [], [], []
+    for p in pistes:
+        entrees += ["-i", p]
+    k = 0
+    if voix:
+        cles = (1 if bruitages else 0) + (1 if musique else 0)
+        filtres.append(f"[0:a]asplit={cles + 1}[vx]" + "".join(f"[cle{c}]" for c in range(cles)) if cles else "[0:a]anull[vx]")
+        a_mixer.append("[vx]")
+        k = 1
+    c = 0
+    if bruitages:
+        if voix:
+            filtres.append(f"[{k}:a][cle{c}]sidechaincompress=threshold=0.03:ratio=8:attack=8:release=280:makeup=1,asplit=2[sfx][sfx_seuls]")
+            extra = ["-map", "[sfx_seuls]", "-ar", "48000", "-c:a", "pcm_s24le", os.path.join(dossier_travail, "bruitages-sous-voix.wav")]
+            c += 1
+        else:
+            filtres.append(f"[{k}:a]anull[sfx]")
+        a_mixer.append("[sfx]")
+        k += 1
+    if musique:
+        if voix:      # la musique baisse d'environ 4 dB quand la voix parle, et remonte doucement entre les phrases
+            filtres.append(f"[{k}:a][cle{c}]sidechaincompress=threshold=0.02:ratio=3:attack=30:release=600:makeup=1[mus]")
+        else:
+            filtres.append(f"[{k}:a]anull[mus]")
+        a_mixer.append("[mus]")
+    filtres.append("".join(a_mixer) + f"amix=inputs={len(a_mixer)}:normalize=0[o]" if len(a_mixer) > 1 else f"{a_mixer[0]}anull[o]")
+    subprocess.run(["ffmpeg", "-v", "error", "-y", *entrees, "-filter_complex", ";".join(filtres), "-map", "[o]", "-ar", "48000",
+                    "-c:a", "pcm_s24le", melange, *extra], check=True)
     mesure = _lufs(melange)
     vise = NIVEAU_VISE if voix else NIVEAU_SANS_VOIX
     gain = (vise - mesure) if mesure is not None and mesure > -70 else 0.0

@@ -3,23 +3,37 @@
 L'outil qui fabrique les vidéos TikTok d'Étrave en motion design, dans l'habillage de l'interface (la carte marine : papier,
 encre, bleu du logo, chiffres en DIN) :
 
-- **le récap de chaque séance** : la date, puis une scène par marché (Nasdaq 100, S&P 500) avec le graphique M5 du jour, la zone
-  des 5 premières minutes, chaque entrée et chaque sortie, le résultat en R, puis le bilan de la journée ;
+- **le récap de chaque séance** :
+  - la date et la couleur de la journée (« Journée rouge », « Journée verte ») ;
+  - une scène par marché (Nasdaq 100, S&P 500) : le graphique M5 du jour, la zone des 5 premières minutes, puis la caméra qui
+    s'arrête sur la cassure et l'entrée, sur les stops, sur les sorties de fin de séance, et le résultat en R qui compte jusqu'à
+    sa valeur ;
+  - le bilan de la journée ;
 - **la présentation de la chaîne** : 47,6 s, rejouée à l'identique à partir d'un profil local.
 
-La voix off est le clone ElevenLabs de ta voix. Les bruitages sont de vrais enregistrements (Mixkit). L'image est rendue par
+La voix off est le clone ElevenLabs de ta voix, réglée pour avoir de l'énergie (débit 1,08, plus d'intonation). Les bruitages
+sont de vrais enregistrements (Mixkit). La musique de fond est un morceau à toi, posé sous la voix. L'image est rendue par
 [HyperFrames](https://hyperframes.dev), le son est mixé par ffmpeg.
 
 ## Ce que dit un récap
 
 Exemple de texte lu (tout est écrit à partir des journaux de l'EA, les heures en heure de Paris) :
 
-> Récap de la séance du jeudi seize avril.
-> Nasdaq : le prix sort de la zone par le bas à quinze heures trente-six. Cinq positions à la vente : trois stops touchés, deux
-> sorties en fin de séance. Résultat : moins deux virgule soixante-sept R. Un R, c'est le risque pris sur un trade.
-> Bilan du jour : moins deux virgule soixante-sept R. Une séance qui forge le caractère. Chaque séance est sur le Telegram, lien en bio.
+> Mercredi dix-huit novembre. Journée rouge pour le robot… on regarde ça !
+> Nasdaq. Quinze heures trente-cinq : le prix casse la zone par le bas. Le robot vend : cinq positions. Un stop touché… et quatre
+> sorties en fin de séance. Résultat : moins un virgule cinq R. Un R, c'est le risque pris sur un trade.
+> Même scénario sur le S et P cinq cents : un stop touché… et quatre sorties en fin de séance. Résultat : moins zéro virgule
+> cinquante-six R.
+> Bilan du jour : moins deux virgule zéro six R. Les pertes font partie du jeu. On les montre aussi. Chaque séance est sur le
+> Telegram : lien en bio !
 
 - Les gains et les pertes sont montrés de la même façon.
+- **Les couleurs ont un seul sens chacune** :
+  - le vert et le rouge disent le résultat (le R, les ronds de sortie, les étiquettes des sorties, le total) ;
+  - le jaune surligne la cassure et la bougie où la caméra s'arrête ;
+  - le bleu et l'encre disent achat et vente.
+- Chaque arrêt de la caméra tombe sur le mot de la voix qui le dit, et dure au moins 1,5 s : le temps de lire l'étiquette.
+- Quand le deuxième marché a vécu la même séance que le premier, la voix dit « Même scénario » au lieu de tout répéter.
 - Un petit mot léger termine le bilan. Il change selon le résultat (perte, gain, pas de trade) et selon la date : refaire la même
   vidéo redonne le même mot.
 - **Ce qui reste secret ne sort jamais** :
@@ -43,11 +57,16 @@ Exemple de texte lu (tout est écrit à partir des journaux de l'EA, les heures 
    - `voix_id` est l'identifiant de ton clone (page Voices d'ElevenLabs).
 4. **Bruitages** : `python3 video/outil.py sons` télécharge les 31 sons Mixkit dans le dossier `sons` de ta configuration. Leur
    licence permet l'usage commercial dans des vidéos, mais pas de les redistribuer seuls : c'est pourquoi ils ne sont pas dans le dépôt.
-5. **Police** : DIN Alternate Bold, fournie avec macOS (`/System/Library/Fonts/Supplemental/DIN Alternate Bold.ttf`). Sous Windows,
+5. **Musique de fond** (facultative) : un morceau, ou un dossier de morceaux (un par jour, choisi par la date), dans `musique`.
+   Elle est coupée à la durée de la vidéo, en fondu, 16 dB sous la voix, et baisse encore quand la voix parle. Elle n'est jamais
+   dans le dépôt. Un morceau fait avec ElevenLabs Music sur un plan payant peut servir sur les réseaux sociaux (pas au cinéma, à
+   la télévision ni à la radio : conditions d'ElevenLabs). Sans morceau, la vidéo est faite sans musique ; tu peux aussi ajouter un
+   son de TikTok à la publication.
+6. **Police** : DIN Alternate Bold, fournie avec macOS (`/System/Library/Fonts/Supplemental/DIN Alternate Bold.ttf`). Sous Windows,
    indique dans `police` le chemin d'un fichier DIN que tu possèdes.
-6. **L'EA** : le récap a besoin du journal des bougies (`bougies-<symbole>.csv`). Il est écrit par l'EA de cette branche, une fois
+7. **L'EA** : le récap a besoin du journal des bougies (`bougies-<symbole>.csv`). Il est écrit par l'EA de cette branche, une fois
    par jour, avec la ligne « fin » de la séance. Installe-le, compile-le (F7) : le premier récap sera possible après la séance suivante.
-7. `python3 video/outil.py verifier` dit ce qui est prêt et ce qui manque.
+8. `python3 video/outil.py verifier` dit ce qui est prêt et ce qui manque.
 
 ## Utilisation
 
@@ -91,6 +110,7 @@ indique leur dossier dans `dossier_journaux`.
 | `dossier_journaux` | le dossier `…\Common\Files\Etrave` de MetaTrader (trouvé tout seul sous Windows et avec MetaTrader pour Mac) |
 | `voix_id`, `modele_voix`, `cle_elevenlabs` | la voix (sans `voix_id`, la vidéo est faite sans voix) |
 | `sons` | le dossier des bruitages Mixkit |
+| `musique` | un morceau ou un dossier de morceaux pour la musique de fond (facultatif) |
 | `police` | le fichier DIN Alternate Bold |
 | `unite` | `r` (par défaut), `pourcent` (du solde, d'après le journal des trades du compte), `points`, ou `auto` |
 | `sortie` | où écrire les vidéos |
@@ -104,7 +124,8 @@ journee.py       lit une séance dans les journaux de l'EA (heures de Paris par 
 recap.py         écrit les scènes du récap et le minutage calé sur la voix, rend l'image, assemble le son
 presentation.py  remplit le modèle de la présentation avec le profil, rend et mixe
 voix.py          ElevenLabs (clone de ta voix), heure de chaque mot, cache des répliques
-mixage.py        ffmpeg : voix, bruitages baissés sous la voix, niveau final
+mixage.py        ffmpeg : voix, bruitages et musique baissés sous la voix, niveau final
+police.py        largeur des textes dans la police DIN, pour que les étiquettes restent dans les zones sûres de TikTok
 nombres.py       nombres, heures et dates en toutes lettres pour la voix
 sons.json        le catalogue des bruitages (nom, adresse Mixkit)
 modeles/presentation/   le projet HyperFrames de la présentation, avec des {{…}} à la place de ce qui est personnel

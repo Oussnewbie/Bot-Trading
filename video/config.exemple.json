@@ -4,6 +4,7 @@
  "modele_voix": "eleven_v4",
  "cle_elevenlabs": "~/.config/elevenlabs/cle",
  "sons": "~/Documents/Etrave-video/sons",
+ "musique": "~/Documents/Etrave-video/musique",
  "police": "/System/Library/Fonts/Supplemental/DIN Alternate Bold.ttf",
  "unite": "r",
  "sortie": "~/Documents/Etrave-video",
