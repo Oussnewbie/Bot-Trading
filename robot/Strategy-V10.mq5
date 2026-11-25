@@ -34,8 +34,8 @@
 //                 bougies (marge B_BUF_PB = 0,5 pb du prix), écart multiplié par 3.
 //  9. D1 à D3, continuations : à la clôture des bougies de 9:35, 9:40 et 9:45, tant que A est ouverte et que l'autre bord du range
 //                 n'a pas été touché depuis la cassure, l'EA guette 10 minutes le dépassement de l'extrême de la bougie (aucun ordre
-//                 chez le courtier) et entre au marché. Stop à l'autre extrême de la bougie, écart multiplié par 3 et compté depuis le
-//                 déclenchement (X-13). Guet annulé si le prix touche d'abord ce stop.
+//                 chez le courtier) et entre au marché. Guet annulé si le prix touche d'abord l'autre extrême de la bougie. Stop à
+//                 cet autre extrême, écart multiplié par 3 et compté depuis le déclenchement (X-13).
 // 10. B et D suivent la gestion de A dans leur propre R (stop à l'entrée à +1,5R, pyramide à +2R), ne prennent jamais plus de
 //                 lots ni plus de risque que A (en lots fixes, une jambe au stop plus large que A est donc sautée) et restent
 //                 ouvertes si A sort avant elles. Jusqu'à 5 positions ensemble, toutes dans le même sens.

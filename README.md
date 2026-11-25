@@ -74,8 +74,8 @@ feront.
 
 - La dernière ligne est une bonne année (+76 R, contre environ +51 R pour une année médiane).
 - Le glissement réel compte beaucoup : avec 3 points par exécution au lieu de 1, le gain baisse d'environ 37 % et la pire baisse double.
-- Le S&P 500 gagne nettement moins que le Nasdaq et dépend davantage des coûts : sur les 12 mois du testeur, à 0,25 %, environ
-  +47 R contre environ +84 R pour le Nasdaq (avant le correctif X-13). Le Dow Jones est exclu : testé tel quel, il ne gagne rien.
+- Le S&P 500 a été testé avec ces règles (prix du courtier 2019-2026, données déjà vues, et 12 mois dans le testeur) : il gagne
+  nettement moins que le Nasdaq et dépend davantage des coûts. Le Dow Jones est exclu : testé tel quel, il ne gagne rien.
 - Le capital peut stagner longtemps : jusqu'à 20 mois sans nouveau plus haut dans les tests 2018-2026.
 
 ## Installer l'EA dans MetaTrader 5
