@@ -40,6 +40,9 @@ X_DROITE, X_DROITE_BAS, Y_FIN = 960, 780, 1260       # bords des zones sûres
 # VID-26 (audit du 26/11/2026) : la dernière bougie finissait sur le bord droit, et les ronds des sorties de 21:50 (rayon 11, décalés
 # de 7 quand un vert et un rouge se partagent l'endroit) étaient coupés à moitié par le cadre. Les bougies s'arrêtent avant.
 GOUTTIERE = 22
+# VID-31 (26/11/2026, choix de l'utilisateur) : le vert et le rouge sont réservés au résultat. Le chemin du prix (« Jusqu'à +106 pts »,
+# trait et point) était vert même un jour perdant, et l'épingle des photos rouge même un jour gagnant : ils sont bleus (le bleu d'Étrave).
+COUL_CHEMIN = "#2f7bd9"
 ZOOM = 2.2                                           # la caméra sur une bougie
 ARRET = 1.5                                          # durée minimale d'un arrêt de la caméra (le temps de lire l'étiquette)
 COUL = {"papier": "#f6f8fa", "eau": "#e2edf5", "grille": "#dde4ea", "axe": "#94a3b2", "encre": "#18222e", "encre2": "#46546a",
@@ -664,7 +667,7 @@ def scene_marche(j, m, k, rep, unite, duree, expliquer_r=False, precedent=None):
                 ex = extreme(p) if (pts is not None and pts > 0) or _avance(p) else None
                 pastilles = []
                 if ex:
-                    pastilles.append(["exc", f"Jusqu'à {pts_ecran(p['mfe'])}", COUL["vert"], COUL["blanc"],
+                    pastilles.append(["exc", f"Jusqu'à {pts_ecran(p['mfe'])}", COUL_CHEMIN, COUL["blanc"],
                                       _instant_apres(rep, ancres.get(nom), "jusqu", "va")])
                 texte = f"Stop {pts_ecran(pts)}" if pts is not None else f"Stop {p['sortie']:%H:%M}"
                 pastilles.append(["sortie", texte, couleur(_r_pos(p)), COUL["blanc"], _instant_apres(rep, ancres.get(nom), "stop", "sort")])
@@ -679,7 +682,7 @@ def scene_marche(j, m, k, rep, unite, duree, expliquer_r=False, precedent=None):
                 if ex:
                     mots_fin = phrase_fins(f, mfe_deja_dit(m, f)).split()      # le dernier « jusqu'à » : celui des points, pas « jusqu'à la fin »
                     rang_jusqu = max((r for r, w in enumerate(mots_fin) if w == "jusqu'à"), default=None)
-                    pastilles.append(["exc", f"Jusqu'à {pts_ecran(rep_p['p']['mfe'])}", COUL["vert"], COUL["blanc"],
+                    pastilles.append(["exc", f"Jusqu'à {pts_ecran(rep_p['p']['mfe'])}", COUL_CHEMIN, COUL["blanc"],
                                       _mot(rep, ancres[nom] + rang_jusqu) if rang_jusqu is not None and ancres.get(nom) is not None else None])
             cadre = [rep_p["entree"], cible["sortie"]] + ([ex] if ex else [])
             arrets.append({"nom": nom, "t": t0, "cadre": cadre, "ancre": cible["sortie"], "rep": rep_p if ex else None, "ex": ex,
@@ -788,9 +791,9 @@ def scene_marche(j, m, k, rep, unite, duree, expliquer_r=False, precedent=None):
         focus.append(f'<g id="{ident}-f{a_i}" opacity="0">{_bougie(cb, b[i_b], y, pas, COUL["encre"])}</g>')
         if a.get("ex"):
             (xe, ye), (xx, yx) = a["rep"]["entree"], a["ex"]
-            focus.append(f'<g id="{ident}-x{a_i}" opacity="0"><line x1="{xe:.1f}" y1="{ye:.1f}" x2="{xx:.1f}" y2="{yx:.1f}" stroke="{COUL["vert"]}" '
+            focus.append(f'<g id="{ident}-x{a_i}" opacity="0"><line x1="{xe:.1f}" y1="{ye:.1f}" x2="{xx:.1f}" y2="{yx:.1f}" stroke="{COUL_CHEMIN}" '
                          f'stroke-width="4" stroke-dasharray="10 7" vector-effect="non-scaling-stroke" />'
-                         f'<circle cx="{xx:.1f}" cy="{yx:.1f}" r="6" fill="{COUL["vert"]}" stroke="{COUL["blanc"]}" stroke-width="2" /></g>')
+                         f'<circle cx="{xx:.1f}" cy="{yx:.1f}" r="6" fill="{COUL_CHEMIN}" stroke="{COUL["blanc"]}" stroke-width="2" /></g>')
         focus.append(f'<circle id="{ident}-o{a_i}" cx="{px:.1f}" cy="{py:.1f}" r="4" fill="none" stroke="{a["pastilles"][-1][2] if a["nom"] == "entree" else next(q[2] for q in a["pastilles"] if q[0] == "sortie")}" '
                      f'stroke-width="3" vector-effect="non-scaling-stroke" opacity="0" />')
         pastilles = [(f"{ident}-a{a_i}-{q[0]}", q[1], q[2], q[3]) for q in a["pastilles"]]
@@ -1083,7 +1086,7 @@ def scene_preuve(ident, preuve, rep, date_txt, titre="Dans MetaTrader"):
     .{ident}-carte img {{ display: block; width: 100%; border: 1px solid {COUL['grille']}; }}
     .{ident}-legende {{ font-size: 28px; line-height: 52px; color: {COUL['encre2']}; white-space: nowrap; }}
     .{ident}-epingle {{ position: absolute; left: 50%; top: -16px; width: 32px; height: 32px; margin-left: -16px; border-radius: 50%;
-      background: radial-gradient(circle at 35% 35%, #ff8a8d 0, {COUL['rouge']} 45%, #9e1f24 100%); box-shadow: 0 6px 10px rgba(0,0,0,0.35); }}"""
+      background: radial-gradient(circle at 35% 35%, #8fbcf2 0, {COUL['bleu']} 45%, #1c4f8f 100%); box-shadow: 0 6px 10px rgba(0,0,0,0.35); }}"""
     html_ = f"""    <div class="date" id="{ident}-date">{e(date_txt)}</div>
     <div id="{ident}-nom">{e(titre)}</div>
     {chr(10).join(corps)}

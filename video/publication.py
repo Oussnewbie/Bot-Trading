@@ -177,7 +177,9 @@ def auto(config, dossier_journaux, journal=print, aujourd_hui=None):
         try:
             j = journee.charger(dossier_journaux, jour)
         except journee.JourneeIncomplete as err:
+            # VID-32 (26/11/2026) : une séance illisible n'était notée que dans le journal ; la notification la fait corriger
             journal(f"{jour} : pas de vidéo. {err}")
+            prevenir("Étrave : séance illisible", f"{nombres.date_courte(jour)} : {str(err)[:150]}")
             continue
         if not j["trades"] and not config.get("auto_sans_trade"):
             continue
@@ -219,6 +221,8 @@ def auto(config, dossier_journaux, journal=print, aujourd_hui=None):
             p = recap_periode.charger(dossier_journaux, debut, fin, genre)
         except journee.JourneeIncomplete as err:      # VID-07 : jamais de période avec une séance en moins
             journal(f"{genre} du {debut.isoformat()} : pas de vidéo. {err}")
+            # VID-32 : la période attend que la séance soit corrigée ; la notification dit laquelle
+            prevenir("Étrave : récap bloqué", f"{genre.capitalize()} du {nombres.date_courte(debut)} : {str(err)[:140]}")
             continue
         cible = os.path.join(racine, recap_periode.nom_dossier(p))
         if (os.path.isdir(cible) and any(n.endswith(".mp4") for n in os.listdir(cible))) or not p["jours"]:

@@ -826,3 +826,29 @@ def test_meme_creux_dit_une_seule_fois_et_meme_scenario_avec_les_memes_resultats
     perte = dict(fin, r=-0.4, points=-40)
     g = dict(f, fins=[perte])
     assert recap.meme_scenario(f, dict(f)) and not recap.meme_scenario(f, g)
+
+
+def test_vert_et_rouge_seulement_pour_le_resultat():
+    """VID-31 (choix de l'utilisateur) : le chemin du prix (« Jusqu'à … pts », trait, point) et l'épingle des photos sont bleus ; le
+    vert et le rouge ne disent que gagné ou perdu."""
+    code = source_de("recap.py")
+    assert recap.COUL_CHEMIN == recap.COUL["bleu"]
+    assert code.count('f"Jusqu\'à {pts_ecran(') == 2 and 'COUL["vert"], COUL["blanc"],\n                                      _instant_apres' not in code
+    assert all("COUL_CHEMIN" in l for l in code.splitlines() if '["exc", f"Jusqu\'à' in l)
+    epingle = code[code.index(".{ident}-epingle {{"):code.index(".{ident}-epingle {{") + 400]
+    assert "COUL['bleu']" in epingle and "rouge" not in epingle
+
+
+def test_seance_illisible_et_recap_bloque_previennent(tmp_path, monkeypatch):
+    """VID-32 : une séance illisible, et la semaine qu'elle bloque, envoient une notification (avant : le journal seulement)."""
+    journaux = tmp_path / "journaux"
+    journaux.mkdir()
+    ecrire_journee(str(journaux), datetime.date(2026, 4, 14))
+    with open(journaux / "trades-NDX100.csv", "w", encoding="utf-8") as f:     # un trade que l'exécution ne retrouve pas
+        f.write("1776196200;2026-04-14;15:50;NDX100;1;0.10;-1.0000;-999.00;1000.00;Stop;0;USD\r\n")
+    notes = []
+    monkeypatch.setattr(publication, "prevenir", lambda titre, texte: notes.append(titre))
+    monkeypatch.setattr(publication.recap, "fabriquer", lambda *a, **k: pytest.fail("pas de vidéo pour une séance illisible"))
+    config = {"sortie": str(tmp_path / "rendus"), "dossier_publication": str(tmp_path / "bureau"), "auto_depuis": "2026-04-13"}
+    assert publication.auto(config, str(journaux), lambda t: None, datetime.date(2026, 4, 20)) == []
+    assert "Étrave : séance illisible" in notes and "Étrave : récap bloqué" in notes

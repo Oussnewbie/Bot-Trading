@@ -154,6 +154,8 @@ python3 video/outil.py installer
 - Le journal du mode automatique est `recap-auto.log`, dans le dossier de l'outil copié
   (`~/Library/Application Support/Etrave/outil-video`). Sous Windows, c'est l'historique des tâches « Etrave recap auto » du
   Planificateur de tâches.
+- Une séance illisible (journal abîmé, trade que le journal d'exécution ne retrouve pas) n'est pas publiée, et la semaine ou le
+  mois qui la contient attend : une notification le dit, pour la corriger.
 - **Jamais de vidéo muette** (seul `recap --sans-voix`, pour un essai, en fait une). Si la voix échoue, la séance n'est pas publiée
   et elle est refaite au lancement suivant. Une coupure du réseau ou une surcharge d'ElevenLabs est réessayée tout de suite (3 essais
   sur 40 s). La notification et `recap-auto.log` disent la cause et quoi faire : crédits épuisés, clé refusée, voix introuvable,

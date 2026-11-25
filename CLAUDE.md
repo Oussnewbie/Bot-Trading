@@ -28,7 +28,7 @@ robot/     Strategy-V10.mq5, Strategy-V10.pine, test_robot.py (contrôles du cod
 etrave/    interface web locale de l'EA (Python sans dépendance), export.py (export trimestriel) + test_interface.py, test_export.py
 video/     (branche communication/outil-video) vidéos TikTok : récap de séance et présentation, `python3 video/outil.py` ; README
 ```
-- Tests : `.venv/bin/python -m pytest robot etrave video -q` (172 tests ; sur `main`, sans `video` : 109). Le `.venv` du dépôt tourne sous Python 3.15.
+- Tests : `.venv/bin/python -m pytest robot etrave video -q` (174 tests ; sur `main`, sans `video` : 109). Le `.venv` du dépôt tourne sous Python 3.15.
 - Étrave en essai : `.venv/bin/python etrave/etrave.py --sans-navigateur --port 8799 --dossier <dossier jetable>`, puis
   `http://127.0.0.1:8799`. Pour voir la page avec des données, écrire de faux `etat-<symbole>.txt` (format dans
   `etrave/test_interface.py`, `faux_etat`) et un `trades-<symbole>.csv`, et les réécrire toutes les 2 secondes (au-delà de 15 s sans
@@ -129,7 +129,7 @@ video/     (branche communication/outil-video) vidéos TikTok : récap de séanc
   Preuve : photo de l'onglet Historique de MetaTrader prise par l'outil le soir même (`video/historique.py`, à régler une fois),
   épinglée avec le R en fin de vidéo ; jamais d'image fabriquée à la place. Récap : voix en une seule prise par vidéo (`voix.recit`, sinon le timbre change d'une scène à l'autre), chemin du prix en points
   (mfe du journal d'exécution), mode automatique (`outil.py installer` : agent launchd
-  `com.etrave.recap-auto`, outil copié dans `~/Library/Application Support/Etrave/outil-video`, dossiers du jour sur le Bureau), vert et rouge réservés au résultat, caméra calée sur les mots de la voix (`voix.instant`), arrêts d'au moins 1,5 s,
+  `com.etrave.recap-auto`, outil copié dans `~/Library/Application Support/Etrave/outil-video`, dossiers du jour sur le Bureau), vert et rouge réservés au résultat (chemin du prix « Jusqu'à … pts » et épingle des photos en bleu, VID-31), caméra calée sur les mots de la voix (`voix.instant`), arrêts d'au moins 1,5 s,
   étiquettes posées dans les zones sûres de TikTok (`police.py` mesure les textes ; un test le vérifie). Musique facultative
   (`musique` de la configuration), jamais dans le dépôt. **Jamais de vidéo muette** (VID-18 à VID-22) : sans voix, pas de
   publication, nouvel essai au lancement suivant, la notification dit la cause ; `outil.py verifier` lit la clé, la voix et les
@@ -163,7 +163,8 @@ video/     (branche communication/outil-video) vidéos TikTok : récap de séanc
     écritures sûres, contrôle de la clé et des crédits). Audit des vidéos du 26/11/2026 : VID-23 (bruitages hachés par la voix),
     VID-25 et VID-26 (bougies sur l'axe en zoom, ronds de 21:50 coupés au bord), VID-27 (groupe de sorties mêlé ni vert ni rouge,
     « Un autre stop suit, en perte »), VID-28 (le même creux dit une fois), VID-29 (« Même scénario » seulement avec les mêmes
-    résultats), VID-30 (contrôle du son). VID-24 : voix de la présentation à vitesse naturelle (hors dépôt). En-têtes de l'EA et du Pine réécrits (ils disaient « Nasdaq uniquement »).
+    résultats), VID-30 (contrôle du son), VID-31 (chemin du prix et épingle en bleu), VID-32 (notification d'une séance illisible ou
+    d'un récap bloqué). VID-24 : voix de la présentation à vitesse naturelle (hors dépôt). En-têtes de l'EA et du Pine réécrits (ils disaient « Nasdaq uniquement »).
   - **Encore ouverts** :
     - X-11 / ET-04 : deux terminaux sur un même ordinateur partagent `reglages.txt` et les clôtures (règle d'usage dans le README) ;
     - X-02 : les sorties et le stop virtuel exigent un EA en marche (VPS) ;
@@ -177,8 +178,8 @@ video/     (branche communication/outil-video) vidéos TikTok : récap de séanc
       bougie de 9:35 disparaît sans message ; `JournalFlush(true)` dans `OnDeinit` peut dépasser le délai de MetaTrader ;
     - Étrave : l'export ne sépare pas démo et réel (colonne `source` des journaux ; « pas grave » pour l'utilisateur). Réglé le
       26/11/2026 : l'interrupteur est jugé marché par marché (ET-16) ;
-    - Vidéo, à décider avec l'utilisateur : le trait « Jusqu'à +106 pts » est vert et l'épingle des photos rouge, alors que vert et
-      rouge sont réservés au résultat ; sur Mac, la capture de MetaTrader n'est pas contrôlée (écran verrouillé).
+    - Vidéo : sur Mac, la capture de MetaTrader n'est pas contrôlée (écran verrouillé). Réglé le 26/11/2026 : chemin du prix et
+      épingle en bleu (VID-31) ; une séance illisible et la semaine ou le mois qu'elle bloque envoient une notification (VID-32) ;
 - Test des stops (25/11/2026, pré-enregistré, historique déjà vu) : fermer B/D au stop de A ≈ neutre ; B/D à l'entrée dès +0,5R,
   stop à +0,5R au lieu de l'entrée, A à l'entrée quand une jambe part : moins bons. Les stops restent tels quels.
 
