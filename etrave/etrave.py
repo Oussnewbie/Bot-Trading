@@ -15,12 +15,12 @@ Sécurité, comme le dashboard de Vigie — cette page peut changer le risque et
  - aucune autorisation n'est donnée aux autres origines, et la page ne charge aucune ressource extérieure.
 """
 import argparse
-import datetime
 import hmac
 import json
 import os
 import re
 import secrets
+import socket
 import sys
 import threading
 import time
@@ -49,7 +49,8 @@ EN_TETE_JETON = "x-etrave-jeton"
 MT5_OUVERT_CACHE_S = 5.0
 # Export trimestriel automatique : au démarrage, puis toutes les 6 heures (un trimestre terminé est exporté une seule fois).
 EXPORT_PERIODE_S = 6 * 3600
-TRIMESTRE = re.compile(r"^\d{4}-T[1-4]$")
+# Correctif ET-09 (audit du 25/11/2026) : fullmatch partout. Avec match, « $ » acceptait un retour à la ligne final.
+TRIMESTRE = re.compile(r"\d{4}-T[1-4]")
 
 
 class Erreur(Exception):
@@ -125,7 +126,7 @@ class Application:
 
     def exports(self):
         return {"exports": export.exports_faits(self.dossier), "dossier": export.dossier_exports(self.dossier),
-                "enCours": export.trimestre_de(datetime.date.today())}
+                "enCours": export.trimestre_de(export.aujourdhui_ny())}
 
     # ── routes
     def traiter(self, methode, chemin, parametres, corps):
@@ -137,8 +138,8 @@ class Application:
         if route == "GET /api/exports":
             return self.exports()
         if route == "POST /api/exports":
-            trimestre = corps.get("trimestre") or export.trimestre_de(datetime.date.today())
-            if not isinstance(trimestre, str) or not TRIMESTRE.match(trimestre):
+            trimestre = corps.get("trimestre") or export.trimestre_de(export.aujourdhui_ny())
+            if not isinstance(trimestre, str) or not TRIMESTRE.fullmatch(trimestre):
                 raise Erreur(400, "Trimestre illisible : il a la forme 2027-T1.")
             chemin_export, resume = export.exporter(self.dossier, trimestre)
             self.journal(f"export du trimestre {trimestre} écrit dans {chemin_export}")
@@ -200,6 +201,19 @@ class Application:
                 demarrage = self._mt5_demarrage(corps["demarrageWindows"], ICI)
             return {"ok": True, "reglages": pont.reglages_publics(self.dossier), "demarrageWindows": demarrage}
         raise Erreur(404, "Route inconnue")
+
+
+class Serveur(ThreadingHTTPServer):
+    """Correctif ET-05 (audit du 25/11/2026) : HTTPServer active SO_REUSEADDR. Sous Windows, cette option laisse un deuxième
+    programme écouter sur un port déjà pris : une deuxième Étrave (raccourci de démarrage puis double-clic sur Etrave.bat)
+    démarrait sur le même port, chacune avec son jeton, et la page recevait au hasard « Jeton absent ou invalide ».
+    Sous Windows, le port est donc réservé (SO_EXCLUSIVEADDRUSE) : la deuxième voit le port pris et ouvre la première."""
+    allow_reuse_address = not sys.platform.startswith("win")
+
+    def server_bind(self):
+        if sys.platform.startswith("win") and hasattr(socket, "SO_EXCLUSIVEADDRUSE"):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+        super().server_bind()
 
 
 def creer_serveur(dossier, port=PORT, **options):
@@ -280,7 +294,7 @@ def creer_serveur(dossier, port=PORT, **options):
             self.servir("POST")
 
     # 127.0.0.1 uniquement : jamais d'écoute sur le réseau.
-    serveur = ThreadingHTTPServer(("127.0.0.1", port), Requete)
+    serveur = Serveur(("127.0.0.1", port), Requete)
     serveur.daemon_threads = True
     serveur.jeton = jeton
     serveur.application = application

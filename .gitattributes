@@ -1,0 +1,5 @@
+# Fichiers lus par Windows (cmd.exe, MetaTrader) : fins de ligne Windows à l'extraction et dans le zip de GitHub.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ini text eol=crlf
+*.set text eol=crlf

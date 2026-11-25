@@ -48,7 +48,7 @@ REGLES = {
                             "Discussion Telegram : c’est un nombre (négatif pour un groupe). Le bouton « Trouver ma "
                             "discussion » le remplit pour toi."),
 }
-SYMBOLE = re.compile(r"^[A-Za-z0-9._#+-]{1,40}$")
+SYMBOLE = re.compile(r"[A-Za-z0-9._#+-]{1,40}")   # fullmatch (ET-09) : « $ » acceptait un « \n » final
 
 
 class Refus(Exception):
@@ -225,7 +225,7 @@ def enregistrer_connexions(dossier, valeurs):
             raise Refus("Valeur illisible.")
         motif, message = REGLES[cle]
         valeur = valeur.strip()
-        if valeur != "" and not motif.match(valeur):
+        if valeur != "" and not motif.fullmatch(valeur):
             raise Refus(message)
         changements[cle] = valeur or None
     return _modifier(dossier, changements)
@@ -259,7 +259,7 @@ def demander_cloture(dossier, symbole, confirmation, maintenant=None):
     correctif ; l'EA à jour lit les deux et n'exécute qu'une fois une même demande."""
     if confirmation != MOTS["cloturer"]:
         raise Refus("Confirmation manquante.")
-    if not isinstance(symbole, str) or not SYMBOLE.match(symbole):
+    if not isinstance(symbole, str) or not SYMBOLE.fullmatch(symbole):
         raise Refus("Symbole inconnu.")
     numero = str(int(time.time() if maintenant is None else maintenant))
     _modifier(dossier, {f"cloturer_{symbole}": f"{numero};{symbole}", "cloturer": f"{numero};{symbole}"})

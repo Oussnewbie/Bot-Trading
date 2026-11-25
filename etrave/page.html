@@ -249,7 +249,7 @@
         <h2>Exports trimestriels</h2>
         <button class="btn small" id="export-now" type="button">Exporter le trimestre en cours</button>
       </div>
-      <div class="hint">Après chaque trimestre, Étrave écrit tout seul un dossier avec les trades, le détail de l’exécution (prix visé et obtenu, spread, stops, gain et perte latents), les séances avec ou sans trade, et un résumé. Il le fait au premier démarrage qui suit la fin du trimestre, puis le garde.</div>
+      <div class="hint">Après chaque trimestre, Étrave écrit tout seul un dossier avec les trades, le détail de l’exécution (prix visé et obtenu, spread, stops, gain et perte latents), les séances avec ou sans trade, et un résumé. Il le fait trois jours après la fin du trimestre (au démarrage, puis toutes les 6 heures), puis le garde.</div>
       <div class="scroll" id="exports"></div>
     </div>
   </section>
@@ -414,7 +414,11 @@ const running = () => (state ? state.eas.filter((e) => e.en_marche) : []);
 /** L'EA qui renseigne le compte : un EA en marche, sinon le dernier état connu. */
 const account = () => running()[0] || (state && state.eas[0]) || null;
 const eaRisk = () => { const a = account(); return a && a.risque_pct != null ? a.risque_pct : null; };
-const currentRisk = () => (state && state.reglages.risquePct != null ? state.reglages.risquePct : eaRisk() != null ? eaRisk() : 0.5);
+// Correctif ET-06 (audit du 25/11/2026) : sans réglage enregistré ni EA vu, la page partait de 0,5 % (le double des 0,25 % de
+// l'EA) et l'enregistrait avec le levier : l'EA passait à 0,5 % sans que personne l'ait choisi. Elle part maintenant des 0,25 %
+// de l'EA, et le risque n'est envoyé que si on l'a touché (draft.risqueTouche).
+const RISQUE_EA = 0.25;
+const currentRisk = () => (state && state.reglages.risquePct != null ? state.reglages.risquePct : eaRisk() != null ? eaRisk() : RISQUE_EA);
 // Référence de la confirmation RISQUE : la même que pont.regler (le risque enregistré ici, sinon 0). Revue cloud du 25/11/2026 :
 // la page comparait au risque de l'EA, le serveur au fichier, et certains enregistrements étaient refusés sans dialogue.
 const savedRisk = () => (state && state.reglages.risquePct != null ? state.reglages.risquePct : 0);
@@ -783,12 +787,18 @@ function renderExports() {
     el('thead', {}, el('tr', {}, el('th', {}, 'Trimestre'), el('th', {}, 'État'), el('th', { class: 'num' }, 'Trades'), el('th', { class: 'num opt' }, 'Écrit le'), el('th', {}, ''))),
     el('tbody', {}, ...rows)));
 }
+let exportBusy = false;   // ET-12 : un export à la fois (double clic)
 async function exportNow(trimestre) {
+  if (exportBusy) return;
+  exportBusy = true;
+  $('export-now').disabled = true;
   try {
     const result = await api('/api/exports', trimestre ? { trimestre } : {});
     exportsInfo = result;
     toast(`Export ${result.trimestre} écrit.`);
   } catch (error) { toast(error.message); }
+  exportBusy = false;
+  $('export-now').disabled = false;
   renderExports();
 }
 
@@ -813,11 +823,15 @@ function renderRisk(fromInput) {
     : used == null ? 'L’EA n’a pas encore démarré : ce réglage sera pris à son lancement.'
     : state.reglages.risquePct == null ? `L’EA utilise ${riskText(used)}, réglé dans MetaTrader. Enregistre une valeur ici pour la piloter depuis cette page.`
     : same ? `L’EA utilise ${riskText(used)}, réglé ici.` : `Enregistré ici : ${riskText(state.reglages.risquePct)}. L’EA utilise encore ${riskText(used)}${a && a.en_marche ? ' (il relit ce réglage toutes les 2 secondes)' : ' : il est arrêté'}.`;
-  $('sum-risque').textContent = `${riskText(currentRisk())}${savedLever() ? ` · levier 1:${savedLever()}` : ''}`;
-  if (fromInput !== 'number') $('risk-input').value = Number.isFinite(draft.risque) ? draft.risque : '';
+  $('sum-risque').textContent = `${riskText(currentRisk())}${savedLever() ? `, levier 1:${savedLever()}` : ''}`;
+  // Correctif ET-13 (audit du 25/11/2026) : le rafraîchissement (toutes les 2 s) réécrivait le champ pendant la frappe. « 0. »
+  // n'est pas encore un nombre : le champ devenait « 0 », et la suite de la frappe donnait « 05 », soit 5 %. Un champ en cours de
+  // saisie n'est plus réécrit.
+  const typing = (id) => fromInput === 'poll' && document.activeElement === $(id);
+  if (fromInput !== 'number' && !typing('risk-input')) $('risk-input').value = Number.isFinite(draft.risque) ? draft.risque : '';
   if (fromInput !== 'slider' && validDraft()) $('risk-slider').value = riskToSlider(draft.risque);
-  if (fromInput !== 'lever') $('lever-input').value = draft.levier === null ? '' : draft.levier;
-  $('risk-presets').replaceChildren(...RISK_PRESETS.map((value) => el('button', { class: 'chip', 'aria-pressed': String(Math.abs(draft.risque - value) < 1e-9), onclick: () => { draft.risque = value; renderRisk(); loadSim(); } }, riskText(value))));
+  if (fromInput !== 'lever' && !typing('lever-input')) $('lever-input').value = draft.levier === null ? '' : draft.levier;
+  $('risk-presets').replaceChildren(...RISK_PRESETS.map((value) => el('button', { class: 'chip', 'aria-pressed': String(Math.abs(draft.risque - value) < 1e-9), onclick: () => { draft.risque = value; draft.risqueTouche = true; renderRisk(); loadSim(); } }, riskText(value))));
   const hint = a && a.levier_symbole ? `MetaTrader indique environ 1:${Math.round(a.levier_symbole)} sur ${a.symbole}${a.levier_compte ? ` (compte en 1:${Math.round(a.levier_compte)})` : ''}. Vide : l’EA s’en remet au calcul de MetaTrader.` : 'Vide : l’EA s’en remet au calcul de marge de MetaTrader. Exemple : 20 pour un levier de 1:20.';
   $('lever-hint').textContent = hint;
   const dirty = riskDirty();
@@ -845,7 +859,7 @@ function renderSim() {
   if (!sim || !draft) return host.replaceChildren(el('div', { class: 'empty' }, 'Calcul…'));
   const a = account();
   const s = sim;
-  $('sim-title').textContent = `${riskText(s.risquePct)} par trade${s.levier ? ` · levier 1:${s.levier}` : ''}`;
+  $('sim-title').textContent = `${riskText(s.risquePct)} par trade${s.levier ? `, levier 1:${s.levier}` : ''}`;
   $('sim-hint').textContent = `L’ancienne ORB v6 rejouée sur le Nasdaq du ${s.debut} au ${s.fin} (${s.trades} trades, ${String(s.annees).replace('.', ',')} ans), gains et pertes réinvestis.${s.levier ? '' : ' Sans levier saisi, la marge n’est pas prise en compte.'}`;
   const gain = s.parAnPct > 100000 ? 'plus de 100 000 %' : pctSigned(s.parAnPct, s.parAnPct < 100 ? 1 : 0);
   const tiles = [
@@ -868,7 +882,7 @@ function renderSim() {
 }
 async function saveRisk(confirmation) {
   const values = {};
-  if (Math.abs(draft.risque - currentRisk()) > 1e-9 || state.reglages.risquePct == null) values.risquePct = draft.risque;
+  if (draft.risqueTouche && (Math.abs(draft.risque - currentRisk()) > 1e-9 || state.reglages.risquePct == null)) values.risquePct = draft.risque;
   if (draft.levier !== savedLever()) values.levier = draft.levier;
   try {
     const result = await api('/api/reglages', { valeurs: values, confirmation: confirmation || '' });
@@ -1072,13 +1086,13 @@ function showTab(name) {
   if (name === 'connections') { renderConnections.drawn = false; renderConnections(); }
 }
 document.querySelectorAll('nav button').forEach((button) => button.addEventListener('click', () => showTab(button.dataset.tab)));
-$('risk-input').addEventListener('input', () => { draft.risque = Number(String($('risk-input').value).replace(',', '.')); renderRisk('number'); loadSim(); });
-$('risk-slider').addEventListener('input', () => { draft.risque = sliderToRisk(Number($('risk-slider').value)); renderRisk('slider'); loadSim(); });
+$('risk-input').addEventListener('input', () => { draft.risque = Number(String($('risk-input').value).replace(',', '.')); draft.risqueTouche = true; renderRisk('number'); loadSim(); });
+$('risk-slider').addEventListener('input', () => { draft.risque = sliderToRisk(Number($('risk-slider').value)); draft.risqueTouche = true; renderRisk('slider'); loadSim(); });
 $('lever-input').addEventListener('input', () => { const raw = $('lever-input').value.trim(); draft.levier = raw === '' ? null : Number(raw.replace(',', '.')); renderRisk('lever'); loadSim(); });
 $('risk-cancel').addEventListener('click', () => { draft = null; renderRisk(); loadSim(); });
 $('export-now').addEventListener('click', () => exportNow(null));
 $('risk-save').addEventListener('click', () => {
-  if (draft.risque > bounds().risqueAConfirmer && draft.risque > savedRisk()) {
+  if (draft.risqueTouche && draft.risque > bounds().risqueAConfirmer && draft.risque > savedRisk()) {
     $('risk-dlg-text').textContent = `Tu passes à ${riskText(draft.risque)} du solde par trade.${sim && sim.risquePct === draft.risque ? ` Dans le test, la pire baisse à ce risque est de ${num(sim.pireBaissePct, 0)} %, et ${sim.serie} pertes de suite coûtent ${num(sim.seriePct, 0)} % du compte.` : ''} Au-delà de ${riskText(bounds().risqueAConfirmer)}, c’est ton choix : rien dans le test ne le recommande.`;
     $('risk-word').value = '';
     $('risk-dlg-ok').disabled = true;

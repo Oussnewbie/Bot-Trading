@@ -4,6 +4,7 @@ import json
 import os
 import re
 import sys
+import threading
 
 import pytest
 
@@ -146,3 +147,42 @@ def test_routes_des_exports(dossier):
     app.exporter_trimestres_finis()                                           # ne lève jamais d'erreur
     page = open(os.path.join(ICI, "page.html"), encoding="utf-8").read()
     assert "api('/api/exports'" in page and "$('export-now').addEventListener('click', () => exportNow(null));" in page
+
+
+def test_interrupteur_indicatif_avant_60_jours(tmp_path):
+    """ET-11 : deux jours perdants ne disent pas « coupe le robot » ; à 60 jours, si."""
+    dossier = str(tmp_path)
+    ecrire(os.path.join(dossier, "trades-NDX100.csv"), [trade("2027-01-04", "NDX100", -1.0, -27.0), trade("2027-01-05", "NDX100", -1.0, -27.0)])
+    chemin, _ = export.exporter(dossier, "2027-T1", aujourdhui=datetime.date(2027, 4, 10))
+    texte = open(os.path.join(chemin, "resume.md"), encoding="utf-8").read()
+    assert "coupe le robot" not in texte and "à juger sur 60 jours de trade" in texte
+    trades = [{"date": (datetime.date(2027, 1, 1) + datetime.timedelta(days=i)).isoformat(), "r": -1.0} for i in range(60)]
+    assert export.interrupteur(trades, datetime.date(2027, 12, 31))["complet"]
+    assert 'verdict = "SEUIL FRANCHI : "' in open(os.path.join(ICI, "export.py"), encoding="utf-8").read()
+
+
+def test_date_du_jour_a_new_york():
+    """ET-10 : la date de New York, pas celle de l'ordinateur (Paris, VPS), et sans zoneinfo (Windows sans tzdata)."""
+    utc = lambda *a: datetime.datetime(*a, tzinfo=datetime.timezone.utc)
+    assert export.aujourdhui_ny(utc(2027, 4, 1, 3, 0)) == datetime.date(2027, 3, 31)     # 23:00 à New York, heure d'été
+    assert export.aujourdhui_ny(utc(2027, 1, 1, 4, 59)) == datetime.date(2026, 12, 31)   # 23:59 à New York, heure d'hiver
+    assert export.aujourdhui_ny(utc(2027, 3, 14, 6, 59)) == datetime.date(2027, 3, 14)   # 1:59, juste avant le passage à l'heure d'été
+    assert export.aujourdhui_ny(utc(2027, 11, 7, 4, 30)) == datetime.date(2027, 11, 7)   # 0:30, encore en heure d'été
+    source = open(os.path.join(ICI, "export.py"), encoding="utf-8").read() + open(os.path.join(ICI, "etrave.py"), encoding="utf-8").read()
+    assert "date.today()" not in source and "import zoneinfo" not in source and "from zoneinfo" not in source
+
+
+def test_un_export_a_la_fois(dossier):
+    """ET-12 : un double clic lançait deux exports sur le même dossier provisoire ; le renommage réessaie sous Windows."""
+    resultats = []
+    fils = [threading.Thread(target=lambda: resultats.append(export.exporter(dossier, "2027-T1", aujourdhui=datetime.date(2027, 4, 10))))
+            for _ in range(3)]
+    for f in fils:
+        f.start()
+    for f in fils:
+        f.join()
+    assert len(resultats) == 3 and sorted(os.listdir(os.path.join(dossier, export.SOUS_DOSSIER))) == ["2027-T1"]
+    source = open(os.path.join(ICI, "export.py"), encoding="utf-8").read()
+    assert "with _VERROU_EXPORT:" in source and "_remplacer(provisoire, final)" in source and "os.replace(provisoire" not in source
+    page = open(os.path.join(ICI, "page.html"), encoding="utf-8").read()
+    assert "if (exportBusy) return;" in page
