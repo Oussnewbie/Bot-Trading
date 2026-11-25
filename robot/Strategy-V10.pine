@@ -1,0 +1,1323 @@
+//@version=6
+// Strategy V10 — Cassure du range d'ouverture de New York (5 minutes), dans le sens de l'élan de l'ouverture, avec une
+//          pyramide sur les journées de tendance (v7), + entrée sur repli vers le VWAP (B) + 3 continuations (D),
+//          et un STOP ÉLARGI (profil Confort, par défaut). L'entrée de 10:00 (C) est coupée par défaut. NASDAQ UNIQUEMENT.
+// Graphique M5. Toutes les heures sont en heure de New York (9:30 NY = 15:30 à Paris la plupart de l'année).
+//
+// Règles :
+//  1. Range    : high et low de la première bougie M5 de la séance (9:30-9:35).
+//  2. Filtres  : achat permis seulement si le RSI14 M5 de la bougie de 9:30 est au-dessus de 50 et si son high dépasse
+//                le plus haut de 9:00-9:30. Vente : RSI sous 50 et low sous le plus bas de 9:00-9:30.
+//  3. Ordres   : à 9:35, achat stop sur le high et/ou vente stop sur le low, selon les côtés permis, valables
+//                2 bougies (jusqu'à 9:45). Le premier exécuté annule l'autre. Si un seul côté est permis et que
+//                l'autre côté du range est touché d'abord, l'ordre est annulé.
+//  4. Stop     : de l'autre côté du range. 1R = la somme perdue si le stop est touché (taille de départ × range).
+//  5. Gestion  : stop au prix d'entrée dès +1,5R. Sortie à la clôture de la bougie de 15:45 (15:50) ; à 12:45 les jours
+//                fériés américains et les demi-séances, où le marché ferme vers 13:00.
+//  6. PYRAMIDE : quand une bougie clôture à +2R ou plus, on ajoute DEUX unités au marché et le stop de l'ensemble
+//                monte à 1R sous le prix de l'ajout (donc au moins à +1R pour la première unité). Après l'ajout, le
+//                pire cas reste -1R, comme au départ : l'ajout perd 2R, la première unité gagne au moins 1R.
+//                Un seul ajout par trade.
+//  7. Une seule cassure par jour. Le R affiché = résultat net de tout le trade (ajout compris) ÷ somme risquée au départ.
+//  8. v7 — MÉMOIRE : après un trade qui finit gagnant (plus de +0,05R), le signal suivant n'est pas pris (un seul). Ce
+//                jour-là aucun ordre n'est posé : le script regarde seulement si la cassure permise se serait déclenchée.
+//                Si oui, la règle est consommée et le trading reprend au signal d'après ; sinon elle reste en attente.
+//  9. v7 — Aucun ordre les jours de décision de la Fed (FOMC) ni les jours fériés américains / demi-séances.
+//     Ces règles ne font que retirer des trades : le risque par trade ne change pas.
+//
+// STRATEGY V8 = la v7 ci-dessus (trade A, la cassure) + deux entrées de plus, les jours où la cassure est prise :
+// 10. B — REPLI SUR LE VWAP : après la cassure, la première bougie M5 (après celle de la cassure) qui touche le prix moyen
+//                de séance (VWAP depuis 9:30, à 0,1 range près), clôture du bon côté du VWAP et dans le sens du trade
+//                déclenche une entrée au marché à la clôture de cette bougie. Stop 1 point au-delà de l'extrême des 2
+//                dernières bougies. Même gestion que la cassure (stop à l'entrée à +1,5R, pyramide à +2R), en multiples
+//                du stop de cette entrée. Jusqu'à 14:00 ; abandonné si une bougie clôture de l'autre côté du range.
+// 11. C — ENTRÉE À 10:00 : si à 10:00 le prix est toujours au-delà du niveau de cassure et que le stop du range n'a pas
+//                été touché, entrée au marché, stop de l'autre côté du range, stop à l'entrée à +1,5R, sortie 15:50.
+// 12. TAILLE   : B et C ne prennent jamais plus d'unités que la cassure et ne risquent jamais plus qu'elle (1R).
+//                Jusqu'à 3 positions en même temps, dans le même sens. La règle mémoire ne regarde que la cassure.
+//
+// STRATEGY V9 = la V8 ci-dessus, revue après un examen sur 7 années jamais vues pendant la recherche (2010-2017) :
+// 13. D — CONTINUATIONS : tant que la cassure A est ouverte, à la clôture de chacune des 3 bougies M5 qui suivent celle du
+//                range (9:35, 9:40, 9:45), un ordre stop est posé sur l'extrême de cette bougie dans le sens du trade,
+//                valable 10 minutes, stop à l'autre extrême de la bougie. Annulé si le prix touche d'abord ce stop.
+//                Même gestion que la cassure (stop à l'entrée à +1,5R, pyramide à +2R), en multiples du stop de cette
+//                entrée. Taille : comme B (jamais plus d'unités que A, jamais plus de 1R).
+// 14. C (entrée de 10:00) est COUPÉE PAR DÉFAUT : sur les données jamais vues elle ne gagne presque rien.
+// 15. GARDE-FOU COÛT : aucun ordre si le coût d'un aller-retour (réglage, en points) pèse plus de 25 % du risque du jour
+//     (V10 : le risque vaut « largeur du stop » × range, soit 3 ranges par défaut).
+//     Jusqu'à 5 positions en même temps dans le même sens : risque par trade à régler plus bas qu'avec la V8.
+//     Ce que disent les tests (rapports de recherche hors dépôt depuis le 25/11/2026) :
+//       2018-2026, période de recherche, spread réel + 1 point         : V9 +1 614 R, pire baisse  56 R (V8 : +986 R, 38 R).
+//       2010-2017, JAMAIS VU, coûts ramenés à leur poids d'aujourd'hui : V9   +577 R, pire baisse 170 R (V8 : +281 R, 102 R).
+//       2010-2017 avec les coûts au poids de 2018                       : V9   -157 R (V8 : -159 R).
+//     Le backtest 2018-2026 est donc une vision optimiste. Aucun gain n'est garanti.
+//
+// STRATEGY V10 = la V9 ci-dessus + un réglage, « largeur du stop », né de l'autopsie des stops : un stop sur trois est suivi
+//     d'un mouvement de +2R ou plus DANS LE SENS du trade. La première cause des stops est un stop trop court.
+// 16. PROFIL CONFORT (par défaut, largeur du stop = 3) : mêmes signaux, stop 3 fois plus loin, taille 3 fois plus petite : la somme
+//                risquée par trade ne change pas. Stop à l'entrée (+1,5R) et pyramide (+2R) comptés avec ce nouveau R. Mémoire : après
+//                un trade de cassure à plus de +1R, le signal suivant est sauté. Continuations armées seulement si l'autre bord
+//                du range n'a pas été touché depuis la cassure.
+// 17. PROFIL TENDANCE = la V9 : largeur du stop = 1 et « gagnant au-delà de » = 0,05 R.
+// 18. RISQUE PAR TRADE : 0,25 % par défaut, comme la V9. Le remonter (0,5 % était le réglage des V6 à V8) double les gains ET les
+//                baisses : c'est ta décision.
+//     Nasdaq, 2018-2026 : Confort +477 R, 47 % de réussite, pire baisse 32 R (Tendance : +1 614 R, 18 %, 56 R).
+//     Nasdaq, 2010-2017 (coûts au poids d'aujourd'hui) : Confort +194 R, 44 %, 53 R, 8 années sur 8 (Tendance : +577 R, 15 %, 170 R).
+//     À pire baisse égale les deux profils rapportent à peu près autant. Le Confort a été mis au point après avoir vu tout
+//     l'historique du Nasdaq : ce n'est pas une preuve. Appliqué tel quel au Dow, au DAX, à l'or, au BTC, à l'EUR/USD et au
+//     GBP/USD, ce script ne gagne sur aucun.
+//
+// SUR LE GRAPHIQUE : ligne orange = VWAP de séance. Bande bleue = zone de repli guettée pour l'entrée B. Trait vertical
+// violet = heure de l'entrée C. Étiquettes « ACHAT B », « VENTE C »… = la bougie à la clôture de laquelle on entre.
+// Tirets verts = ordre stop d'une continuation D (10 minutes). Le tableau dit en clair ce qui est attendu pour A, B, C et D.
+//
+// Nasdaq (NAS100) uniquement. Le testeur de TradingView ne compte pas le spread d'un CFD : ajoute une commission
+// dans « Propriétés ». L'EA MetaTrader (Strategy-V10.mq5), qui voit le bid et l'ask, est la version de référence.
+// CORRECTIFS DU 24/11/2026 : l'alerte « ORDRES ORB placés » donne le stop élargi (elle donnait l'autre bord du range) ; quand la
+// taille du backtest TradingView s'arrondit à zéro, elle est portée au pas minimum pour que les ordres et alertes restent affichés.
+// Version non passée par l'analyseur de TradingView au moment de ces correctifs.
+strategy("Strategy V10 — ORB New York, stop élargi (Confort) + repli VWAP + continuations", shorttitle = "Strategy V10", overlay = true,
+     initial_capital = 10000, currency = currency.USD, pyramiding = 20,
+     process_orders_on_close = true, margin_long = 0, margin_short = 0, slippage = 2,
+     max_lines_count = 500, max_boxes_count = 500, max_labels_count = 500)
+
+// ═════════════════════════ Paramètres ═════════════════════════
+GR = "Risque"
+riskPct   = input.float(0.25, "Risque par trade (% du capital)", minval = 0.05, step = 0.05, tooltip = "La part du capital perdue si le stop est touché (1R). 0,25 % par défaut, comme la V9. Le remonter double les gains et les baisses : c'est ta décision.", group = GR, display = display.none)
+qtyStepIn = input.float(0, "Pas de taille (0 = auto)", minval = 0, step = 0.01, tooltip = "Taille minimale chez le broker, en unités TradingView. Auto : le pas que TradingView donne pour ce symbole.", group = GR, display = display.none)
+
+GL = "Lots chez le courtier"
+showLots  = input.bool(true, "Calculer le lot à passer chez le courtier", tooltip = "Affiché dans le tableau, sur les ordres et dans les alertes : le lot à saisir dans MetaTrader pour risquer le pourcentage choisi. Il ne change rien aux trades du script.", group = GL, display = display.none)
+lotSize   = input.float(20, "Taille de contrat (unités par lot)", minval = 0.0001, tooltip = "FundingPips NAS100 : 20 (1 lot = 20 $ par point). Chez un autre courtier : MetaTrader, clic droit sur le symbole > Spécification > Taille du contrat.", group = GL, display = display.none)
+lotStep   = input.float(0.01, "Pas de lot", minval = 0.0001, step = 0.01, tooltip = "Le plus petit écart de lot accepté (Spécification > Pas du volume). Le lot est arrondi vers le bas : le risque réel ne dépasse jamais le risque choisi.", group = GL, display = display.none)
+lotBal    = input.float(0, "Solde du compte (USD, 0 = capital de la stratégie)", minval = 0, step = 1000, tooltip = "Le solde de ton compte chez le courtier, par exemple 100000 pour un compte FundingPips de 100K. 0 : le capital de la stratégie TradingView (capital de départ + gains), qui n'est pas celui de ton compte. À mettre à jour quand le solde change.", group = GL, display = display.none)
+
+// ── Règles VERROUILLÉES le 25/11/2026 à la demande de l'utilisateur (« sans possibilité de changer manuellement »), comme l'EA :
+// profil « toutes les entrées, sans plancher de bruit », Nasdaq 100 et S&P 500 seulement. Restent réglables : risque, lots chez le
+// courtier (solde, taille de contrat, pas), dates FOMC après janvier 2028, Telegram et affichage. Pour changer une règle, modifier ce fichier.
+B_BUF_PB = 0.5    // B : marge du stop au-delà des 2 dernières bougies, en pb du prix (règle jugée sur le S&P 500)
+COST_BP  = 1.65   // garde-fou coût : spread + 2 glissements, en pb du prix (3,3 points d'un Nasdaq à 20 000)
+GS = "Horaires (heure de New York)"
+orS       = "0930-0935"
+preS      = "0900-0930"
+liveBars  = 2
+flatS     = "1545-1600"
+flatShortS = "1240-1600"
+
+GF = "Filtres"
+useRSI    = true
+rsiLen    = 14
+useExt    = true
+
+GM = "Filtres v7"
+useMem    = true
+memR      = 1.0
+skipFomc  = true
+fomcExtra = input.string("", "Jours FOMC en plus (codés jusqu'au 26/01/2028 ; aaaammjj séparés par des virgules)", tooltip = "Dates du calendrier de la Fed, jour de la décision (2e jour de la réunion). Sans mise à jour, le script trade simplement ces jours-là.", group = GM, display = display.none)
+skipShort = true
+
+GV8 = "V8 — entrées de plus les jours où la cassure est prise (valeurs du test)"
+useB      = true
+bTol      = 0.10
+bEndH     = 14
+bEndM     = 0
+useC      = false
+cH        = 10
+cM        = 0
+GV9 = "V9 — continuations (D) et garde-fou coût (valeurs du test)"
+useD      = true
+dCount    = 3
+dValid    = 2
+dPyr      = true
+maxCostR  = 0.25
+GV10 = "V10 — largeur du stop (3 = profil Confort ; 1 = profil Tendance, la V9)"
+stopMultIn = 3.0
+noiseFloor = false
+// Multiple du stop du jour : stopMultIn, élargi par le plancher de bruit (calculé sur la bougie de 9:30, plus bas). Constantes 2,5 et 20
+// écrites avant le test (session 5) : ne pas les régler. Même calcul que l'EA (Range930Avg).
+var float stopMult = stopMultIn
+var array<float> rng930 = array.new<float>()
+
+GO = "Options (coupées par défaut : trouvées sur l'historique, pas encore vérifiées sur des données nouvelles)"
+useDI     = false
+diLen     = 14
+useSar    = false
+useTime   = false
+timeH     = 10
+timeM     = 30
+timeR     = 0.5
+
+GP = "Gestion du trade"
+beR       = 1.5
+tgtR      = 0.0
+
+GY = "Pyramide"
+usePyr    = true
+pyrR      = 2.0
+pyrSize   = 2.0
+pyrGap    = 1.0
+
+GT = "Telegram"
+tgChat    = input.string("", "Chat ID", tooltip = "Ton chat ID Telegram (un nombre, négatif pour un groupe). Rempli : alertes au format de l'API Telegram. URL de webhook : https://api.telegram.org/bot<TOKEN>/sendMessage", group = GT, display = display.none)
+
+GA = "Affichage"
+showOrders  = input.bool(true, "Ordres et trades", group = GA, display = display.none)
+showZones   = input.bool(true, "Zones de risque et de gain", tooltip = "Rouge : de l'entrée au stop. Vert : de l'entrée au meilleur prix atteint.", group = GA, display = display.none)
+showPre     = input.bool(true, "Fenêtre de l'élan (9:00-9:30)", group = GA, display = display.none)
+showBlocked = input.bool(true, "Côté bloqué par les filtres", group = GA, display = display.none)
+showVwap    = input.bool(true, "VWAP de séance (ligne orange)", tooltip = "Prix moyen de la séance depuis 9:30, pondéré par le volume. L'entrée B se fait sur un repli vers cette ligne.", group = GA, display = display.none)
+showZoneB   = input.bool(true, "Zone de repli de l'entrée B (bande bleue)", tooltip = "Visible tant que l'entrée B est guettée : entre le VWAP et le VWAP ± la tolérance. Une bougie doit toucher cette bande, puis clôturer du bon côté du VWAP et dans le sens du trade.", group = GA, display = display.none)
+showGuide   = input.bool(true, "Repères : heure de l'entrée C, jours sans trade", group = GA, display = display.none)
+keepEmpty   = input.bool(false, "Garder les jours sans trade", tooltip = "Décoché : un jour sans trade ne laisse rien sur le graphique.", group = GA, display = display.none)
+showTable   = input.bool(true, "Tableau", group = GA, display = display.none)
+tblPosIn    = input.string("En haut à droite", "Position du tableau", options = ["En haut à droite", "En bas à droite", "En haut à gauche", "En bas à gauche"], group = GA, display = display.none)
+
+// ═════════════════════════ Réglages fixes ═════════════════════════
+TZ_NY    = "America/New_York"
+TZ_PARIS = "Europe/Paris"
+BAR      = 300000          // une bougie M5 en millisecondes
+FUT      = 3 * BAR         // les niveaux vivants sont projetés 3 bougies à droite
+
+C_UP  = #26A69A
+C_DN  = #EF5350
+C_GR  = #787B86
+C_BOX = #9598A1
+C_PRE = #5B9CF6
+C_VW  = #F5A623          // VWAP de séance
+C_LB  = #2962FF          // entrée B
+C_LC  = #AB47BC          // entrée C
+C_LD  = #00897B          // entrées D (continuations)
+
+if timeframe.in_seconds() != 300
+    runtime.error("Ce script se trade sur un graphique M5.")
+if usePyr and pyrGap > pyrR
+    runtime.error("Pyramide : la distance du stop ne peut pas dépasser le seuil d'ajout.")
+
+bool  isFut   = syminfo.type == "futures"
+bool  isFx    = syminfo.type == "forex"
+int   pxDig   = int(math.round(math.log10(1 / syminfo.mintick)))
+float pipSz   = pxDig % 2 == 1 ? syminfo.mintick * 10 : syminfo.mintick
+// Pas de taille : celui du symbole chez TradingView (0,1 pour un CFD chez certains brokers), sinon une valeur par type d'actif
+float stepDef = isFut ? 1.0 : isFx ? 1000.0 : syminfo.type == "crypto" ? 0.0001 : syminfo.type == "stock" ? 1.0 : 0.01
+float qtyStep = qtyStepIn > 0 ? qtyStepIn : nz(syminfo.mincontract) > 0 ? syminfo.mincontract : stepDef
+float fx      = nz(request.currency_rate(syminfo.currency, "USD", ignore_invalid_currency = true), 1.0)
+float rsiV    = ta.rsi(close, rsiLen)
+// v7 options : DI en H4 (dernière bougie H4 entièrement close, sans regard vers le futur) et SAR parabolique du graphique M5
+diPrev() =>
+    [dp, dm, dx] = ta.dmi(diLen, diLen)
+    float dd = dp - dm
+    dd[1]
+float diH4    = request.security(syminfo.tickerid, "240", diPrev(), lookahead = barmerge.lookahead_on)
+float sarV    = ta.sar(0.02, 0.02, 0.2)
+
+// ═════════════════════════ Outils ═════════════════════════
+fmt(float x) =>
+    str.tostring(x, format.mintick)
+
+distTxt(float d) =>
+    isFx ? str.tostring(d / pipSz, "0.0") + " pips" : fmt(d) + " pts"
+
+lotTxt(float l) =>
+    str.tostring(l, "0.00######") + " lot"
+
+// Lot à passer chez le courtier : solde × risque ÷ (range × taille de contrat), arrondi vers le bas au pas de lot
+lotsFor(float dist) =>
+    float bal = lotBal > 0 ? lotBal : strategy.initial_capital + strategy.netprofit
+    dist > 0 ? math.floor(bal * riskPct / 100 / (dist * lotSize * fx) / lotStep + 0.000001) * lotStep : na
+
+rTxt(float r) =>
+    (r >= 0 ? "+" : "") + str.tostring(r, "0.0") + "R"
+
+hhmm(int t) =>
+    str.format_time(t, "HH:mm", TZ_NY)
+
+tgPayload(string msg) =>
+    string t = str.replace_all(str.replace_all(msg, "\\", "\\\\"), "\"", "\\\"")
+    t := str.replace_all(t, "\n", "\\n")
+    tgChat == "" ? msg : "{\"chat_id\": \"" + tgChat + "\", \"text\": \"" + t + "\"}"
+
+notify(string msg) =>
+    alert(tgPayload(syminfo.ticker + " · " + msg), alert.freq_once_per_bar_close)
+    true
+
+sideLabel(int x, float y, string txt, color c, string tip) =>
+    label.new(x, y, txt, xloc = xloc.bar_time, style = label.style_label_left, color = color.new(c, 15),
+         textcolor = color.white, size = size.small, tooltip = tip)
+
+// ═════════════════════════ Jours fériés américains et demi-séances ═════════════════════════
+// Ces jours-là l'indice ne cote au mieux que jusqu'à 13:00 New York : la sortie de 15:50 tomberait marché fermé. Règles
+// de la Bourse de New York, calculées (aucune liste à tenir à jour). Les dates sont prises à midi pour ne pas dépendre
+// du changement d'heure. Une fermeture exceptionnelle (deuil national…) n'y est pas.
+DAY = 86400000
+
+ymd(int t) =>
+    year(t, TZ_NY) * 10000 + month(t, TZ_NY) * 100 + dayofmonth(t, TZ_NY)
+
+noon(int y, int m, int d) =>
+    timestamp(TZ_NY, y, m, d, 12, 0)
+
+// n-ième jour « dow » du mois (dayofweek.sunday = 1 … dayofweek.saturday = 7)
+nthDow(int y, int m, int dow, int n) =>
+    int t = noon(y, m, 1)
+    t + ((dow - dayofweek(t, TZ_NY) + 7) % 7 + 7 * (n - 1)) * DAY
+
+// dernier lundi de mai
+lastMondayOfMay(int y) =>
+    int t = noon(y, 6, 1) - DAY
+    t - ((dayofweek(t, TZ_NY) - dayofweek.monday + 7) % 7) * DAY
+
+// un férié qui tombe un samedi est chômé le vendredi, un dimanche le lundi
+observed(int t) =>
+    int w = dayofweek(t, TZ_NY)
+    w == dayofweek.saturday ? t - DAY : w == dayofweek.sunday ? t + DAY : t
+
+// vendredi saint : deux jours avant Pâques (calcul grégorien)
+goodFriday(int y) =>
+    int a = y % 19
+    int b = int(math.floor(y / 100))
+    int c = y % 100
+    int d = int(math.floor(b / 4))
+    int e = b % 4
+    int f = int(math.floor((b + 8) / 25))
+    int g = int(math.floor((b - f + 1) / 3))
+    int h = (19 * a + b - d - g + 15) % 30
+    int i = int(math.floor(c / 4))
+    int k = c % 4
+    int l = (32 + 2 * e + 2 * i - h - k) % 7
+    int m = int(math.floor((a + 11 * h + 22 * l) / 451))
+    int mo = int(math.floor((h + l - 7 * m + 114) / 31))
+    int da = (h + l - 7 * m + 114) % 31 + 1
+    noon(y, mo, da) - 2 * DAY
+
+isShortDay(int t) =>
+    int y   = year(t, TZ_NY)
+    int d   = ymd(t)
+    int tg  = nthDow(y, 11, dayofweek.thursday, 4)
+    int j4  = noon(y, 7, 4)
+    int w4  = dayofweek(j4, TZ_NY)
+    // veille du 4 juillet : demi-séance quand le 4 tombe du mardi au vendredi ; par prudence aussi le jeudi quand il tombe un samedi
+    int pre4 = w4 >= dayofweek.tuesday and w4 <= dayofweek.friday ? ymd(j4 - DAY) : w4 == dayofweek.saturday ? ymd(j4 - 2 * DAY) : 0
+    bool ferie = d == ymd(observed(noon(y, 1, 1))) or d == ymd(observed(noon(y + 1, 1, 1))) or d == ymd(nthDow(y, 1, dayofweek.monday, 3)) or
+         d == ymd(nthDow(y, 2, dayofweek.monday, 3)) or d == ymd(goodFriday(y)) or d == ymd(lastMondayOfMay(y)) or d == ymd(observed(noon(y, 6, 19))) or
+         d == ymd(observed(j4)) or d == ymd(nthDow(y, 9, dayofweek.monday, 1)) or d == ymd(tg) or d == ymd(observed(noon(y, 12, 25)))
+    ferie or d == ymd(tg + DAY) or d == y * 10000 + 1224 or d == pre4
+
+// ═════════════════════════ v7 : jours de décision de la Fed (FOMC) ═════════════════════════
+// Réunions prévues de 2018 à janvier 2028 (dates publiées à l'avance ; les réunions d'urgence de mars 2020 n'y sont pas).
+// 2027-2028 : calendrier révisé de la Fed du 12/11/2026, provisoire. Le 27/10/2027 n'y est pas : pas de décision annoncée ce jour-là.
+var array<int> FOMC = array.from(
+     20180131, 20180321, 20180502, 20180613, 20180801, 20180926, 20181108, 20181219,
+     20190130, 20190320, 20190501, 20190619, 20190731, 20190918, 20191030, 20191211,
+     20200129, 20200429, 20200610, 20200729, 20200916, 20201105, 20201216, 20210127,
+     20210317, 20210428, 20210616, 20210728, 20210922, 20211103, 20211215, 20220126,
+     20220316, 20220504, 20220615, 20220727, 20220921, 20221102, 20221214, 20230201,
+     20230322, 20230503, 20230614, 20230726, 20230920, 20231101, 20231213, 20240131,
+     20240320, 20240501, 20240612, 20240731, 20240918, 20241107, 20241218, 20250129,
+     20250319, 20250507, 20250618, 20250730, 20250917, 20251029, 20251210, 20260128,
+     20260318, 20260429, 20260617, 20260729, 20260916, 20261028, 20261209, 20270127,
+     20270317, 20270428, 20270609, 20270728, 20270915, 20271117, 20280126)
+var array<int> fomcX = array.new<int>()
+if barstate.isfirst
+    for sx in str.split(fomcExtra, ",")
+        string cx = str.replace_all(str.replace_all(str.replace_all(sx, " ", ""), ".", ""), "-", "")
+        float  vx = str.tonumber(cx)
+        if not na(vx)
+            array.push(fomcX, int(vx))
+
+isFomc(int d) =>
+    array.includes(FOMC, d) or array.includes(fomcX, d)
+
+// Marchés autorisés (verrou du 25/11/2026) : Nasdaq 100 et S&P 500, comme l'EA (MarcheAutorise)
+string tkU = str.upper(syminfo.ticker)
+bool marcheOk = str.contains(tkU, "NAS") or str.contains(tkU, "NDX") or str.contains(tkU, "NQ") or str.contains(tkU, "USTEC") or str.contains(tkU, "US100") or str.contains(tkU, "TECH100") or str.contains(tkU, "SPX") or str.contains(tkU, "SP500") or str.contains(tkU, "US500") or str.contains(tkU, "USA500") or str.startswith(tkU, "ES1")
+if not marcheOk
+    runtime.error("Strategy V10 : ce script ne trade que le Nasdaq 100 et le S&P 500 (" + syminfo.ticker + " refusé).")
+
+// ═════════════════════════ Séance ═════════════════════════
+bool isOR   = not na(time(timeframe.period, orS, TZ_NY))
+bool inPre  = not na(time(timeframe.period, preS, TZ_NY))
+bool shortDay = isShortDay(time)
+bool inFlat = not na(time(timeframe.period, flatS, TZ_NY)) or (shortDay and not na(time(timeframe.period, flatShortS, TZ_NY)))
+int  nyDate = year(time, TZ_NY) * 10000 + month(time, TZ_NY) * 100 + dayofmonth(time, TZ_NY)
+
+// Plus haut et plus bas de la fenêtre de l'élan (9:00-9:30), remis à zéro chaque jour
+var float preH   = na
+var float preL   = na
+var int   preDay = 0
+var int   preT0  = 0
+if inPre
+    if preDay != nyDate
+        preH   := high
+        preL   := low
+        preDay := nyDate
+        preT0  := time
+    else
+        preH := math.max(preH, high)
+        preL := math.min(preL, low)
+
+// ═════════════════════════ V8 : VWAP de séance et outils des entrées B et C ═════════════════════════
+// VWAP depuis 9:30 NY, calculé sur les bougies M1 quand TradingView les fournit (comme l'EA), sinon sur la bougie du
+// graphique. Sans volume (certains CFD), moyenne simple des prix : le test donne le même résultat dans les deux cas.
+bool inRTH = not na(time(timeframe.period, "0930-1600", TZ_NY))
+[m1pv, m1v, m1p] = request.security_lower_tf(syminfo.tickerid, "1", [hlc3 * nz(volume), nz(volume), hlc3])
+var float cumPV = 0.0
+var float cumV  = 0.0
+var float cumP  = 0.0
+var int   cumN  = 0
+if isOR
+    // Plancher de bruit (H1) : multiple du jour à partir des 20 séances d'avant, puis le range du jour rejoint la liste
+    float rgOR = high - low
+    stopMult := stopMultIn
+    if noiseFloor and rgOR > 0 and array.size(rng930) == 20
+        stopMult := math.max(stopMultIn, 2.5 * array.avg(rng930) / rgOR)
+    if rgOR > 0
+        array.push(rng930, rgOR)
+        if array.size(rng930) > 20
+            array.shift(rng930)
+    cumPV := 0.0
+    cumV  := 0.0
+    cumP  := 0.0
+    cumN  := 0
+if inRTH
+    if array.size(m1p) > 0
+        cumPV += array.sum(m1pv)
+        cumV  += array.sum(m1v)
+        cumP  += array.sum(m1p)
+        cumN  += array.size(m1p)
+    else
+        cumPV += hlc3 * nz(volume)
+        cumV  += nz(volume)
+        cumP  += hlc3
+        cumN  += 1
+float vwapS = inRTH and cumN > 0 ? (cumV > 0 ? cumPV / cumV : cumP / cumN) : na
+
+// Famille d'une entrée d'après son nom : 0 = cassure et sa pyramide, 1 = B, 2 = C, 3 à 9 = D1 à D7
+legIdx(string id) =>
+    str.startswith(id, "B") ? 1 : str.startswith(id, "C") ? 2 : str.startswith(id, "D") ? 2 + int(str.tonumber(str.substring(id, 1, 2))) : 0
+
+// Taille encore ouverte d'une famille
+openQtyOf(int leg) =>
+    float q = 0.0
+    if strategy.opentrades > 0
+        for i = 0 to strategy.opentrades - 1
+            if legIdx(strategy.opentrades.entry_id(i)) == leg
+                q += math.abs(strategy.opentrades.size(i))
+    q
+
+// Résultat latent d'une famille
+openProfitOf(int leg) =>
+    float p = 0.0
+    if strategy.opentrades > 0
+        for i = 0 to strategy.opentrades - 1
+            if legIdx(strategy.opentrades.entry_id(i)) == leg
+                p += strategy.opentrades.profit(i)
+    p
+
+// Prix d'exécution d'une entrée encore ouverte
+openEntryOf(string id) =>
+    float px = na
+    if strategy.opentrades > 0
+        for i = 0 to strategy.opentrades - 1
+            if strategy.opentrades.entry_id(i) == id
+                px := strategy.opentrades.entry_price(i)
+    px
+
+// Trades clôturés depuis « from » pour une famille : [résultat, indice du dernier, nombre]
+closedOf(int from, int leg) =>
+    float p = 0.0
+    int   k = -1
+    int   n = 0
+    if strategy.closedtrades > from
+        for i = from to strategy.closedtrades - 1
+            if legIdx(strategy.closedtrades.entry_id(i)) == leg
+                p += strategy.closedtrades.profit(i)
+                k := i
+                n += 1
+    [p, k, n]
+
+// ═════════════════════════ État ═════════════════════════
+type Trade
+    string id
+    string xid
+    int    dir
+    float  entry
+    float  sl
+    float  tp
+    float  risk
+    float  usd
+    int    fillBar
+    int    tFill
+    int    day
+    float  best
+    float  qty
+    float  pnl = 0.0     // gains et pertes encaissés (unité de départ et ajout)
+    bool   pyr = false   // l'ajout a été fait
+    float  lockR = na    // stop de l'ensemble après l'ajout, en R
+    bool   be  = false
+    bool   timeDone = false   // v7 option : la sortie au temps a déjà été examinée
+    line   pLn = na
+    line   eLn = na
+    line   sLn = na
+    line   tLn = na
+    line   bLn = na
+    box    rBx = na
+    box    gBx = na
+    label  eLb = na
+    label  sLb = na
+    label  tLb = na
+
+// Dessins du jour qui ne font pas partie du trade (pour pouvoir les effacer un jour sans trade)
+type Day
+    box   orBx  = na
+    box   preBx = na
+    line  blkLn = na
+    label blkLb = na
+
+// Statistiques en R et textes du tableau (dans un objet : les fonctions peuvent modifier ses champs)
+type Stats
+    int    nClosed = 0
+    int    nPos    = 0
+    float  sumR    = 0.0
+    float  peakR   = 0.0
+    float  ddR     = 0.0
+    int    streak  = 0
+    int    worstSt = 0
+    string dayTxt  = "En attente de 9:35 NY"
+    string filtTxt = "—"
+    bool   skipNext = false   // v7 mémoire : le dernier trade était gagnant, le prochain signal déclenché sera sauté
+
+// V8 : une entrée B ou C (« jambe »), suivie à part du trade de cassure
+type Leg
+    string name               // "B" ou "C"
+    string id
+    string addId              // nom de l'ajout de la pyramide
+    int    dir
+    float  entry
+    float  sl                 // stop de départ
+    float  risk               // distance au stop de départ (1R de cette entrée, en prix)
+    float  qty
+    float  usd                // somme risquée par la cassure du jour : le R affiché s'y rapporte
+    int    fillBar
+    int    tFill
+    color  col
+    bool   usePyr = false
+    bool   ok     = false     // exécution confirmée
+    bool   be     = false
+    bool   pyr    = false
+    float  pnl    = 0.0
+    int    lastK  = -1
+    float  inval  = na        // V10 (D) : niveau qui annule l'ordre en attente (l'autre extrême de la bougie), distinct du stop élargi
+    bool   pend   = false     // V9 (D) : ordre stop pas encore exécuté
+    int    expBar = 0         // V9 (D) : dernière bougie de validité de l'ordre
+    line   eLn = na
+    line   sLn = na
+    label  eLb = na
+    label  sLb = na
+
+// V8 : état du jour (dans un objet : les fonctions peuvent modifier ses champs)
+type V8State
+    int    day      = 0       // date NY du jour où la cassure a été prise
+    int    dir      = 0
+    int    breakBar = 0
+    float  qty      = na      // taille de la cassure (plafond de B et C)
+    float  usd      = na      // somme risquée par la cassure (plafond du risque de B et C)
+    bool   stopHit  = false   // le stop du range a été touché depuis la cassure : pas d'entrée C
+    bool   bDone    = true
+    bool   cDone    = true
+    string bTxt     = "—"
+    string cTxt     = "—"
+    string dTxt     = "—"
+    line   cLn      = na
+    label  cLb      = na
+
+var float orH    = na
+var float orL    = na
+var bool  pend   = false     // ordres stop en attente
+var int   pBar   = 0
+var int   pDir   = 0         // 0 = les deux côtés, 1 = achat seulement, -1 = vente seulement, 2 = aucun
+var float pUSD   = na        // montant risqué du jour (taille × range), en USD
+var float pQty   = na        // taille de départ du jour
+var float pLots  = na        // lot du jour chez le courtier (taille de contrat lotSize)
+var float pLotsA = na        // lot de l'ajout de la pyramide
+var float pLotUSD = na       // montant risqué avec ce lot, en USD
+var int   tradeN = 0
+var line  lnH    = na
+var line  lnL    = na
+var label lbH    = na
+var label lbL    = na
+var Trade cur    = na
+var Day   today  = Day.new()
+var int   seen   = 0
+var Stats S      = Stats.new()
+var bool  obs    = false     // v7 mémoire : jour d'observation (aucun ordre posé)
+var int   obsBar = 0
+var int   obsDir = 0
+var Leg     legB = na        // V8 : entrée B en cours
+var Leg     legC = na        // V8 : entrée C en cours
+var array<Leg> legD = array.new<Leg>(7)   // V9 : entrées D (continuations), na = libre
+var V8State v8   = V8State.new()
+
+idL() => "Achat #" + str.tostring(tradeN)
+idS() => "Vente #" + str.tostring(tradeN)
+
+// Ordres en attente et côté bloqué : effacés dès qu'un ordre est exécuté ou annulé
+dropPending() =>
+    for ln in array.from(lnH, lnL, today.blkLn)
+        if not na(ln)
+            line.delete(ln)
+    for lb in array.from(lbH, lbL, today.blkLb)
+        if not na(lb)
+            label.delete(lb)
+    true
+
+// Jour sans trade : tout est effacé (ou estompé si on garde les jours sans trade)
+clearDay(Day d, string why) =>
+    if keepEmpty
+        if not na(d.orBx)
+            d.orBx.set_bgcolor(color.new(C_BOX, 94))
+            d.orBx.set_text("9:30 · " + why)
+    else
+        for b in array.from(d.orBx, d.preBx)
+            if not na(b)
+                box.delete(b)
+    true
+
+// Ordre exécuté : le côté exécuté devient l'entrée, l'autre côté le stop
+openDraw(Trade t) =>
+    dropPending()
+    int   x2 = time + FUT
+    color dc = t.dir == 1 ? C_UP : C_DN
+    if showZones
+        t.rBx := box.new(t.tFill, math.max(t.entry, t.sl), x2, math.min(t.entry, t.sl), xloc = xloc.bar_time,
+             bgcolor = color.new(C_DN, 88), border_color = color.new(C_DN, 100))
+        t.gBx := box.new(t.tFill, math.max(t.entry, t.best), x2, math.min(t.entry, t.best), xloc = xloc.bar_time,
+             bgcolor = color.new(C_UP, 85), border_color = color.new(C_UP, 100))
+    if showOrders
+        t.eLn := line.new(t.tFill, t.entry, x2, t.entry, xloc = xloc.bar_time, color = dc, width = 2)
+        t.sLn := line.new(t.tFill, t.sl, x2, t.sl, xloc = xloc.bar_time, color = color.new(C_DN, 25), width = 1)
+        if beR > 0
+            float lv = t.entry + t.dir * beR * t.risk
+            t.bLn := line.new(t.tFill, lv, x2, lv, xloc = xloc.bar_time, color = color.new(C_GR, 30), style = line.style_dotted, width = 1)
+        if not na(t.tp)
+            t.tLn := line.new(t.tFill, t.tp, x2, t.tp, xloc = xloc.bar_time, color = color.new(C_UP, 25), width = 1)
+            t.tLb := sideLabel(x2, t.tp, "TP · " + fmt(t.tp), C_UP, "Objectif à +" + str.tostring(tgtR) + "R depuis l'entrée")
+        t.eLb := sideLabel(x2, t.entry, t.id + " · " + fmt(t.entry), dc, "Entrée")
+        t.sLb := sideLabel(x2, t.sl, "SL · " + fmt(t.sl), C_DN, (stopMult == 1 ? "Stop : de l'autre côté du range" : "Stop élargi : " + str.tostring(stopMult) + " ranges sous le niveau de cassure (au-dessus pour une vente)") + (beR > 0 ? ". Ligne pointillée : à ce prix (+" + str.tostring(beR) + "R), le stop passe au prix d'entrée" : ""))
+        label.new(t.tFill, t.entry, t.dir == 1 ? "▲" : "▼", xloc = xloc.bar_time, color = color(na),
+             style = t.dir == 1 ? label.style_label_up : label.style_label_down, textcolor = dc, size = size.small,
+             tooltip = t.id + " · entrée " + fmt(t.entry) + " · stop " + fmt(t.sl))
+    true
+
+// Les niveaux vivants suivent le prix ; la zone de risque s'arrête quand le stop passe au prix d'entrée
+moveRight(Trade t, int x2) =>
+    for ln in array.from(t.eLn, t.sLn, t.tLn, t.bLn, t.pLn)
+        if not na(ln)
+            ln.set_x2(x2)
+    for lb in array.from(t.eLb, t.sLb, t.tLb)
+        if not na(lb)
+            lb.set_x(x2)
+    if not na(t.rBx) and not t.be
+        t.rBx.set_right(x2)
+    if not na(t.gBx)
+        t.gBx.set_right(x2)
+    true
+
+// R en direct : résultat latent de toute la position (ajout compris) ÷ montant risqué au départ
+liveR(Trade t) =>
+    openQtyOf(0) > 0 ? (t.pnl + openProfitOf(0)) / t.usd : (close - t.entry) * t.dir / t.risk
+
+// Trade terminé : les niveaux s'arrêtent à la sortie et s'estompent, le résultat reste affiché
+closeDraw(Trade t, int xe, float px, float r, string why) =>
+    moveRight(t, xe)
+    for lb in array.from(t.eLb, t.sLb, t.tLb)
+        if not na(lb)
+            label.delete(lb)
+    if not na(t.bLn)
+        line.delete(t.bLn)
+    if not na(t.eLn)
+        t.eLn.set_width(1)
+    if not na(t.sLn)
+        t.sLn.set_color(color.new(t.pyr ? C_UP : t.be ? C_GR : C_DN, 60))
+    if not na(t.tLn)
+        t.tLn.set_color(color.new(C_UP, 60))
+    if not na(t.rBx)
+        t.rBx.set_bgcolor(color.new(C_DN, 93))
+    if not na(t.gBx)
+        t.gBx.set_bgcolor(color.new(C_UP, 91))
+    if showOrders
+        label.new(xe, px, rTxt(r), xloc = xloc.bar_time, style = label.style_label_left,
+             color = color.new(r > 0.05 ? C_UP : r < -0.05 ? C_DN : C_GR, 20), textcolor = color.white, size = size.small,
+             tooltip = t.id + " · " + why + " · entrée " + fmt(t.entry) + " · sortie " + fmt(px))
+    true
+
+// sz = taille réellement exécutée : la somme risquée (1R) se calcule dessus, pas sur la taille demandée
+newTrade(int d, float entry, int tFill, int fBar, float sz) =>
+    float sl = d == 1 ? orH - stopMult * (orH - orL) : orL + stopMult * (orH - orL)   // V10 : stop élargi, compté depuis le niveau de cassure
+    float rk = math.abs(entry - sl)
+    Trade.new(id = d == 1 ? idL() : idS(), xid = d == 1 ? "X" + idL() : "X" + idS(), dir = d, entry = entry, sl = sl,
+         tp = tgtR > 0 ? entry + d * tgtR * rk : na, risk = rk, usd = sz * stopMult * (orH - orL) * syminfo.pointvalue * fx, fillBar = fBar, tFill = tFill, day = nyDate,
+         best = d == 1 ? math.max(entry, high) : math.min(entry, low), qty = sz)
+
+recordClose(Trade t, int k) =>
+    float  px  = strategy.closedtrades.exit_price(k)
+    float  r   = t.pnl / t.usd
+    string why = strategy.closedtrades.exit_comment(k)
+    S.nClosed += 1
+    S.sumR    += r
+    // v7 mémoire : après un trade gagnant, le prochain signal déclenché sera sauté (un seul)
+    S.skipNext := useMem and r > memR
+    if r > 0.05
+        S.nPos += 1
+    // Série de pertes : une sortie au prix d'entrée (même un peu négative à cause des frais) l'interrompt
+    S.streak  := why != "Stop à l'entrée" and r < -0.05 ? S.streak + 1 : 0
+    S.worstSt := math.max(S.worstSt, S.streak)
+    S.peakR   := math.max(S.peakR, S.sumR)
+    S.ddR     := math.max(S.ddR, S.peakR - S.sumR)
+    closeDraw(t, strategy.closedtrades.exit_time(k), px, r, why)
+    notify(t.id + " clôturé (" + why + ") : " + rTxt(r) + " à " + fmt(px) + (S.skipNext ? "\nRègle mémoire : trade gagnant, le prochain signal ne sera pas pris" : ""))
+    S.dayTxt := t.id + " terminé (" + why + ") : " + rTxt(r)
+    true
+
+// Pyramide : la bougie clôture au seuil ou au-delà → ajout au marché (exécuté à cette clôture), stop de l'ensemble remonté
+tryPyramid(Trade t) =>
+    bool done = false
+    if usePyr and not t.pyr and not inFlat and (close - t.entry) * t.dir >= pyrR * t.risk
+        float q = math.floor(t.qty * pyrSize / qtyStep + 0.000001) * qtyStep
+        if q > 0
+            // stop de l'ensemble : pyrGap R sous le prix de l'ajout (la clôture de cette bougie)
+            float  lockPx = close - t.dir * pyrGap * t.risk
+            string pid    = "Pyramide #" + str.tostring(tradeN)
+            string cmt    = "Stop remonté"
+            t.lockR := (lockPx - t.entry) * t.dir / t.risk
+            strategy.entry(pid, t.dir == 1 ? strategy.long : strategy.short, qty = q, comment = "Pyramide")
+            strategy.exit("X" + pid, from_entry = pid, stop = lockPx, limit = t.tp, comment_loss = cmt, comment_profit = "Objectif")
+            strategy.exit(t.xid, from_entry = t.id, stop = lockPx, limit = t.tp, comment_loss = cmt, comment_profit = "Objectif")
+            t.pyr := true
+            t.be  := true
+            done  := true
+            if not na(t.rBx)
+                t.rBx.set_right(time)
+            if not na(t.bLn)
+                line.delete(t.bLn)
+            if not na(t.sLn)
+                t.sLn.set_y1(lockPx)
+                t.sLn.set_y2(lockPx)
+                t.sLn.set_color(color.new(C_UP, 20))
+            if not na(t.sLb)
+                t.sLb.set_y(lockPx)
+                t.sLb.set_text("SL · " + rTxt(t.lockR) + " · " + fmt(lockPx))
+                t.sLb.set_color(color.new(C_UP, 15))
+            if showOrders
+                color dc = t.dir == 1 ? C_UP : C_DN
+                t.pLn := line.new(time, close, time + FUT, close, xloc = xloc.bar_time, color = color.new(dc, 20), style = line.style_dashed, width = 1)
+                label.new(time, close, "+", xloc = xloc.bar_time, color = color.new(dc, 20), textcolor = color.white, size = size.tiny,
+                     style = t.dir == 1 ? label.style_label_up : label.style_label_down,
+                     tooltip = "Pyramide : +" + str.tostring(q) + " à " + fmt(close) + " · stop de l'ensemble à " + fmt(lockPx))
+            notify(t.id + " : PYRAMIDE, clôture à " + rTxt((close - t.entry) * t.dir / t.risk) + "\nAjout de " + str.tostring(q) + (na(pLotsA) ? "" : " (" + lotTxt(pLotsA) + " chez le courtier)") + " à " + fmt(close) +
+                 "\nStop de l'ensemble : " + fmt(lockPx) + " (" + rTxt(t.lockR) + ")")
+    done
+
+// ═════════════════════════ V8 : fonctions des entrées B et C ═════════════════════════
+// La cassure du jour vient d'être prise : B et C deviennent possibles (même sens, taille et risque plafonnés)
+armV8(int d, int fBar, float q, float usd, bool hit) =>
+    v8.day      := nyDate
+    v8.dir      := d
+    v8.breakBar := fBar
+    v8.qty      := q
+    v8.usd      := usd
+    v8.stopHit  := hit
+    v8.bDone    := not useB
+    v8.cDone    := not useC
+    v8.bTxt     := "guettée"
+    v8.cTxt     := "prévue"
+    v8.dTxt     := useD ? "guettent les bougies suivantes" : "coupées"
+    v8.cLn      := na
+    v8.cLb      := na
+    if useC and showGuide
+        int t10 = timestamp(TZ_NY, year(time, TZ_NY), month(time, TZ_NY), dayofmonth(time, TZ_NY), cH, cM)
+        if t10 > time
+            float lv = d == 1 ? orH : orL
+            v8.cLn := line.new(t10, orH, t10, orL, xloc = xloc.bar_time, extend = extend.both, color = color.new(C_LC, 55), style = line.style_dotted, width = 1)
+            v8.cLb := label.new(t10, lv, "C · " + hhmm(t10) + " ?", xloc = xloc.bar_time, style = d == 1 ? label.style_label_down : label.style_label_up, color = color.new(C_LC, 35), textcolor = color.white, size = size.small, tooltip = "Entrée C : à " + hhmm(t10) + " NY, " + (d == 1 ? "ACHAT si le prix est encore au-dessus de " : "VENTE si le prix est encore sous ") + fmt(lv) + " et si " + fmt(d == 1 ? orL : orH) + " (le stop du range) n'a pas été touché. Stop : " + fmt(d == 1 ? orL : orH) + ".")
+    true
+
+// Résultat de l'examen de l'entrée C, écrit sur le repère de 10:00
+markC(bool pris, string txt) =>
+    v8.cTxt := txt
+    if not na(v8.cLb)
+        v8.cLb.set_text(pris ? "C ✓" : "C ✕")
+        v8.cLb.set_color(color.new(pris ? C_LC : C_GR, pris ? 15 : 60))
+        v8.cLb.set_tooltip("Entrée C : " + txt)
+    if not pris and not na(v8.cLn)
+        line.delete(v8.cLn)
+    true
+
+// Taille d'une entrée B, C ou D : pas plus d'unités que la cassure, pas plus que la somme qu'elle risque (1R).
+// Correctif PINE-03 (24/11/2026) : au moins le pas minimum, pour que le signal reste affiché quand la taille du backtest
+// TradingView s'arrondit à zéro (le lot à passer chez le courtier, legLots, est calculé à part).
+legQty(float dist) =>
+    dist > 0 and not na(v8.qty) and not na(v8.usd) ? math.min(v8.qty, math.max(qtyStep, math.floor(v8.usd / (dist * syminfo.pointvalue * fx) / qtyStep + 0.000001) * qtyStep)) : 0.0
+
+// Lot correspondant chez le courtier : même règle, avec le lot et le risque de la cassure
+legLots(float dist) =>
+    showLots and not na(pLots) and not na(pLotUSD) and dist > 0 ? math.min(pLots, math.floor(pLotUSD / (dist * lotSize * fx) / lotStep + 0.000001) * lotStep) : na
+
+// Ordres, dessins et alerte d'une nouvelle entrée B ou C (exécutée à la clôture de cette bougie)
+openLeg(string nm, int d, float stop, float q, bool pyrOk, string quoi) =>
+    Leg g = Leg.new(name = nm, id = nm + " #" + str.tostring(tradeN), addId = nm + "+ #" + str.tostring(tradeN), dir = d, entry = close, sl = stop,
+         risk = math.abs(close - stop), qty = q, usd = v8.usd, fillBar = bar_index + 1, tFill = time_close, col = nm == "B" ? C_LB : C_LC, usePyr = pyrOk)
+    strategy.entry(g.id, d == 1 ? strategy.long : strategy.short, qty = q, comment = nm == "B" ? "B repli VWAP" : "C " + hhmm(time_close))
+    strategy.exit("X" + g.id, from_entry = g.id, stop = stop, comment_loss = "Stop", comment_profit = "Stop")
+    float  lots  = legLots(g.risk)
+    string lotTx = na(lots) ? "" : lots > 0 ? " · " + lotTxt(lots) : " · lot < " + str.tostring(lotStep)
+    string sens  = d == 1 ? "ACHAT " : "VENTE "
+    if showOrders
+        int x2 = time_close + FUT
+        g.eLn := line.new(g.tFill, g.entry, x2, g.entry, xloc = xloc.bar_time, color = g.col, width = 2)
+        g.sLn := line.new(g.tFill, stop, x2, stop, xloc = xloc.bar_time, color = color.new(g.col, 30), style = line.style_dashed, width = 1)
+        g.eLb := sideLabel(x2, g.entry, g.id + " · " + fmt(g.entry), g.col, "Entrée " + nm + " : " + quoi)
+        g.sLb := sideLabel(x2, stop, "SL " + nm + " · " + fmt(stop), C_DN, "Stop de l'entrée " + nm + " (" + distTxt(g.risk) + ")")
+        label.new(time, close, sens + nm, xloc = xloc.bar_time, yloc = d == 1 ? yloc.belowbar : yloc.abovebar, style = d == 1 ? label.style_label_up : label.style_label_down,
+             color = color.new(g.col, 5), textcolor = color.white, size = size.normal,
+             tooltip = sens + nm + " à la clôture de cette bougie (" + hhmm(time_close) + " NY) : " + quoi + "\nEntrée ≈ " + fmt(close) + " · stop " + fmt(stop) + " (" + distTxt(g.risk) + ")" + lotTx)
+    notify(sens + nm + " MAINTENANT : " + quoi + "\nEntrée au marché ≈ " + fmt(close) + " · stop " + fmt(stop) + " (" + distTxt(g.risk) + ")" +
+         "\nTaille : " + str.tostring(q) + (na(lots) ? "" : lots > 0 ? " (" + lotTxt(lots) + " chez le courtier)" : " (moins de " + str.tostring(lotStep) + " lot chez le courtier)") + " — au plus la taille et le risque de la cassure" +
+         (beR > 0 ? "\nStop au prix d'entrée à +" + str.tostring(beR) + "R de cette entrée (" + fmt(close + d * beR * g.risk) + ")" : "") +
+         (pyrOk and usePyr ? "\nPyramide si une bougie clôture à " + fmt(close + d * pyrR * g.risk) : "") + "\nSortie à 15:50 NY au plus tard")
+    g
+
+// V9 : entrée D (continuation). Ordre stop sur l'extrême de la bougie qui vient de clôturer, stop à l'autre extrême.
+openLegStop(string nm, int d, float trig, float stop, float inval, float q, bool pyrOk, int nBars) =>
+    Leg g = Leg.new(name = nm, id = nm + " #" + str.tostring(tradeN), addId = nm + "+ #" + str.tostring(tradeN), dir = d, entry = trig, sl = stop,
+         risk = math.abs(trig - stop), qty = q, usd = v8.usd, fillBar = bar_index + 1, tFill = time_close, col = C_LD, usePyr = pyrOk, pend = true, expBar = bar_index + nBars, inval = inval)
+    strategy.entry(g.id, d == 1 ? strategy.long : strategy.short, qty = q, stop = trig, comment = nm + " continuation")
+    strategy.exit("X" + g.id, from_entry = g.id, stop = stop, comment_loss = "Stop", comment_profit = "Stop")
+    float  lots = legLots(g.risk)
+    string sens = d == 1 ? "ACHAT " : "VENTE "
+    if showOrders
+        int x2 = time_close + nBars * BAR
+        g.eLn := line.new(g.tFill, trig, x2, trig, xloc = xloc.bar_time, color = color.new(g.col, 15), style = line.style_dashed, width = 1)
+        g.sLn := line.new(g.tFill, stop, x2, stop, xloc = xloc.bar_time, color = color.new(g.col, 55), style = line.style_dotted, width = 1)
+        g.eLb := sideLabel(x2, trig, nm + " stop · " + fmt(trig), g.col, "Entrée " + nm + " (continuation) : " + sens + "si le prix " + (d == 1 ? "dépasse " : "passe sous ") + fmt(trig) + " dans les " + str.tostring(nBars * 5) + " minutes. Stop : " + fmt(stop) + ".")
+    notify(nm + " GUETTÉE : ordre stop " + (d == 1 ? "d'achat" : "de vente") + " à " + fmt(trig) + " pendant " + str.tostring(nBars * 5) + " min · stop " + fmt(stop) + " (" + distTxt(g.risk) + ")" +
+         "\nTaille : " + str.tostring(q) + (na(lots) ? "" : lots > 0 ? " (" + lotTxt(lots) + " chez le courtier)" : " (moins de " + str.tostring(lotStep) + " lot chez le courtier)") + " — au plus la taille et le risque de la cassure")
+    g
+
+legMove(Leg g, int x2) =>
+    for ln in array.from(g.eLn, g.sLn)
+        if not na(ln)
+            ln.set_x2(x2)
+    for lb in array.from(g.eLb, g.sLb)
+        if not na(lb)
+            lb.set_x(x2)
+    true
+
+legErase(Leg g) =>
+    for ln in array.from(g.eLn, g.sLn)
+        if not na(ln)
+            line.delete(ln)
+    for lb in array.from(g.eLb, g.sLb)
+        if not na(lb)
+            label.delete(lb)
+    true
+
+// Déplace le stop affiché de la jambe
+legStopDraw(Leg g, float px, string txt, color c) =>
+    if not na(g.sLn)
+        g.sLn.set_y1(px)
+        g.sLn.set_y2(px)
+        g.sLn.set_color(color.new(c, 20))
+    if not na(g.sLb)
+        g.sLb.set_y(px)
+        g.sLb.set_text(txt)
+        g.sLb.set_color(color.new(c, 15))
+    true
+
+// Gestion à la clôture de chaque bougie, comme la cassure : pyramide à +2R (clôture), sinon stop à l'entrée à +1,5R
+legManage(Leg g) =>
+    bool pyrNow = false
+    if g.usePyr and usePyr and not g.pyr and not inFlat and bar_index >= g.fillBar and (close - g.entry) * g.dir >= pyrR * g.risk
+        float q = math.floor(g.qty * pyrSize / qtyStep + 0.000001) * qtyStep
+        if q > 0
+            float lockPx = close - g.dir * pyrGap * g.risk
+            strategy.entry(g.addId, g.dir == 1 ? strategy.long : strategy.short, qty = q, comment = "Pyramide " + g.name)
+            strategy.exit("X" + g.addId, from_entry = g.addId, stop = lockPx, comment_loss = "Stop remonté", comment_profit = "Stop remonté")
+            strategy.exit("X" + g.id, from_entry = g.id, stop = lockPx, comment_loss = "Stop remonté", comment_profit = "Stop remonté")
+            g.pyr  := true
+            g.be   := true
+            pyrNow := true
+            legStopDraw(g, lockPx, "SL " + g.name + " · " + fmt(lockPx), C_UP)
+            if showOrders
+                label.new(time, close, "+", xloc = xloc.bar_time, color = color.new(g.col, 20), textcolor = color.white, size = size.tiny,
+                     style = g.dir == 1 ? label.style_label_up : label.style_label_down,
+                     tooltip = "Pyramide de l'entrée " + g.name + " : +" + str.tostring(q) + " à " + fmt(close) + " · stop de l'ensemble à " + fmt(lockPx))
+            notify(g.id + " : PYRAMIDE, ajout de " + str.tostring(q) + " à " + fmt(close) + "\nStop de l'ensemble : " + fmt(lockPx))
+    if not pyrNow and beR > 0 and not g.be and bar_index > g.fillBar and (g.dir == 1 ? high >= g.entry + beR * g.risk : low <= g.entry - beR * g.risk)
+        g.be := true
+        strategy.exit("X" + g.id, from_entry = g.id, stop = g.entry, comment_loss = "Stop à l'entrée", comment_profit = "Stop à l'entrée")
+        legStopDraw(g, g.entry, "SL " + g.name + " · entrée", C_GR)
+        notify(g.id + " : +" + str.tostring(beR) + "R atteint, stop déplacé au prix d'entrée (" + fmt(g.entry) + ")")
+    true
+
+// La jambe est fermée : résultat en R (÷ la somme risquée par la cassure du jour), statistiques, dessin, alerte.
+// La règle mémoire n'est pas touchée : elle ne regarde que le trade de cassure.
+legRecord(Leg g) =>
+    float  px  = close
+    int    xe  = time
+    string why = "Fermé"
+    if g.lastK >= 0
+        px  := strategy.closedtrades.exit_price(g.lastK)
+        xe  := strategy.closedtrades.exit_time(g.lastK)
+        why := strategy.closedtrades.exit_comment(g.lastK)
+    float  r   = g.usd > 0 ? g.pnl / g.usd : 0.0
+    S.nClosed += 1
+    S.sumR    += r
+    if r > 0.05
+        S.nPos += 1
+    S.streak  := why != "Stop à l'entrée" and r < -0.05 ? S.streak + 1 : 0
+    S.worstSt := math.max(S.worstSt, S.streak)
+    S.peakR   := math.max(S.peakR, S.sumR)
+    S.ddR     := math.max(S.ddR, S.peakR - S.sumR)
+    legMove(g, xe)
+    for lb in array.from(g.eLb, g.sLb)
+        if not na(lb)
+            label.delete(lb)
+    if not na(g.eLn)
+        g.eLn.set_width(1)
+    if not na(g.sLn)
+        g.sLn.set_color(color.new(g.col, 65))
+    if showOrders
+        label.new(xe, px, g.name + " " + rTxt(r), xloc = xloc.bar_time, style = label.style_label_left,
+             color = color.new(r > 0.05 ? C_UP : r < -0.05 ? C_DN : C_GR, 20), textcolor = color.white, size = size.small,
+             tooltip = g.id + " · " + why + " · entrée " + fmt(g.entry) + " · sortie " + fmt(px))
+    notify(g.id + " clôturé (" + why + ") : " + rTxt(r) + " à " + fmt(px))
+    string res = "terminée (" + why + ") : " + rTxt(r)
+    if g.name == "B"
+        v8.bTxt := res
+    else if g.name == "C"
+        v8.cTxt := res
+    else
+        v8.dTxt := g.name + " " + res
+    true
+
+// Une bougie de plus pour une jambe ouverte : exécution confirmée, sortie détectée, gestion. true = la jambe est finie.
+legStep(Leg g, int idx) =>
+    bool  fini = false
+    float oq   = openQtyOf(idx)
+    [p, k, n]  = closedOf(seen, idx)
+    if n > 0
+        g.pnl   += p
+        g.lastK := k
+    if not g.ok
+        if oq > 0 or n > 0
+            g.ok := true
+            if g.pend
+                // V9 : l'ordre stop de l'entrée D vient d'être exécuté pendant cette bougie
+                g.pend    := false
+                g.fillBar := bar_index
+                notify((g.dir == 1 ? "ACHAT " : "VENTE ") + g.name + " EXÉCUTÉ (continuation) · stop " + fmt(g.sl) +
+                     (beR > 0 ? "\nStop au prix d'entrée à +" + str.tostring(beR) + "R de cette entrée" : "") + (g.usePyr and usePyr ? "\nPyramide si une bougie clôture à +" + str.tostring(pyrR) + "R de cette entrée" : ""))
+            float ep = na
+            if oq > 0
+                ep := openEntryOf(g.id)
+            else
+                ep := strategy.closedtrades.entry_price(k)
+            if not na(ep)
+                g.entry := ep
+                g.risk  := math.abs(ep - g.sl)
+                if not na(g.eLn)
+                    g.eLn.set_y1(ep)
+                    g.eLn.set_y2(ep)
+                if not na(g.eLb)
+                    g.eLb.set_y(ep)
+        else if g.pend and bar_index < g.expBar and not inFlat and not (g.dir == 1 ? low <= nz(g.inval, g.sl) : high >= nz(g.inval, g.sl))
+            fini := false   // V9 : l'ordre stop de l'entrée D reste valable
+        else
+            // ordre non exécuté : validité dépassée ou stop touché d'abord (D) ; exécution manquée (B, C : ne devrait pas arriver)
+            if g.pend
+                strategy.cancel(g.id)
+                strategy.cancel("X" + g.id)
+                v8.dTxt := g.name + " non déclenchée"
+            legErase(g)
+            fini := true
+    if g.ok
+        if oq == 0
+            legRecord(g)
+            fini := true
+        else
+            legManage(g)
+            legMove(g, time + FUT)
+            if not na(g.eLb)
+                float r = g.usd > 0 ? (g.pnl + openProfitOf(idx)) / g.usd : 0.0
+                g.eLb.set_text(g.id + " · " + fmt(g.entry) + " · " + rTxt(r))
+    fini
+
+// ═════════════════════════ Exécutions et sorties ═════════════════════════
+// V8 : les sorties de la cassure (et de sa pyramide) sont comptées à part de celles des entrées B et C
+[aClosedP, aClosedK, aClosedN] = closedOf(seen, 0)
+if pend and na(cur) and (strategy.position_size != 0 or strategy.closedtrades > seen)
+    // Un des ordres stop vient d'être exécuté (éventuellement stoppé sur la même bougie)
+    pend := false
+    if strategy.position_size != 0
+        int d = strategy.position_size > 0 ? 1 : -1
+        cur := newTrade(d, strategy.opentrades.entry_price(0), strategy.opentrades.entry_time(0), strategy.opentrades.entry_bar_index(0), math.abs(strategy.position_size))
+        // Objectif posé maintenant, depuis le prix d'exécution réel (pas d'objectif sur la bougie d'entrée)
+        if not na(cur.tp)
+            strategy.exit(cur.xid, from_entry = cur.id, stop = cur.sl, limit = cur.tp, comment_loss = "Stop", comment_profit = "Objectif")
+        openDraw(cur)
+        notify((d == 1 ? "ACHAT" : "VENTE") + " exécuté : " + cur.id + " à " + fmt(cur.entry) + "\nStop : " + fmt(cur.sl) +
+             (beR > 0 ? "\nStop au prix d'entrée dès " + fmt(cur.entry + d * beR * cur.risk) + " (+" + str.tostring(beR) + "R)" : "") +
+             (usePyr ? "\nPyramide : ajout si une bougie clôture à " + fmt(cur.entry + d * pyrR * cur.risk) + " (" + rTxt(pyrR) + "), stop de l'ensemble " + str.tostring(pyrGap) + "R sous l'ajout" : "") +
+             (not na(cur.tp) ? "\nObjectif : " + fmt(cur.tp) : "\nSortie à 15:50 NY si ni stop ni objectif"))
+        S.dayTxt := cur.id + " en cours"
+        tryPyramid(cur)
+        armV8(d, cur.fillBar, cur.qty, cur.usd, false)   // V8 : B et C deviennent possibles
+    else
+        int k = strategy.closedtrades - 1
+        int d = strategy.closedtrades.size(k) > 0 ? 1 : -1
+        Trade t = newTrade(d, strategy.closedtrades.entry_price(k), strategy.closedtrades.entry_time(k), strategy.closedtrades.entry_bar_index(k), math.abs(strategy.closedtrades.size(k)))
+        t.pnl := strategy.closedtrades.profit(k)
+        openDraw(t)
+        recordClose(t, k)
+        armV8(d, t.fillBar, t.qty, t.usd, true)   // V8 : cassure stoppée sur sa bougie, B reste possible, pas C
+else if not na(cur) and aClosedN > 0
+    // Sortie de l'unité de départ et de l'ajout : le résultat du trade est leur somme (B et C sont comptées à part)
+    cur.pnl += aClosedP
+    if openQtyOf(0) == 0
+        recordClose(cur, aClosedK)
+        cur := na
+else if not na(cur)
+    // Trade ouvert : meilleur prix atteint (zone verte)
+    cur.best := cur.dir == 1 ? math.max(cur.best, high) : math.min(cur.best, low)
+    if not na(cur.gBx)
+        cur.gBx.set_top(math.max(cur.entry, cur.best))
+        cur.gBx.set_bottom(math.min(cur.entry, cur.best))
+    bool pyrNow = tryPyramid(cur)
+    // Stop au prix d'entrée une fois le seuil atteint (à partir de la bougie suivant l'entrée)
+    if not pyrNow and beR > 0 and not cur.be and bar_index > cur.fillBar and (cur.dir == 1 ? high >= cur.entry + beR * cur.risk : low <= cur.entry - beR * cur.risk)
+        cur.be := true
+        strategy.exit(cur.xid, from_entry = cur.id, stop = cur.entry, limit = cur.tp, comment_loss = "Stop à l'entrée",
+             comment_profit = not na(cur.tp) ? "Objectif" : "Stop à l'entrée")
+        if not na(cur.rBx)
+            cur.rBx.set_right(time)
+        if not na(cur.bLn)
+            line.delete(cur.bLn)
+        if not na(cur.sLn)
+            cur.sLn.set_y1(cur.entry)
+            cur.sLn.set_y2(cur.entry)
+            cur.sLn.set_color(color.new(C_GR, 20))
+        if not na(cur.sLb)
+            cur.sLb.set_y(cur.entry)
+            cur.sLb.set_text("SL · entrée")
+            cur.sLb.set_color(color.new(C_GR, 15))
+        notify(cur.id + " : +" + str.tostring(beR) + "R atteint, stop déplacé au prix d'entrée (" + fmt(cur.entry) + ")")
+    moveRight(cur, time + FUT)
+    if not na(cur.eLb)
+        float r = liveR(cur)
+        cur.eLb.set_text(cur.id + " · " + fmt(cur.entry) + " · " + rTxt(r))
+        cur.eLb.set_color(color.new(r >= 0 ? C_UP : C_DN, 15))
+// ═════════════════════════ V8 : entrées B (repli VWAP) et C (heure fixe) ═════════════════════════
+bool v8On  = v8.day != 0 and v8.day == nyDate
+int  tcMin = hour(time_close, TZ_NY) * 60 + minute(time_close, TZ_NY)
+bool sigB  = false
+bool sigC  = false
+// zone de repli affichée : tant que B est guettée (calculé avant l'examen de cette bougie, pour couvrir la bougie du signal)
+bool zoneOn = useB and v8On and not v8.bDone and na(legB) and bar_index > v8.breakBar and not na(vwapS)
+
+// 1. entrées ouvertes : sortie détectée, pyramide, stop à l'entrée
+if not na(legB)
+    if legStep(legB, 1)
+        legB := na
+if not na(legC)
+    if legStep(legC, 2)
+        legC := na
+for kD = 0 to 6
+    Leg gD = array.get(legD, kD)
+    if not na(gD)
+        if legStep(gD, 3 + kD)
+            array.set(legD, kD, na)
+
+if v8On
+    // 2. le stop du range a-t-il été touché depuis la cassure ? (l'entrée C en dépend)
+    if not v8.stopHit and bar_index > v8.breakBar and (v8.dir == 1 ? low <= orL : high >= orH)
+        v8.stopHit := true
+
+    // 3. entrée B : repli sur le VWAP
+    if useB and not v8.bDone and na(legB) and bar_index >= v8.breakBar
+        if (v8.dir == 1 and close < orL) or (v8.dir == -1 and close > orH)
+            v8.bDone := true
+            v8.bTxt  := "abandonnée : une bougie a clôturé de l'autre côté du range"
+            notify("entrée B abandonnée pour aujourd'hui : une bougie a clôturé de l'autre côté du range")
+        else if tcMin >= bEndH * 60 + bEndM or inFlat
+            v8.bDone := true
+            v8.bTxt  := "pas de repli avant " + str.tostring(bEndH, "00") + ":" + str.tostring(bEndM, "00")
+        else if bar_index > v8.breakBar and not na(vwapS)
+            float tol = bTol * (orH - orL)
+            bool  sig = v8.dir == 1 ? (low <= vwapS + tol and close > vwapS and close > open) : (high >= vwapS - tol and close < vwapS and close < open)
+            if sig
+                float stop = v8.dir == 1 ? math.min(low, low[1]) - close * B_BUF_PB * 1e-4 : math.max(high, high[1]) + close * B_BUF_PB * 1e-4
+                stop := close - v8.dir * stopMult * ((close - stop) * v8.dir)   // V10 : stop élargi
+                float q    = legQty((close - stop) * v8.dir)
+                v8.bDone := true
+                if q > 0
+                    sigB := true
+                    legB := openLeg("B", v8.dir, stop, q, true, "repli sur le VWAP (" + fmt(vwapS) + ")")
+                    v8.bTxt := "en cours"
+                else
+                    v8.bTxt := "non prise : taille nulle (stop trop loin ou pas de taille trop grand)"
+
+    // 4. entrée C : à l'heure dite, si la cassure tient
+    if useC and not v8.cDone and na(legC) and bar_index > v8.breakBar and tcMin >= cH * 60 + cM
+        v8.cDone := true
+        float lvC   = v8.dir == 1 ? orH : orL
+        float stopC = v8.dir == 1 ? orL : orH
+        stopC := close - v8.dir * stopMult * ((close - stopC) * v8.dir)   // V10 : stop élargi
+        bool  holds = v8.dir == 1 ? close > lvC : close < lvC
+        if tcMin > cH * 60 + cM + 3 or inFlat
+            markC(false, "non prise : l'heure de l'entrée est passée")
+        else if v8.stopHit
+            markC(false, "non prise : le stop du range a été touché depuis la cassure")
+        else if not holds
+            markC(false, "non prise : le prix n'est plus au-delà du niveau de cassure (" + fmt(lvC) + ")")
+        else
+            float q = legQty((close - stopC) * v8.dir)
+            if q > 0
+                sigC := true
+                legC := openLeg("C", v8.dir, stopC, q, false, "la cassure tient à " + hhmm(time_close) + " NY")
+                markC(true, "en cours")
+            else
+                markC(false, "non prise : taille nulle")
+
+    // 5. V9 — entrées D (continuations) : à la clôture de chacune des bougies qui suivent celle du range, tant que la
+    //    cassure A est ouverte, ordre stop sur l'extrême de la bougie (valable dValid bougies), stop à l'autre extrême
+    int kA = bar_index - pBar - 1
+    if useD and kA >= 0 and kA < dCount and not inFlat and not na(cur) and openQtyOf(0) > 0 and bar_index >= v8.breakBar and high > low and not v8.stopHit   // V10 : pas si l'autre bord du range a été touché
+        if na(array.get(legD, kA))
+            float qD = legQty(stopMult * (high - low))
+            if qD > 0
+                array.set(legD, kA, openLegStop("D" + str.tostring(kA + 1), v8.dir, v8.dir == 1 ? high : low, v8.dir == 1 ? high - stopMult * (high - low) : low + stopMult * (high - low), v8.dir == 1 ? low : high, qD, dPyr, dValid))
+                v8.dTxt := "D" + str.tostring(kA + 1) + " guettée"
+
+seen := strategy.closedtrades
+
+// v7 option : sortie au temps. À l'heure dite, un trade encore dans sa phase initiale (ni stop à l'entrée ni pyramide) et
+// sous le seuil est fermé à la clôture de la bougie. Examiné une seule fois par trade.
+if useTime and not na(cur) and openQtyOf(0) != 0 and not cur.timeDone and hour(time_close, TZ_NY) * 60 + minute(time_close, TZ_NY) >= timeH * 60 + timeM
+    cur.timeDone := true
+    if not cur.be and not cur.pyr and (close - cur.entry) * cur.dir / cur.risk < timeR
+        strategy.close(cur.id, comment = "Sortie au temps")   // la cassure seulement : B et C suivent leurs propres règles
+
+// Fin de journée (et sécurité : une position ne passe jamais la nuit, même un jour de fermeture anticipée)
+if strategy.position_size != 0 and (inFlat or (not na(cur) and nyDate != cur.day) or (v8.day != 0 and nyDate != v8.day))
+    strategy.close_all(comment = "Fin de journée")
+
+// ═════════════════════════ Ordres en attente : annulation ═════════════════════════
+if pend and strategy.position_size == 0 and bar_index > pBar
+    bool late     = bar_index - pBar >= liveBars
+    bool oppFirst = pDir == 1 ? low <= orL : pDir == -1 ? high >= orH : false
+    if late or oppFirst
+        strategy.cancel(idL())
+        strategy.cancel(idS())
+        pend := false
+        dropPending()
+        string why = oppFirst ? "l'autre côté du range a été touché d'abord" : "pas de cassure avant " + hhmm(time_close) + " NY"
+        clearDay(today, oppFirst ? "côté bloqué touché d'abord" : "pas de cassure")
+        S.dayTxt := "Pas de trade : " + why
+        notify("ordres annulés : " + why)
+    else
+        int x2 = time + FUT
+        for ln in array.from(lnH, lnL, today.blkLn)
+            if not na(ln)
+                ln.set_x2(x2)
+        for lb in array.from(lbH, lbL, today.blkLb)
+            if not na(lb)
+                lb.set_x(x2)
+
+// ═════════════════════════ v7 mémoire : jour d'observation ═════════════════════════
+// Aucun ordre n'a été posé. Si la cassure permise se déclenche pendant la validité des ordres, le signal est consommé :
+// le trading reprend au signal suivant. Sinon la règle reste en attente.
+if obs and bar_index > obsBar
+    bool trigO = obsDir == 1 ? high >= orH : obsDir == -1 ? low <= orL : (high >= orH or low <= orL)
+    bool oppO  = obsDir == 1 ? low <= orL : obsDir == -1 ? high >= orH : false
+    if trigO
+        obs := false
+        S.skipNext := false
+        S.dayTxt := "Signal sauté (règle mémoire)"
+        notify("signal sauté (règle mémoire) : la cassure s'est déclenchée et n'a pas été prise. Le trading reprend au prochain signal.")
+    else if oppO or bar_index - obsBar >= liveBars
+        obs := false
+        S.dayTxt := "Pas de signal : la règle mémoire reste en attente"
+        notify("pas de signal aujourd'hui : la règle mémoire reste en attente")
+
+// ═════════════════════════ 9:35 NY : range, filtres et ordres ═════════════════════════
+if isOR and strategy.position_size == 0 and not pend and na(cur)
+    orH   := high
+    orL   := low
+    today := Day.new()
+    lnH   := na
+    lnL   := na
+    lbH   := na
+    lbL   := na
+    float  dist  = orH - orL
+    string endT  = hhmm(time_close + liveBars * BAR)
+    // Filtres
+    bool   preOk = preDay == nyDate and not na(preH)
+    bool   rsiL  = not useRSI or rsiV > 50
+    bool   rsiS  = not useRSI or rsiV < 50
+    bool   extL  = not useExt or (preOk and orH >= preH)
+    bool   extS  = not useExt or (preOk and orL <= preL)
+    // v7 options : tendance H4 et SAR M5. Un jour écarté par ces filtres n'est pas un signal (la règle mémoire n'est pas touchée)
+    bool   trL   = (not useDI or (not na(diH4) and diH4 > 0)) and (not useSar or (not na(sarV) and sarV < close))
+    bool   trS   = (not useDI or (not na(diH4) and diH4 < 0)) and (not useSar or (not na(sarV) and sarV > close))
+    bool   okL   = rsiL and extL and trL
+    bool   okS   = rsiS and extS and trS
+    string whyL  = not rsiL ? "RSI" : not extL ? (preOk ? "élan" : "pas de bougies 9:00-9:30") : not trL ? "tendance" : ""
+    string whyS  = not rsiS ? "RSI" : not extS ? (preOk ? "élan" : "pas de bougies 9:00-9:30") : not trS ? "tendance" : ""
+    pDir := okL and okS ? 0 : okL ? 1 : okS ? -1 : 2
+    S.filtTxt := "Achat " + (okL ? "✓" : "✕ " + whyL) + " · Vente " + (okS ? "✓" : "✕ " + whyS) + (useRSI ? " · RSI " + str.tostring(rsiV, "0") : "")
+    float qtyRaw = dist > 0 ? math.floor((strategy.initial_capital + strategy.netprofit) * riskPct / 100 / (stopMult * dist * syminfo.pointvalue * fx) / qtyStep + 0.000001) * qtyStep : na   // V10 : 1R = stopMult ranges
+    // Correctif PINE-03 (revue du 17/11/2026, aggravé par la V10 : stop ×3 et 0,25 %) : quand la taille du backtest TradingView
+    // s'arrondit à zéro, elle est portée au pas minimum. Sinon le script n'affichait aucun ordre ni alerte ce jour-là, alors que
+    // le lot à passer chez le courtier (calculé à part, sur le solde du compte) restait valable.
+    bool  qtyMin = not na(qtyRaw) and qtyRaw <= 0
+    float qty    = qtyMin ? qtyStep : qtyRaw
+    // v7 : jours FOMC, jours fériés / demi-séances, règle mémoire
+    bool  fomcD  = skipFomc and isFomc(nyDate)
+    bool  shortD = skipShort and shortDay
+    // V9 garde-fou coût : comme un jour FOMC, ce jour-là ne change rien à la règle mémoire
+    bool  costD  = maxCostR > 0 and dist > 0 and (close * COST_BP * 1e-4) / (stopMult * dist) > maxCostR
+    bool  memD   = useMem and S.skipNext and pDir != 2 and not fomcD and not shortD and not costD
+    bool  go  = pDir != 2 and not na(qty) and qty > 0 and not fomcD and not shortD and not memD and not costD
+    if go or keepEmpty
+        int xEnd = time + (liveBars + 1) * BAR
+        if showPre and useExt and preOk
+            today.preBx := box.new(preT0, preH, xEnd, preL, xloc = xloc.bar_time, bgcolor = color.new(C_PRE, 95),
+                 border_color = color.new(C_PRE, 55), border_style = line.style_dotted, border_width = 1,
+                 text = "9:00-9:30", text_size = size.tiny, text_color = color.new(C_PRE, 35), text_halign = text.align_left, text_valign = text.align_top)
+        today.orBx := box.new(time, orH, xEnd, orL, xloc = xloc.bar_time,
+             bgcolor = color.new(C_BOX, go ? 86 : 94), border_color = color.new(C_BOX, 55), border_width = 1,
+             text = "9:30 · " + distTxt(dist), text_size = size.tiny, text_color = color.new(C_BOX, 25), text_halign = text.align_left, text_valign = text.align_top)
+    if not go
+        string why = pDir == 2 ? "achat bloqué (" + whyL + "), vente bloquée (" + whyS + ")" : fomcD ? "jour de décision de la Fed (FOMC)" : shortD ? "jour férié américain ou demi-séance" :
+             costD ? "coût trop lourd pour ce range (" + str.tostring(100 * (close * COST_BP * 1e-4) / (stopMult * dist), "0") + " % du risque, limite " + str.tostring(100 * maxCostR, "0") + " %)" : memD ? "règle mémoire, le trade précédent était gagnant (signal observé sans ordre)" : "taille nulle (réduire le pas de taille ou augmenter le risque)"
+        if memD
+            obs    := true
+            obsBar := bar_index
+            obsDir := pDir
+        if keepEmpty and not na(today.orBx)
+            today.orBx.set_text("9:30 · pas de trade")
+        S.dayTxt := "Pas de trade : " + why
+        notify("pas de trade aujourd'hui : " + why)
+        if showGuide and (memD or fomcD or shortD)
+            label.new(time, orH, memD ? "⏸ mémoire" : fomcD ? "⏸ FOMC" : "⏸ férié", xloc = xloc.bar_time, style = label.style_label_down, color = color.new(C_GR, 70),
+                 textcolor = color.new(chart.fg_color, 25), size = size.tiny, tooltip = "Pas de trade aujourd'hui : " + why)
+    else
+        tradeN += 1
+        pend   := true
+        pBar   := bar_index
+        pUSD   := qty * stopMult * dist * syminfo.pointvalue * fx
+        pQty   := qty
+        pLots  := showLots ? lotsFor(stopMult * dist) : na
+        pLotsA := na(pLots) ? na : math.floor(pLots * pyrSize / lotStep + 0.000001) * lotStep
+        pLotUSD := na(pLots) ? na : pLots * stopMult * dist * lotSize * fx
+        // L'objectif éventuel est ajouté à l'exécution, depuis le prix réel d'entrée
+        if pDir != -1
+            strategy.entry(idL(), strategy.long, qty = qty, stop = orH, oca_name = "ORB" + str.tostring(tradeN), oca_type = strategy.oca.cancel, comment = "Cassure du high")
+            strategy.exit("X" + idL(), from_entry = idL(), stop = orH - stopMult * dist, comment_loss = "Stop", comment_profit = "Objectif")
+        if pDir != 1
+            strategy.entry(idS(), strategy.short, qty = qty, stop = orL, oca_name = "ORB" + str.tostring(tradeN), oca_type = strategy.oca.cancel, comment = "Cassure du low")
+            strategy.exit("X" + idS(), from_entry = idS(), stop = orL + stopMult * dist, comment_loss = "Stop", comment_profit = "Objectif")
+        string lotLb = na(pLots) ? "" : " · " + (pLots > 0 ? lotTxt(pLots) : "lot < " + str.tostring(lotStep))
+        if showOrders
+            int x2 = time + FUT
+            if pDir != -1
+                lnH := line.new(time, orH, x2, orH, xloc = xloc.bar_time, color = color.new(C_UP, 10), style = line.style_dashed, width = 1)
+                lbH := sideLabel(x2, orH, "Achat stop · " + fmt(orH) + lotLb, C_UP, "Stop : " + fmt(orH - stopMult * dist) + " · valable jusqu'à " + endT + " NY")
+            if pDir != 1
+                lnL := line.new(time, orL, x2, orL, xloc = xloc.bar_time, color = color.new(C_DN, 10), style = line.style_dashed, width = 1)
+                lbL := sideLabel(x2, orL, "Vente stop · " + fmt(orL) + lotLb, C_DN, "Stop : " + fmt(orL + stopMult * dist) + " · valable jusqu'à " + endT + " NY")
+            if showBlocked and pDir != 0
+                float  yb = pDir == 1 ? orL : orH
+                string tBlk = pDir == 1 ? "Vente bloquée · " + whyS : "Achat bloqué · " + whyL
+                today.blkLn := line.new(time, yb, x2, yb, xloc = xloc.bar_time, color = color.new(C_GR, 45), style = line.style_dotted, width = 1)
+                today.blkLb := label.new(x2, yb, tBlk, xloc = xloc.bar_time, style = label.style_label_left, color = color.new(C_GR, 70),
+                     textcolor = color.new(chart.fg_color, 20), size = size.small, tooltip = "Si ce côté est touché avant la cassure permise, l'ordre du jour est annulé.")
+        S.dayTxt := (pDir == 1 ? "Achat stop " + fmt(orH) : pDir == -1 ? "Vente stop " + fmt(orL) : "Achat " + fmt(orH) + " · Vente " + fmt(orL)) + " · jusqu'à " + endT
+        notify("ORDRES ORB placés · " + hhmm(time_close) + " NY (" + str.format_time(time_close, "HH:mm", TZ_PARIS) + " Paris)" +
+             "\nRange 9:30 : " + fmt(orL) + " – " + fmt(orH) + " (" + distTxt(dist) + ") · 1R = " + distTxt(stopMult * dist) + (stopMult != 1 ? " (stop élargi : " + str.tostring(stopMult) + " ranges)" : "") +
+             (pDir != -1 ? "\nAchat stop : " + fmt(orH) + " · stop " + fmt(orH - stopMult * dist) : "\nAchat bloqué (" + whyL + ")") +
+             (pDir != 1 ? "\nVente stop : " + fmt(orL) + " · stop " + fmt(orL + stopMult * dist) : "\nVente bloquée (" + whyS + ")") +
+             (tgtR > 0 ? "\nObjectif : +" + str.tostring(tgtR) + "R depuis le prix d'exécution" : "") +
+             "\nTaille : " + str.tostring(qty) + (isFut ? " contrat(s)" : "") + " · " + str.tostring(pUSD, "0.##") + " $ risqués (" + str.tostring(riskPct) + " %)" +
+             (qtyMin ? " — taille TradingView portée au minimum, le backtest risque plus que prévu ce jour-là" : "") +
+             (na(pLots) ? "" : pLots > 0 ? "\nLot chez le courtier (contrat de " + str.tostring(lotSize) + ") : " + lotTxt(pLots) + " · " + str.tostring(pLotUSD, "0.##") + " $ risqués" +
+                 (usePyr ? " · ajout de la pyramide : " + lotTxt(pLotsA) : "") :
+                 "\nLot chez le courtier : moins de " + str.tostring(lotStep) + " lot, risque trop petit pour ce range") +
+             "\nValables jusqu'à " + endT + " NY." + (pDir == 0 ? " Le premier exécuté annule l'autre." : " Annulé si le côté bloqué est touché d'abord.") +
+             (beR > 0 ? "\nStop au prix d'entrée à +" + str.tostring(beR) + "R" : "") + (tgtR > 0 ? "" : " · sortie à 15:50 NY (12:45 les jours fériés et demi-séances)") +
+             (usePyr ? "\nPyramide : +" + str.tostring(pyrSize) + " unité si une bougie clôture à " + rTxt(pyrR) + ", stop de l'ensemble " + str.tostring(pyrGap) + "R sous l'ajout" : ""))
+
+// ═════════════════════════ V8 : VWAP, zone de repli et bougies de signal ═════════════════════════
+plot(showVwap ? vwapS : na, "VWAP de séance", color = C_VW, linewidth = 2, style = plot.style_linebr)
+float zTol = v8.dir * bTol * (orH - orL)
+pZ1 = plot(showZoneB and zoneOn ? vwapS : na, "Zone de repli B : VWAP", color = color.new(C_LB, 100), style = plot.style_linebr, display = display.pane)
+pZ2 = plot(showZoneB and zoneOn ? vwapS + zTol : na, "Zone de repli B : limite", color = color.new(C_LB, 40), style = plot.style_linebr, display = display.pane)
+fill(pZ1, pZ2, color = color.new(C_LB, 78), title = "Zone de repli B")
+bgcolor(sigB ? color.new(C_LB, 82) : sigC ? color.new(C_LC, 82) : na, title = "Bougie du signal B ou C")
+
+// ═════════════════════════ Tableau ═════════════════════════
+tblPos = switch tblPosIn
+    "En bas à droite"  => position.bottom_right
+    "En haut à gauche" => position.top_left
+    "En bas à gauche"  => position.bottom_left
+    => position.top_right
+
+cellRow(table t, int r, string k, string v, color c) =>
+    table.cell(t, 0, r, k, text_color = color.new(chart.fg_color, 45), text_size = size.small, text_halign = text.align_left)
+    table.cell(t, 1, r, v, text_color = c, text_size = size.small, text_halign = text.align_right)
+
+var table tb = table.new(tblPos, 2, 11, bgcolor = chart.bg_color, frame_color = color.new(color.gray, 60), frame_width = 1,
+     border_color = color.new(color.gray, 85), border_width = 1)
+if showTable and barstate.islast
+    color fg = chart.fg_color
+    table.cell(tb, 0, 0, "Strategy V10", text_color = fg, text_size = size.normal, text_halign = text.align_left)
+    table.cell(tb, 1, 0, "NY 9:30 · M5 · " + str.tostring(riskPct) + " % par trade", text_color = color.new(fg, 45), text_size = size.small, text_halign = text.align_right)
+    cellRow(tb, 1, "Range 9:30", na(orH) ? "—" : fmt(orL) + " – " + fmt(orH) + " (" + distTxt(orH - orL) + ")", fg)
+    cellRow(tb, 2, "Filtres", (useRSI or useExt) ? S.filtTxt : "désactivés", fg)
+    float lr = not na(cur) ? liveR(cur) : na
+    cellRow(tb, 3, "A · cassure", not na(cur) ? cur.id + " · " + rTxt(lr) + (cur.pyr ? " · pyramide, stop à " + rTxt(cur.lockR) : cur.be ? " · stop à l'entrée" : "") : S.dayTxt,
+         not na(cur) ? (lr >= 0 ? C_UP : C_DN) : fg)
+    // B : en cours, guettée (avec les deux prix à surveiller), terminée ou pas encore possible
+    float  lrB = not na(legB) and legB.usd > 0 ? (legB.pnl + openProfitOf(1)) / legB.usd : na
+    string bWait = na(vwapS) ? "guettée" : "guettée : une bougie doit toucher " + fmt(vwapS + v8.dir * bTol * (orH - orL)) + " puis clôturer " + (v8.dir == 1 ? "au-dessus de " : "sous ") + fmt(vwapS) + " (VWAP)"
+    string bShow = not useB ? "coupée" : not na(legB) ? legB.id + " · " + rTxt(lrB) + (legB.pyr ? " · pyramide" : legB.be ? " · stop à l'entrée" : "") :
+         v8On ? (v8.bDone ? v8.bTxt : bWait) : pend ? "attend la cassure" : "—"
+    cellRow(tb, 4, "B · repli VWAP", bShow, not na(legB) ? (lrB >= 0 ? C_UP : C_DN) : v8On and not v8.bDone ? C_LB : fg)
+    // C : en cours, prévue (avec le prix à tenir), terminée ou pas encore possible
+    float  lrC = not na(legC) and legC.usd > 0 ? (legC.pnl + openProfitOf(2)) / legC.usd : na
+    string cWait = "à " + str.tostring(cH, "00") + ":" + str.tostring(cM, "00") + " NY si le prix est " + (v8.dir == 1 ? "au-dessus de " + fmt(orH) : "sous " + fmt(orL)) + (v8.stopHit ? " — compromise : stop du range touché" : "")
+    string cShow = not useC ? "coupée" : not na(legC) ? legC.id + " · " + rTxt(lrC) + (legC.be ? " · stop à l'entrée" : "") :
+         v8On ? (v8.cDone ? v8.cTxt : cWait) : pend ? "attend la cassure" : "—"
+    cellRow(tb, 5, "C · " + str.tostring(cH, "00") + ":" + str.tostring(cM, "00"), cShow, not na(legC) ? (lrC >= 0 ? C_UP : C_DN) : v8On and not v8.cDone ? C_LC : fg)
+    // D : continuations en cours, guettées ou terminées
+    int   nDo = 0
+    int   nDp = 0
+    float pD  = 0.0
+    for kT = 0 to 6
+        Leg gT = array.get(legD, kT)
+        if not na(gT)
+            if gT.ok
+                nDo += 1
+                pD  += gT.pnl + openProfitOf(3 + kT)
+            else
+                nDp += 1
+    string dRes  = not na(v8.usd) and v8.usd > 0 ? rTxt(pD / v8.usd) : ""
+    string dShow = not useD ? "coupées" : nDo > 0 ? str.tostring(nDo) + " en cours · " + dRes + (nDp > 0 ? " · " + str.tostring(nDp) + " guettée(s)" : "") :
+         nDp > 0 ? str.tostring(nDp) + " guettée(s) : ordre stop sur l'extrême de la bougie précédente" : v8On ? v8.dTxt : pend ? "attendent la cassure" : "—"
+    cellRow(tb, 6, "D · continuations", dShow, nDo > 0 ? (pD >= 0 ? C_UP : C_DN) : nDp > 0 ? C_LD : fg)
+    cellRow(tb, 7, "Mémoire", not useMem ? "coupée" : S.skipNext ? "prochaine cassure NON PRISE (la dernière était gagnante)" : "prochaine cassure prise", S.skipNext and useMem ? C_PRE : fg)
+    cellRow(tb, 8, "Historique", S.nClosed == 0 ? "aucun trade" : str.tostring(S.nClosed) + " trades · " + str.tostring(100.0 * S.nPos / S.nClosed, "0") + " % gagnants · " + rTxt(S.sumR),
+         S.nClosed == 0 ? fg : S.sumR >= 0 ? C_UP : C_DN)
+    cellRow(tb, 9, "Par trade", S.nClosed == 0 ? "—" : (S.sumR >= 0 ? "+" : "") + str.tostring(S.sumR / S.nClosed, "0.00") + "R · pire baisse -" + str.tostring(S.ddR, "0.0") + "R · " + str.tostring(S.worstSt) + " pertes de suite", fg)
+    cellRow(tb, 10, "Lot A (contrat " + str.tostring(lotSize) + ")", not showLots ? "désactivé" : na(orH) ? "—" :
+         (lotsFor(stopMult * (orH - orL)) > 0 ? lotTxt(lotsFor(stopMult * (orH - orL))) + " · " + str.tostring(lotsFor(stopMult * (orH - orL)) * stopMult * (orH - orL) * lotSize * fx, "0") + " $ · ajout " + lotTxt(math.floor(lotsFor(stopMult * (orH - orL)) * pyrSize / lotStep + 0.000001) * lotStep) + " · B, C, D : au plus ce lot" : "< " + str.tostring(lotStep) + " lot"), fg)

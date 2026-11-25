@@ -1,0 +1,1086 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>__NOM__ · interface</title>
+<style>
+  /* Étrave : une carte marine plutôt qu'un tableau de bord. Fond d'eau claire, encre bleu-noir, bleu du logo pour les actions,
+     magenta des cartes marines réservé à l'aiguille « maintenant ». Chiffres en DIN (instruments de bord), texte du système.
+     Aucune ressource extérieure : la page est fermée à internet (Content-Security-Policy). */
+  :root {
+    color-scheme: light;
+    --page: #f6f8fa; --surface: #ffffff; --raised: #eaf1f6; --water: #e2edf5; --water-2: #c5dbec;
+    --border: #cbd5de; --grid: #dde4ea; --axis: #94a3b2;
+    --ink: #18222e; --ink-2: #46546a; --muted: #5f6c7c;
+    --accent: #2f7bd9; --accent-ink: #ffffff; --accent-wash: rgba(47,123,217,.10);
+    --mark: #b4307e;
+    --good: #1d7a46; --warning: #8f5b00; --critical: #bf3a30; --critical-fill: #bf3a30;
+    --f-text: "Segoe UI Variable Text", "Segoe UI", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+    --f-num: "Bahnschrift", "DIN Alternate", "DIN 2014", "Segoe UI", system-ui, sans-serif;
+    --col: 172px;   /* colonne des noms : la frise et les lignes des marchés partagent le même axe */
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --page: #0e1620; --surface: #131e2a; --raised: #1a2836; --water: #16293b; --water-2: #234662;
+    --border: #2a3b4c; --grid: #213140; --axis: #4f6275;
+    --ink: #dce6ee; --ink-2: #a9b8c6; --muted: #8b9cad;
+    --accent: #5a9ef0; --accent-ink: #0e1620; --accent-wash: rgba(90,158,240,.14);
+    --mark: #e06bb0;
+    --good: #48c29a; --warning: #e0a93a; --critical: #ec5a55; --critical-fill: #d9463f;
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html { background: var(--page); }
+  body { margin: 0; background: var(--page); color: var(--ink); font: 15px/1.5 var(--f-text); -webkit-font-smoothing: antialiased; }
+  button, input, select { font: inherit; color: inherit; }
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 0 28px 64px; }
+  .num, .fig, table { font-variant-numeric: tabular-nums; }
+  .up { color: var(--good); } .down { color: var(--critical); }
+  .up, .down { white-space: nowrap; }
+
+  /* ───────── En-tête : la marque à gauche, l'état du robot à droite, en texte ───────── */
+  .top { display: flex; align-items: center; gap: 24px; flex-wrap: wrap; padding: 22px 0 18px; }
+  .brand { display: flex; align-items: center; gap: 12px; margin-right: auto; }
+  .brand svg { width: 34px; height: 34px; color: var(--accent); flex: none; }
+  .brand .name { font: 700 21px/1 var(--f-num); letter-spacing: .2em; text-transform: uppercase; }   /* le logo : ÉTRAVE en capitales */
+  .brand .tagline { color: var(--muted); font-size: 13px; margin-top: 4px; }
+  .etat { display: flex; gap: 28px; margin: 0; flex-wrap: wrap; }
+  .etat div { min-width: 0; }
+  .etat dt { color: var(--muted); font-size: 12px; }
+  .etat dd { margin: 1px 0 0; font-weight: 600; font-size: 14px; display: flex; align-items: center; gap: 7px; white-space: nowrap; }
+  .etat dd .num { font-family: var(--f-num); font-size: 16px; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); flex: none; display: inline-block; }
+  .dot.good { background: var(--good); } .dot.warn { background: var(--warning); } .dot.bad { background: var(--critical-fill); }
+  .reel { color: var(--critical); border: 1.5px solid var(--critical); border-radius: 3px; padding: 0 6px; letter-spacing: .04em; }
+
+  nav { display: flex; gap: 26px; border-bottom: 1px solid var(--border); margin-bottom: 26px; overflow-x: auto; }
+  nav button { background: none; border: 0; padding: 10px 0 9px; cursor: pointer; color: var(--muted); font-weight: 600; font-size: 15px;
+               border-bottom: 2px solid transparent; margin-bottom: -1px; white-space: nowrap; }
+  nav button:hover { color: var(--ink); }
+  nav button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--ink); }
+
+  /* ───────── Pièces communes ───────── */
+  .btn { padding: 7px 14px; border-radius: 4px; border: 1px solid var(--border); background: var(--surface); cursor: pointer; font-weight: 600; font-size: 14px; }
+  .btn:hover { border-color: var(--axis); } .btn:disabled { opacity: .45; cursor: not-allowed; }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+  .btn.danger { border-color: var(--critical); color: var(--critical); background: transparent; }
+  .btn.danger:hover { background: var(--critical); color: var(--surface); }
+  .btn.ghost { border-color: transparent; background: transparent; color: var(--ink-2); padding: 6px 4px; font-weight: 500; font-size: 13px; }
+  .btn.ghost:hover { color: var(--ink); }
+  .btn.small { padding: 5px 12px; font-size: 13px; white-space: nowrap; }
+  input:focus-visible, select:focus-visible, button:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  input[type="text"], input[type="password"], input[type="number"], select { background: var(--surface); border: 1px solid var(--border); border-radius: 4px; padding: 7px 10px; min-width: 0; }
+
+  .banner { border-left: 3px solid var(--warning); background: var(--surface); padding: 10px 14px; margin-bottom: 10px; color: var(--ink-2); max-width: 80ch; }
+  .banner.bad { border-left-color: var(--critical-fill); } .banner.ok { border-left-color: var(--good); }
+  .banner b { color: var(--ink); }
+  #banner:not(:empty) { margin-bottom: 22px; }
+
+  /* Blocs des onglets Risque et Connexions : un panneau par sujet, repliable, sans ombre */
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 20px 22px; margin-bottom: 18px; min-width: 0; }
+  details.card > summary { list-style: none; cursor: pointer; display: flex; align-items: baseline; gap: 10px; margin: -20px -22px; padding: 20px 22px; }
+  details.card > summary::-webkit-details-marker { display: none; }
+  details.card > summary::after { content: ''; width: 7px; height: 7px; border-right: 1.5px solid var(--muted); border-bottom: 1.5px solid var(--muted);
+                                  transform: rotate(-45deg); margin-left: 8px; align-self: center; flex: none; order: 3; }
+  details.card[open] > summary::after { transform: rotate(45deg); }
+  details.card[open] > summary { margin-bottom: 0; padding-bottom: 10px; }
+  details.card > summary h2 { margin-right: auto; }
+  details.card > summary .sum { color: var(--muted); font-size: 13px; text-align: right; }
+  h1, h2, h3 { font-weight: 600; letter-spacing: 0; }
+  .card h2, .bloc h2 { margin: 0; font-size: 17px; } .card h2 small, .bloc h2 small { color: var(--muted); font-weight: 400; font-size: 14px; }
+  .hint { color: var(--muted); font-size: 13px; margin-bottom: 12px; max-width: 78ch; }
+  .card .head-row, .bloc .head-row { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 10px; }
+  .card p { color: var(--ink-2); margin: 0 0 10px; max-width: 78ch; }
+  .card ol, .card ul { color: var(--ink-2); margin: 0 0 12px; padding-left: 20px; max-width: 78ch; } .card li { margin: 4px 0; }
+  .status { display: inline-flex; align-items: center; gap: 8px; font-weight: 600; margin-bottom: 12px; }
+  .status .dot { background: var(--muted); } .status.on .dot { background: var(--good); }
+  .secret-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 10px; }
+  .secret-row input { flex: 1; min-width: 200px; max-width: 460px; }
+  .empty { color: var(--muted); padding: 22px 0; }
+  .chips { display: flex; gap: 0; flex-wrap: wrap; }
+  .chip { padding: 4px 11px; border: 1px solid var(--border); background: var(--surface); cursor: pointer; font-size: 13px; font-weight: 600; color: var(--ink-2); margin-left: -1px; }
+  .chip:first-child { border-radius: 4px 0 0 4px; margin-left: 0; } .chip:last-child { border-radius: 0 4px 4px 0; }
+  .chip[aria-pressed="true"] { background: var(--ink); border-color: var(--ink); color: var(--page); position: relative; }
+  .switch { display: inline-flex; align-items: center; gap: 9px; cursor: pointer; font-weight: 600; }
+  .switch input { width: 17px; height: 17px; accent-color: var(--accent); margin: 0; }
+  .checks { display: flex; flex-direction: column; gap: 8px; }
+  .tag { font-family: var(--f-num); font-size: 13px; color: var(--muted); letter-spacing: .02em; }
+
+  /* Chiffres : un libellé, une valeur en DIN, une ligne d'explication. Pas de boîtes. */
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 0; margin-bottom: 8px; }
+  .tile { padding: 2px 20px 14px; border-left: 1px solid var(--grid); min-width: 0; container-type: inline-size; }
+  .tile:first-child { padding-left: 0; border-left: 0; }
+  .tile .label { color: var(--muted); font-size: 13px; }
+  .tile .value { font: 600 clamp(18px, 12cqw, 24px)/1.2 var(--f-num); margin-top: 3px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+  .tile .sub { color: var(--ink-2); font-size: 13px; margin-top: 2px; }
+  .tile.hero .value { font-size: clamp(26px, 15cqw, 34px); }
+  .tile.alert .value { color: var(--critical); }
+  .tiles.sim { margin: 8px 0 14px; }
+  @media (max-width: 620px) { .tile { border-left: 0; padding-left: 0; } }
+
+  /* ───────── La séance : titre, frise des règles, une ligne par marché ───────── */
+  .seance-head { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+  .seance-head h1 { font: 700 26px/1.2 var(--f-num); margin: 0; }
+  .seance-head h1::first-letter { text-transform: uppercase; }
+  .seance-sous { color: var(--ink-2); margin: 4px 0 14px; max-width: 80ch; }
+  .frise { position: relative; margin: 0 0 6px; }
+  .frise svg { display: block; width: 100%; overflow: visible; }
+  .frise text { fill: var(--muted); font: 12px var(--f-text); font-variant-numeric: tabular-nums; }
+  .frise .rang { fill: var(--ink-2); font-size: 13px; }
+  .frise .heure { fill: var(--ink-2); font-family: var(--f-num); }
+  .frise .maintenant { fill: var(--mark); font: 600 13px var(--f-num); }
+  .frise-note { color: var(--muted); font-size: 12px; margin: 2px 0 26px; padding-left: var(--col); }
+
+  .marches-head { display: flex; align-items: baseline; gap: 12px; border-bottom: 1px solid var(--ink); padding-bottom: 6px; }
+  .marches-head h2 { margin: 0; font-size: 17px; }
+  .marches-head .sum { color: var(--muted); font-size: 13px; }
+  .inst { display: grid; grid-template-columns: var(--col) minmax(0, 1fr) auto; gap: 4px 0; padding: 16px 0; border-bottom: 1px solid var(--grid); align-items: start; }
+  .inst .who { padding-right: 14px; } .inst .res { padding-left: 18px; }
+  .inst .who { display: flex; flex-direction: column; gap: 3px; }
+  .inst .who b { font-size: 16px; }
+  .inst .who .ea { color: var(--muted); font-size: 13px; display: flex; align-items: center; gap: 6px; }
+  .inst dl { display: grid; grid-template-columns: 128px minmax(0, 1fr); gap: 4px 14px; margin: 0; color: var(--ink-2); font-size: 14px; }
+  .inst dt { color: var(--muted); } .inst dd { margin: 0; overflow-wrap: anywhere; }
+  .inst dd.fort { color: var(--ink); font-weight: 600; }
+  .inst .res { text-align: right; display: flex; flex-direction: column; align-items: flex-end; gap: 10px; }
+  .inst .res .fig { font: 600 22px/1.1 var(--f-num); }
+  .inst .vide { grid-column: 2 / -1; color: var(--muted); }
+  .marches-note { color: var(--muted); font-size: 13px; margin: 10px 0 34px; }
+  @media (max-width: 760px) { .inst { grid-template-columns: minmax(0, 1fr) auto; } .inst dl { grid-column: 1 / -1; grid-row: 2; grid-template-columns: 110px minmax(0, 1fr); } }
+
+  .bloc { margin: 0 0 34px; }
+  .bloc > h2, .bloc > .head-row { border-bottom: 1px solid var(--ink); padding-bottom: 6px; margin-bottom: 14px; }
+  .bloc details > summary { list-style: none; cursor: pointer; display: flex; align-items: baseline; gap: 10px; border-bottom: 1px solid var(--ink); padding-bottom: 6px; }
+  .bloc details > summary::-webkit-details-marker { display: none; }
+  .bloc details > summary::after { content: 'afficher'; color: var(--accent); font-size: 13px; font-weight: 600; order: 3; }
+  .bloc details[open] > summary::after { content: 'masquer'; }
+  .bloc details > summary .sum { color: var(--muted); font-size: 13px; margin-left: auto; }
+
+  .scroll { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; }
+  th { text-align: left; color: var(--muted); font-weight: 600; font-size: 13px; padding: 8px 10px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  th.num, td.num { text-align: right; }
+  td { padding: 8px 10px; border-bottom: 1px solid var(--grid); white-space: nowrap; }
+  td:first-child, th:first-child { padding-left: 0; } td:last-child, th:last-child { padding-right: 0; }
+  @media (max-width: 620px) { .opt { display: none; } td, th { padding-left: 4px; padding-right: 4px; } table { font-size: 13px; } }
+
+  .chart { position: relative; width: 100%; }
+  .chart svg { display: block; width: 100%; overflow: visible; }
+  .chart text { fill: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+  .tip { position: absolute; pointer-events: none; background: var(--surface); border: 1px solid var(--border); border-radius: 4px; padding: 8px 11px; font-size: 13px; white-space: nowrap; z-index: 2; }
+  .tip b { display: block; font: 600 15px var(--f-num); } .tip span { display: block; color: var(--ink-2); }
+
+  /* Réglage du risque */
+  .risk-row { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin: 6px 0 12px; }
+  .risk-row .big { display: flex; align-items: baseline; gap: 8px; }
+  .risk-row .big input { width: 112px; font: 600 26px var(--f-num); padding: 4px 10px; text-align: right; }
+  .risk-row .big span { font-size: 16px; color: var(--ink-2); }
+  .risk-row input[type="range"] { flex: 1; min-width: 180px; accent-color: var(--accent); }
+  .lever { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 4px; }
+  .lever input { width: 90px; text-align: right; }
+  .savebar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 16px; }
+  .savebar .msg { color: var(--ink-2); flex: 1; min-width: 200px; } .savebar .msg.err { color: var(--critical); }
+  .form { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px 14px; margin-bottom: 12px; max-width: 760px; }
+  .form label { display: block; font-weight: 600; font-size: 13px; margin-bottom: 4px; } .form input { width: 100%; }
+
+  dialog { background: var(--surface); color: var(--ink); border: 1px solid var(--border); border-radius: 6px; padding: 22px; max-width: 460px; width: calc(100% - 32px); }
+  dialog::backdrop { background: rgba(14,22,32,.55); }
+  dialog h3 { margin: 0 0 8px; font-size: 18px; } dialog p { color: var(--ink-2); margin: 0 0 14px; }
+  dialog .actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
+  #toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: var(--ink); color: var(--page); border-radius: 4px; padding: 10px 16px; display: none; z-index: 5; max-width: calc(100% - 32px); }
+  @media (max-width: 620px) { .wrap { padding: 0 16px 48px; } :root { --col: 112px; } .etat { gap: 18px; } }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div class="brand">
+      <svg viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M8 8c1.800 9.500 5.800 17.500 12 24 6.200-6.500 10.200-14.500 12-24"/>
+        <path d="M20 5v27"/>
+        <path d="M3 33c2.800-2.300 5.700-2.300 8.500 0M28.500 33c2.800-2.300 5.700-2.300 8.500 0" opacity=".55"/>
+      </svg>
+      <div><div class="name">__NOM__</div><div class="tagline" id="tagline">__SLOGAN__</div></div>
+    </div>
+    <dl class="etat" id="etat" aria-live="polite"></dl>
+    <button class="btn ghost" id="btn-theme" type="button">Mode nuit</button>
+  </header>
+
+  <nav role="tablist" aria-label="Pages">
+    <button role="tab" data-tab="overview" aria-selected="true">Séance</button>
+    <button role="tab" data-tab="risk" aria-selected="false">Risque</button>
+    <button role="tab" data-tab="connections" aria-selected="false">Connexions</button>
+  </nav>
+
+  <div id="banner"></div>
+
+  <section id="tab-overview">
+    <div class="seance-head"><h1 id="seance-titre">Séance de New York</h1></div>
+    <p class="seance-sous" id="seance-sous"></p>
+    <div class="frise" id="frise"></div>
+    <p class="frise-note">Heures de New York. L’échelle est agrandie entre 9:00 et 10:00, là où se prennent les entrées.</p>
+
+    <div class="marches-head"><h2>Marchés</h2><span class="sum" id="sum-instruments"></span></div>
+    <div id="instruments"></div>
+    <p class="marches-note">Case décochée : l’EA ne prend plus de nouveau trade sur ce marché. Une position déjà ouverte reste gérée jusqu’à sa sortie.</p>
+
+    <div class="bloc">
+      <h2>Compte</h2>
+      <div class="tiles main" id="tiles-overview"></div>
+    </div>
+    <div class="bloc">
+      <div class="head-row">
+        <h2>Courbe des trades pris</h2>
+        <div class="chips" id="curve-unit" role="group" aria-label="Unité de la courbe"></div>
+      </div>
+      <div class="hint" id="curve-hint">Résultat cumulé après chaque trade clôturé par l’EA.</div>
+      <div class="chart" id="chart-curve"></div>
+    </div>
+    <div class="bloc">
+      <details data-fold="trades">
+        <summary><h2>Trades clôturés <small id="trades-count"></small></h2><span class="sum" id="sum-trades"></span></summary>
+        <div class="scroll" id="trades"></div>
+      </details>
+    </div>
+  </section>
+
+  <section id="tab-risk" hidden>
+    <details class="card" data-fold="risque" open>
+      <summary><h2>Risque par trade</h2><span class="sum" id="sum-risque"></span></summary>
+      <div class="hint">La part du solde perdue quand le stop est touché (1R). C’est le seul réglage : tout le reste garde les valeurs du test.</div>
+      <div class="status" id="risk-status"><span class="dot"></span><span></span></div>
+      <div class="risk-row">
+        <div class="big"><input type="number" id="risk-input" min="0.05" max="20" step="0.05" inputmode="decimal" aria-label="Risque par trade, en pourcentage du solde"><span>% du solde</span></div>
+        <input type="range" id="risk-slider" min="0" max="1000" step="1" aria-label="Risque par trade">
+      </div>
+      <div class="chips" id="risk-presets" role="group" aria-label="Valeurs courantes"></div>
+      <h2 style="margin-top:18px">Levier de ton courtier</h2>
+      <div class="hint">Il fixe la marge demandée, donc la taille maximale de la position. Plus le risque est grand, plus la position est grosse : sans assez de levier, l’EA doit la réduire.</div>
+      <div class="lever"><span>1 :</span><input type="number" id="lever-input" min="1" max="2000" step="1" inputmode="decimal" placeholder="—" aria-label="Levier du courtier"><span id="lever-hint" style="color:var(--muted);font-size:12px"></span></div>
+      <div class="savebar">
+        <button class="btn primary" id="risk-save" disabled>Enregistrer</button>
+        <button class="btn" id="risk-cancel" disabled>Annuler</button>
+        <div class="msg" id="risk-msg"></div>
+      </div>
+    </details>
+    <details class="card" data-fold="simulation" open>
+      <summary><h2>Ce que le test donne à ce risque <small id="sim-title"></small></h2></summary>
+      <div class="hint" id="sim-hint"></div>
+      <div class="tiles sim" id="tiles-sim"></div>
+      <div id="sim-notes"></div>
+    </details>
+    <details class="card" data-fold="tests">
+      <summary><h2>Ce que disent les tests</h2></summary>
+      <ul>
+        <li><b>Attention :</b> la simulation ci-dessus rejoue encore les trades de l’ancienne ORB v6 (une seule position à la fois), avec la marge de la V10. La V10 peut tenir jusqu’à 5 positions en même temps (A, B, D1 à D3) : ses chiffres sont ceux de cette liste.</li>
+        <li><b>Strategy V10, profil Confort, Nasdaq 2018 → novembre 2026</b> (spread réel + 1 point) : +477R, 47 % de trades gagnants, pire baisse −32R, pire journée −5,1R.</li>
+        <li><b>Nasdaq 2010-2017</b>, coûts au poids d’aujourd’hui : +194R, 44 % de trades gagnants, pire baisse −53R. Avec les coûts au poids de 2018 : +23R seulement.</li>
+        <li><b>S&amp;P 500 :</b> tradé avec le Nasdaq depuis le 25 novembre 2026, mais seule la version précédente (V9) y a été contrôlée. Le Dow Jones est exclu : testé tel quel, il ne gagne rien (−26R).</li>
+        <li><b>Testeur de MetaTrader</b>, NDX100, 12 mois, 0,1 lot fixe : +1 887 $, 52 % de jours gagnants, pire baisse −323 $. Une bonne année : rien ne dit que la suivante fera pareil.</li>
+        <li>Le passé ne garantit rien : choisis le risque en regardant la pire baisse, pas le gain par an. Le robot n’a pas encore tourné en démo ni en réel.</li>
+      </ul>
+    </details>
+  </section>
+
+  <section id="tab-connections" hidden>
+    <div id="connections"></div>
+  </section>
+
+</div>
+
+<dialog id="dlg-risk">
+  <h3>Risque élevé</h3>
+  <p id="risk-dlg-text"></p>
+  <label for="risk-word">Tape <b>RISQUE</b> pour confirmer :</label>
+  <input type="text" id="risk-word" autocomplete="off" style="width:100%;margin-top:6px">
+  <div class="actions"><button class="btn" id="risk-dlg-cancel">Annuler</button><button class="btn danger" id="risk-dlg-ok" disabled>Enregistrer ce risque</button></div>
+</dialog>
+<dialog id="dlg-close">
+  <h3>Clôturer maintenant</h3>
+  <p id="close-text"></p>
+  <label for="close-word">Tape <b>CLOTURER</b> pour confirmer :</label>
+  <input type="text" id="close-word" autocomplete="off" style="width:100%;margin-top:6px">
+  <div class="actions"><button class="btn" id="close-cancel">Annuler</button><button class="btn danger" id="close-ok" disabled>Clôturer</button></div>
+</dialog>
+<dialog id="dlg-mot">
+  <h3 id="mot-titre"></h3>
+  <p id="mot-texte"></p>
+  <label for="mot-saisie">Tape <b id="mot-attendu"></b> pour confirmer :</label>
+  <input type="text" id="mot-saisie" autocomplete="off" style="width:100%;margin-top:6px">
+  <div class="actions"><button class="btn" id="mot-annuler">Annuler</button><button class="btn danger" id="mot-ok" disabled>Confirmer</button></div>
+</dialog>
+<div id="toast" role="status"></div>
+
+<script>
+'use strict';
+const JETON = '__JETON__';
+const $ = (id) => document.getElementById(id);
+
+/** Crée un élément. Le texte passe toujours par textContent : jamais de HTML venu des données. */
+function el(tag, attrs, ...children) {
+  const node = document.createElement(tag);
+  for (const [key, value] of Object.entries(attrs || {})) {
+    if (value === false || value == null) continue;
+    if (key === 'class') node.className = value;
+    else if (key.startsWith('on')) node.addEventListener(key.slice(2), value);
+    else if (key in node && key !== 'list') node[key] = value;
+    else node.setAttribute(key, value);
+  }
+  for (const child of children.flat()) if (child != null && child !== false) node.append(child);
+  return node;
+}
+function svg(tag, attrs, ...children) {
+  const node = document.createElementNS('http://www.w3.org/2000/svg', tag);
+  for (const [key, value] of Object.entries(attrs || {})) node.setAttribute(key, value);
+  node.append(...children);
+  return node;
+}
+async function api(path, body) {
+  const response = await fetch(path, {
+    method: body === undefined ? 'GET' : 'POST',
+    headers: { 'x-etrave-jeton': JETON, ...(body === undefined ? {} : { 'content-type': 'application/json' }) },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  const data = await response.json().catch(() => ({ ok: false, error: 'Réponse illisible' }));
+  if (!response.ok) throw new Error(data.error || `Erreur ${response.status}`);
+  return data;
+}
+function toast(message) {
+  const node = $('toast');
+  node.textContent = message;
+  node.style.display = 'block';
+  clearTimeout(toast.timer);
+  toast.timer = setTimeout(() => (node.style.display = 'none'), 4600);
+}
+
+// ---------------------------------------------------------------- blocs repliables
+function foldOpen(key, byDefault) {
+  try { const saved = localStorage.getItem(`bloc:${key}`); return saved === null ? byDefault : saved === '1'; } catch (error) { return byDefault; }
+}
+function rememberFold(key, open) { try { localStorage.setItem(`bloc:${key}`, open ? '1' : '0'); } catch (error) { /* sans gravité */ } }
+for (const node of document.querySelectorAll('details[data-fold]')) {
+  node.open = foldOpen(node.dataset.fold, node.hasAttribute('open'));
+  node.addEventListener('toggle', () => rememberFold(node.dataset.fold, node.open));
+}
+
+// ---------------------------------------------------------------- formats
+const sign = (v) => (v > 0 ? '+' : v < 0 ? '−' : '');
+const num = (v, d = 2) => Math.abs(v).toLocaleString('fr-FR', { minimumFractionDigits: d, maximumFractionDigits: d });
+function money(v, devise, d = 2) {
+  if (v == null) return '—';
+  try { return v.toLocaleString('fr-FR', { style: 'currency', currency: devise || 'USD', currencyDisplay: 'narrowSymbol', minimumFractionDigits: d, maximumFractionDigits: d }); }
+  catch (error) { return `${v.toLocaleString('fr-FR', { minimumFractionDigits: d, maximumFractionDigits: d })} ${devise || ''}`.trim(); }
+}
+const moneySigned = (v, devise) => (v == null ? '—' : `${sign(v)}${money(Math.abs(v), devise)}`);
+const pctSigned = (v, d = 2) => (v == null ? '—' : `${sign(v)}${num(v, d)} %`);
+const rSigned = (v, d = 1) => (v == null ? '—' : `${sign(v)}${num(v, d)}R`);
+const pct = (v, d = 0) => `${v.toLocaleString('fr-FR', { minimumFractionDigits: d, maximumFractionDigits: d })} %`;
+const riskText = (v) => `${v.toLocaleString('fr-FR', { maximumFractionDigits: 2 })} %`;
+const fmtDate = (ts) => new Date(ts * 1000).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: '2-digit' });
+/** La date du journal de l'EA (« 2026.11.11 ») au format français : 11/11/26. */
+const dateFr = (d) => { const m = /^(\d{4})[.-](\d{2})[.-](\d{2})/.exec(String(d || '')); return m ? `${m[3]}/${m[2]}/${m[1].slice(2)}` : String(d || ''); };
+/** Un résultat : flèche + signe + couleur, pour ne jamais reposer sur la couleur seule. */
+function delta(v, text) {
+  return el('span', { class: v > 0 ? 'up' : v < 0 ? 'down' : '' }, `${v > 0 ? '▲ ' : v < 0 ? '▼ ' : ''}${text}`);
+}
+function tile(label, value, sub, variant) {
+  return el('div', { class: `tile${variant ? ` ${variant}` : ''}` }, el('div', { class: 'label' }, label), el('div', { class: 'value' }, value), sub ? el('div', { class: 'sub' }, sub) : null);
+}
+// Une case par marché, comme pont.INSTRUMENTS et InstrumentOf() dans l'EA.
+const INSTRUMENTS = { nasdaq: 'Nasdaq', sp500: 'S&P 500' };
+
+// ---------------------------------------------------------------- état global
+let state = null;      // /api/etat
+let trades = [];       // /api/trades
+let unit = 'argent';   // unité de la courbe : argent, pct ou r
+let draft = null;      // réglage du risque en cours de saisie : { risque, levier }
+let sim = null;        // dernier résultat de /api/risque
+let telegramResult = null;
+let mt5Test = null;    // essai Telegram demandé à MetaTrader : { numero, depuis, resultat }
+let closing = null;    // symbole dont on demande la clôture
+let installResult = null;
+
+const running = () => (state ? state.eas.filter((e) => e.en_marche) : []);
+/** L'EA qui renseigne le compte : un EA en marche, sinon le dernier état connu. */
+const account = () => running()[0] || (state && state.eas[0]) || null;
+const eaRisk = () => { const a = account(); return a && a.risque_pct != null ? a.risque_pct : null; };
+const currentRisk = () => (state && state.reglages.risquePct != null ? state.reglages.risquePct : eaRisk() != null ? eaRisk() : 0.5);
+// Référence de la confirmation RISQUE : la même que pont.regler (le risque enregistré ici, sinon 0). Revue cloud du 25/11/2026 :
+// la page comparait au risque de l'EA, le serveur au fichier, et certains enregistrements étaient refusés sans dialogue.
+const savedRisk = () => (state && state.reglages.risquePct != null ? state.reglages.risquePct : 0);
+/** Lots fixes réglés dans MetaTrader (InpFixedLots) : le risque en % de cette page n'est alors pas utilisé. */
+const fixedLots = () => { const e = [...running(), account()].find((x) => x && x.lots_fixes > 0); return e ? e.lots_fixes : null; };
+
+// ---------------------------------------------------------------- en-tête et alertes
+/** Une ligne de l'état en haut à droite : un libellé, puis une valeur (avec sa pastille de couleur, jamais seule). */
+const etatItem = (label, ...valeur) => el('div', {}, el('dt', {}, label), el('dd', {}, ...valeur));
+function renderHeader() {
+  const live = running();
+  const a = account();
+  const items = [];
+  if (!state) items.push(etatItem('Interface', el('span', { class: 'dot bad' }), 'arrêtée'));
+  else {
+    items.push(etatItem('Robot', el('span', { class: `dot ${live.length ? 'good' : 'warn'}` }), live.length ? `en marche sur ${live.map((e) => e.symbole).join(' et ')}` : 'arrêté'));
+    if (a) {
+      const real = a.compte_type === 'reel';
+      items.push(el('div', { title: `Compte ${a.compte_login || ''}, serveur ${a.compte_serveur || ''}` }, el('dt', {}, 'Compte'),
+        el('dd', {}, real ? el('span', { class: 'reel' }, 'RÉEL') : a.compte_type === 'demo' ? 'démo' : 'concours', el('span', { class: 'num' }, a.compte_login || ''))));
+    }
+    if (live.length) items.push(etatItem('New York', live[0].horloge_ok ? null : el('span', { class: 'dot bad' }), el('span', { class: 'num' }, String(live[0].heure_ny || '').slice(-5)), live[0].horloge_ok ? null : 'heure fausse'));
+  }
+  $('etat').replaceChildren(...items);
+  if (!state) return;
+
+  const banners = [];
+  if (state.eas.length === 0) banners.push(el('div', { class: 'banner' }, el('b', {}, 'Aucun EA vu pour l’instant. '), 'Ouvre MetaTrader 5, pose l’EA Strategy-V10 sur un graphique M5 du Nasdaq et sur un du S&P 500, et autorise le trading algorithmique. Tes réglages d’ici seront pris dès qu’il démarre.'));
+  else if (live.length === 0) banners.push(el('div', { class: 'banner bad' }, el('b', {}, 'L’EA ne répond plus. '), 'MetaTrader 5 est fermé, ou l’EA a été retiré du graphique. Tant qu’il est arrêté, seuls les stops posés chez le courtier protègent un trade ouvert.'));
+  for (const e of live) {
+    if (!e.connecte) banners.push(el('div', { class: 'banner bad' }, el('b', {}, `${e.symbole} : `), 'MetaTrader 5 n’est pas connecté au courtier.'));
+    else if (!e.trading_auto) banners.push(el('div', { class: 'banner bad' }, el('b', {}, `${e.symbole} : trading automatique coupé. `), 'Dans MetaTrader 5, active le bouton « Trading algo » et coche « Autoriser le trading algorithmique » dans les réglages de l’EA.'));
+    if (!e.horloge_ok) banners.push(el('div', { class: 'banner bad' }, el('b', {}, `${e.symbole} : heure du serveur mal réglée. `), 'L’heure de New York calculée par l’EA est fausse : corrige « Décalage GMT du serveur » ou « Heure d’été du serveur » dans les réglages de l’EA, sinon le range sera pris sur la mauvaise bougie.'));
+    if (!e.regles_test) banners.push(el('div', { class: 'banner' }, el('b', {}, `${e.symbole} : `), 'un réglage de la stratégie saisi dans MetaTrader diffère des valeurs du test. Les chiffres de l’onglet Risque ne valent que pour les valeurs d’origine.'));
+  }
+  $('banner').replaceChildren(...banners);
+}
+
+// ---------------------------------------------------------------- vue d'ensemble
+function totals() {
+  let argent = 0, r = 0, compose = 1, gagnants = 0;
+  for (const t of trades) { argent += t.net; r += t.r || 0; if (t.pct != null) compose *= 1 + t.pct / 100; if ((t.r || 0) > 0.05) gagnants += 1; }
+  return { argent, r, pct: (compose - 1) * 100, gagnants, n: trades.length };
+}
+function renderOverview() {
+  const a = account();
+  const devise = a ? a.devise : (trades[0] && trades[0].devise) || 'USD';
+  // Revue cloud du 25/11/2026 : une entrée B ou D ouverte compte, même après la sortie de la cassure A (v8_resultat).
+  const open = running().filter((e) => e.position || e.jambes > 0);
+  const sum = totals();
+  const tiles = [];
+  tiles.push(tile('Solde du compte', a && a.solde != null ? money(a.solde, devise) : '—',
+    a ? (a.en_marche ? (a.capital != null && open.length ? `${money(a.capital, devise)} en comptant les positions ouvertes` : `${a.compte_type === 'reel' ? 'compte réel' : 'compte démo'}, ${a.compte_serveur || ''}`) : 'dernier solde connu, EA arrêté') : 'en attente de l’EA', 'hero'));
+  if (open.length) {
+    const result = open.reduce((s, e) => s + (e.pos_resultat || 0) + (e.v8_resultat || 0), 0);
+    const legs = open.reduce((s, e) => s + (e.jambes || 0), 0);
+    const base = (open.find((e) => e.solde_depart > 0) || {}).solde_depart || (a && a.solde) || 0;
+    const r = open.length === 1 && open[0].position && !legs ? open[0].pos_r : null;
+    tiles.push(tile(open.length > 1 || legs ? 'Positions en cours' : 'Trade en cours', delta(result, moneySigned(result, devise)),
+      `${base > 0 ? pctSigned((100 * result) / base) : '—'}${r != null ? `, ${rSigned(r)}` : ''}${legs ? `, dont ${legs} entrée${legs > 1 ? 's' : ''} B ou D` : ''}`));
+  } else {
+    const waiting = running().filter((e) => e.attente);
+    tiles.push(tile('Positions en cours', waiting.length ? 'Ordres posés' : 'Aucune', waiting.length ? waiting.map((e) => e.symbole).join(' et ') : running().length ? 'ni ordre ni position ouverte' : ''));
+  }
+  tiles.push(tile('Résultat cumulé', sum.n ? delta(sum.argent, moneySigned(sum.argent, devise)) : '—', sum.n ? `${pctSigned(sum.pct)}, ${rSigned(sum.r)}` : 'aucun trade clôturé'));
+  tiles.push(tile('Trades clôturés', String(sum.n), sum.n ? `${pct((100 * sum.gagnants) / sum.n)} gagnants` : ''));
+  const risk = eaRisk();
+  const perTrade = a && a.solde != null && risk != null ? (a.solde * risk) / 100 : null;
+  if (fixedLots()) tiles.push(tile('Taille par cassure', `${num(fixedLots(), 2)} lot fixe`, 'réglée dans MetaTrader : le risque en % suit la largeur du stop'));
+  else tiles.push(tile('Risque par trade', risk != null ? riskText(risk) : riskText(currentRisk()), perTrade != null ? `≈ ${money(perTrade, devise)} par trade` : 'pris au prochain lancement de l’EA', risk != null && risk > 1 ? 'alert' : ''));
+  $('tiles-overview').replaceChildren(...tiles);
+  const keys = Object.keys(INSTRUMENTS);
+  const on = keys.filter((key) => state.reglages.instruments[key]).map((key) => INSTRUMENTS[key]);
+  $('sum-instruments').textContent = on.length === keys.length ? 'les deux actifs' : on.length ? `${on.join(', ')} seul actif` : 'tous en pause';
+  $('sum-trades').textContent = sum.n ? `${moneySigned(sum.argent, devise)}, ${pctSigned(sum.pct)}, ${rSigned(sum.r)}` : '';
+  renderSeance();
+  renderInstruments();
+  renderCurve();
+  renderTrades(devise);
+}
+const prix = (v) => (v == null ? '—' : Number(v).toLocaleString('fr-FR', { maximumFractionDigits: 2 }));
+/** Un marché : sa case et son EA à gauche, ce que fait l'EA aujourd'hui au milieu, le résultat ouvert et le bouton à droite. */
+function instrumentRow(key, label, e, checked) {
+  const box = key in INSTRUMENTS
+    ? el('label', { class: 'switch' }, el('input', { type: 'checkbox', checked, onchange: (event) => toggleInstrument(key, event.target) }), el('b', {}, label))
+    : el('b', {}, label);
+  const who = el('div', { class: 'who' }, box);
+  const row = el('div', { class: 'inst' }, who);
+  if (!e) {
+    who.append(el('span', { class: 'ea' }, el('span', { class: 'dot' }), 'aucun EA'));
+    row.append(el('div', { class: 'vide' }, checked ? `Pose Strategy-V10 sur un graphique M5 du ${label} dans MetaTrader 5.` : 'En pause.'));
+    return row;
+  }
+  who.append(el('span', { class: 'tag' }, e.symbole),
+    el('span', { class: 'ea' }, el('span', { class: `dot ${e.en_marche ? (e.actif ? 'good' : 'warn') : 'bad'}` }), e.en_marche ? (e.actif ? 'en marche' : 'en marche, désactivé') : 'arrêté'));
+  const list = el('dl', {}, el('dt', {}, 'Aujourd’hui'), el('dd', { class: 'fort' }, e.jour || '—'),
+    el('dt', {}, 'Range de 9:30'), el('dd', { class: 'num' }, e.range_haut ? `${prix(e.range_bas)} à ${prix(e.range_haut)}` : '—'));
+  if (e.position) {
+    list.append(el('dt', {}, 'Cassure A'), el('dd', { class: 'num' }, `${e.pos_sens === 1 ? 'Achat' : 'Vente'} de ${num(e.pos_lots, 2)} lot à ${prix(e.pos_entree)}, stop ${prix(e.pos_stop)}${e.pos_pyramide ? ', pyramide faite' : ''}`));
+    list.append(el('dt', {}, 'Résultat de A'), el('dd', {}, delta(e.pos_resultat || 0, `${moneySigned(e.pos_resultat, e.devise)}${e.solde_depart > 0 ? `, ${pctSigned((100 * e.pos_resultat) / e.solde_depart)}` : ''}, ${rSigned(e.pos_r)}`)));
+  }
+  if (e.v8_b || e.v9_d || e.jambes > 0) list.append(el('dt', {}, 'Entrées B et D'), el('dd', {}, [e.v8_b, e.v9_d].filter(Boolean).join(' ; '),
+    e.jambes > 0 ? ' ; ' : '', e.jambes > 0 ? delta(e.v8_resultat || 0, `ouvertes : ${moneySigned(e.v8_resultat || 0, e.devise)}`) : ''));
+  list.append(el('dt', {}, 'Filtres'), el('dd', {}, e.filtres || '—'));
+  if (e.stats_n) list.append(el('dt', {}, 'Depuis le début'), el('dd', { class: 'num' }, `${e.stats_n} trades, ${rSigned(e.stats_r)}, pire baisse −${num(e.stats_baisse, 1)}R`));
+  row.append(list);
+  const res = el('div', { class: 'res' });
+  if (e.position || e.jambes > 0) {
+    const ouvert = (e.pos_resultat || 0) + (e.v8_resultat || 0);
+    res.append(el('div', {}, el('div', { class: 'fig' }, delta(ouvert, moneySigned(ouvert, e.devise))), el('div', { class: 'hint', style: 'margin:0' }, e.en_marche ? 'résultat ouvert' : 'dernier résultat connu')));
+  }
+  // Le bouton reste tant qu'une entrée B, C ou D est ouverte, même après la sortie de la cassure A : l'EA ferme tout.
+  if (e.en_marche && (e.position || e.attente || e.jambes > 0)) {
+    res.append(el('button', { class: 'btn danger small', onclick: () => askClose(e) }, e.position || e.jambes > 0 ? 'Clôturer les positions' : 'Annuler les ordres'));
+  }
+  row.append(res);
+  return row;
+}
+function renderInstruments() {
+  const host = $('instruments');
+  if (!state) return host.replaceChildren(el('div', { class: 'empty' }, 'Chargement…'));
+  // Ne pas redessiner pendant qu'une case est en cours de confirmation.
+  if (document.querySelector('dialog[open]')) return;
+  const rows = [];
+  for (const [key, label] of Object.entries(INSTRUMENTS)) {
+    const checked = key in state.reglages.instruments ? state.reglages.instruments[key] : true;
+    const eas = state.eas.filter((e) => e.instrument === key);
+    if (eas.length === 0) rows.push(instrumentRow(key, label, null, checked));
+    for (const e of eas) rows.push(instrumentRow(key, label, e, checked));
+  }
+  for (const e of state.eas.filter((x) => !(x.instrument in INSTRUMENTS))) rows.push(instrumentRow('autre', 'Autre symbole', e, true));
+  host.replaceChildren(...rows);
+}
+
+// ---------------------------------------------------------------- la séance : titre, phase et frise des règles
+// Heures des règles de l'EA, à New York (InpPre, InpOR, InpLiveBars, InpDCount et InpDValid, InpBEnd, InpFlat, InpFlatShort).
+// etrave/test_interface.py vérifie l'accord avec robot/Strategy-V10.mq5. L'heure de sortie du jour vient de l'EA (sortie_ny).
+const REGLES_NY = { elan: '09:00', range: '09:30', cassure: '09:35', finOrdres: '09:45', debutD: '09:40', finD: '10:00', finB: '14:00', sortie: '15:50', sortieCourte: '12:45' };
+const hm = (t) => { const [h, m] = String(t).split(':').map(Number); return h * 60 + m; };
+const hmTxt = (m) => `${Math.floor(m / 60)}:${String(m % 60).padStart(2, '0')}`;
+/** L'heure de New York donnée par l'EA (« 2026.11.25 10:12 ») : jour de la semaine, date lisible et minutes depuis minuit. */
+function heureNy(e) {
+  const m = /^(\d{4})\.(\d{2})\.(\d{2}) (\d{2}):(\d{2})/.exec(String((e && e.heure_ny) || ''));
+  if (!m) return null;
+  const jour = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), 12);
+  return { jour, semaine: jour.getDay(), date: jour.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' }), minutes: Number(m[4]) * 60 + Number(m[5]) };
+}
+function renderSeance() {
+  const live = running();
+  const ny = heureNy(live[0]);
+  const sortie = hm((live[0] && live[0].sortie_ny) || REGLES_NY.sortie);
+  const finB = Math.min(hm(REGLES_NY.finB), sortie);
+  // Jours fériés et demi-séances : l'EA ne pose aucun ordre (InpSkipShort), sa sortie avancée ne sert donc à rien ce jour-là.
+  const ferie = sortie < hm(REGLES_NY.sortie);
+  const weekend = ny && (ny.semaine === 0 || ny.semaine === 6);
+  // Ce que l'EA fait vraiment : la frise ne parle d'ordres ou de positions que s'il y en a (un jour sur deux, il n'y a pas de trade).
+  const actif = {
+    ordres: live.some((e) => e.attente),
+    cassure: live.some((e) => e.position),
+    positions: live.some((e) => e.position || e.jambes > 0),
+  };
+  const sansTrade = live.length > 0 && live.every((e) => /^Pas de trade/.test(e.jour || ''));
+  $('seance-titre').textContent = ny ? `Séance du ${ny.date}` : 'Séance de New York';
+  const t = ny ? ny.minutes : null;
+  const sortieTxt = hmTxt(sortie);
+  $('seance-sous').textContent = !ny ? 'Le robot ne tourne pas : l’heure et l’état de la séance viennent de lui.'
+    : weekend ? 'Pas de séance le week-end. Prochaine ouverture lundi à 9:30.'
+    : ferie ? 'Jour férié américain ou demi-séance : le robot ne prend aucun trade aujourd’hui.'
+    : t < hm(REGLES_NY.elan) ? 'Avant l’ouverture. L’EA mesure l’élan à partir de 9:00, puis prend le range de 9:30.'
+    : t < hm(REGLES_NY.range) ? 'L’EA mesure l’élan jusqu’à 9:30.'
+    : t < hm(REGLES_NY.cassure) ? 'Bougie du range en cours, jusqu’à 9:35.'
+    : sansTrade ? 'Pas de trade aujourd’hui. La raison est donnée pour chaque marché ci-dessous.'
+    : t < hm(REGLES_NY.finOrdres) && actif.ordres ? 'Ordres de cassure posés jusqu’à 9:45.'
+    : t >= sortie ? `Séance terminée, sortie de ${sortieTxt} passée.`
+    : !actif.positions ? (t < hm(REGLES_NY.finOrdres) ? 'Aucun ordre ni position pour l’instant.' : 'Aucune position ouverte. Plus d’entrée possible aujourd’hui sans cassure.')
+    : t < finB ? `Repli B possible jusqu’à ${hmTxt(finB)}. Les positions ouvertes sont gérées jusqu’à la sortie de ${sortieTxt}.`
+    : `Plus de nouvelle entrée. Les positions ouvertes sont gérées jusqu’à la sortie de ${sortieTxt}.`;
+  drawFrise(weekend ? null : t, sortie, finB, ferie || sansTrade ? { ordres: false, cassure: false, positions: false, range: false } : { ...actif, range: true });
+}
+/** Les fenêtres des règles sur une échelle de 9:00 à 16:00, agrandie avant 10:00, et l'aiguille « maintenant ». */
+function drawFrise(maintenant, sortie, finB, actif) {
+  const host = $('frise');
+  const W = Math.max(320, host.clientWidth);
+  const key = [W, maintenant, sortie, finB, actif.range, actif.ordres, actif.cassure, actif.positions].join('|');
+  if (host.dataset.drawn === key) return;
+  host.dataset.drawn = key;
+  const col = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--col')) || 172;
+  const debut = hm('09:00'), pivot = hm('10:00'), fin = hm('16:00');
+  const plot = W - col;
+  const x = (m) => col + plot * (m <= pivot ? 0.42 * (m - debut) / (pivot - debut) : 0.42 + 0.58 * (Math.min(m, fin) - pivot) / (fin - pivot));
+  const lignes = [
+    // nom, début, fin, et ce qui doit être vrai pour que la fenêtre en cours soit dessinée comme active
+    ['Range', hm(REGLES_NY.range), hm(REGLES_NY.cassure), actif.range],
+    ['Cassure A', hm(REGLES_NY.cassure), hm(REGLES_NY.finOrdres), actif.ordres || actif.cassure],
+    ['Entrées D', hm(REGLES_NY.debutD), hm(REGLES_NY.finD), actif.cassure],
+    ['Repli B', hm(REGLES_NY.cassure), finB, actif.positions],
+    ['Positions', hm(REGLES_NY.cassure), sortie, actif.positions],
+  ];
+  const top = 22, pas = 30, H = top + lignes.length * pas + 26;
+  const root = svg('svg', { viewBox: `0 0 ${W} ${H}`, height: H, role: 'img', 'aria-label': `Fenêtres des règles de la séance, de 9:00 à 16:00, heure de New York${maintenant != null ? `. Il est ${hmTxt(maintenant)}.` : ''}` });
+  const bas = top + lignes.length * pas;
+  // le temps écoulé, teinté comme l'eau derrière l'étrave
+  if (maintenant != null && maintenant > debut) root.append(svg('rect', { x: col, y: top - 6, width: Math.max(0, x(maintenant) - col), height: bas - top + 6, fill: 'var(--water)' }));
+  lignes.forEach(([nom, a, b, utile], i) => {
+    const y = top + i * pas + pas / 2;
+    const passe = maintenant != null && maintenant >= b, encours = utile && maintenant != null && maintenant >= a && maintenant < b;
+    const etiquette = svg('text', { x: 0, y: y + 4, class: 'rang' }); etiquette.textContent = nom; root.append(etiquette);
+    // les heures de chaque fenêtre, seulement s'il y a la place à côté du nom (sur téléphone, l'axe suffit)
+    if (col >= 150) { const heures = svg('text', { x: col - 14, y: y + 4, 'text-anchor': 'end', class: 'heure' }); heures.textContent = `${hmTxt(a)}–${hmTxt(b)}`; root.append(heures); }
+    root.append(svg('line', { x1: col, x2: W, y1: y, y2: y, stroke: 'var(--grid)', 'stroke-width': 1 }));
+    root.append(svg('rect', { x: x(a), y: y - 5, width: Math.max(3, x(b) - x(a)), height: 10, rx: 2,
+      fill: encours ? 'var(--accent)' : passe ? 'var(--axis)' : 'var(--water-2)' }));
+  });
+  // sortie de fin de journée : un trait sur toute la hauteur
+  root.append(svg('line', { x1: x(sortie), x2: x(sortie), y1: top - 6, y2: bas, stroke: 'var(--ink)', 'stroke-width': 1.5, 'stroke-dasharray': '3 3' }));
+  // axe des heures : moins d'étiquettes quand la place manque
+  let dernier = -Infinity;
+  for (const h of ['9:00', '9:30', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00']) {
+    const px = x(hm(h));
+    root.append(svg('line', { x1: px, x2: px, y1: bas, y2: bas + 5, stroke: 'var(--axis)', 'stroke-width': 1 }));
+    if (px - dernier < 40) continue;
+    dernier = px;
+    const label = svg('text', { x: px, y: bas + 19, 'text-anchor': h === '9:00' ? 'start' : h === '16:00' ? 'end' : 'middle', class: 'heure' }); label.textContent = h; root.append(label);
+  }
+  root.append(svg('line', { x1: col, x2: W, y1: bas, y2: bas, stroke: 'var(--axis)', 'stroke-width': 1 }));
+  // l'aiguille : magenta, la seule chose qui bouge sur la page
+  if (maintenant != null && maintenant >= debut && maintenant <= fin) {
+    const px = x(maintenant);
+    root.append(svg('line', { x1: px, x2: px, y1: top - 8, y2: bas, stroke: 'var(--mark)', 'stroke-width': 2 }));
+    const label = svg('text', { x: px, y: top - 12, 'text-anchor': px > W - 30 ? 'end' : px < col + 30 ? 'start' : 'middle', class: 'maintenant' }); label.textContent = hmTxt(maintenant); root.append(label);
+  }
+  host.replaceChildren(root);
+}
+async function saveInstrument(key, value, confirmation) {
+  try {
+    const result = await api('/api/reglages', { valeurs: { [key]: value }, confirmation });
+    state.reglages = result.reglages;
+    const label = INSTRUMENTS[key] || key;
+    toast(value ? `${label} activé : l’EA le prend dans les 2 secondes.` : `${label} en pause : plus de nouveau trade.`);
+  } catch (error) { toast(error.message); }
+  renderInstruments();
+}
+function toggleInstrument(key, input) {
+  saveInstrument(key, input.checked, '');
+}
+function askClose(e) {
+  closing = e.symbole;
+  // Revue cloud du 25/11/2026 : avec seulement des entrées B ou D ouvertes, le texte parlait d'annuler des ordres, alors que l'EA
+  // ferme ces positions au marché (UiClose).
+  const n = e.jambes > 0 ? e.jambes : 0;
+  const legs = n ? `${n} entrée${n > 1 ? 's' : ''} B ou D encore ouverte${n > 1 ? 's' : ''} (résultat actuel : ${moneySigned(e.v8_resultat || 0, e.devise)})` : '';
+  $('close-text').textContent = e.position
+    ? `L’EA va fermer au marché le trade ${e.symbole} (${e.pos_sens === 1 ? 'achat' : 'vente'} de ${e.pos_lots} lot${e.pos_pyramide ? ', ajout de la pyramide compris' : ''}), au prix du moment. Résultat actuel : ${rSigned(e.pos_r)}, ${moneySigned(e.pos_resultat, e.devise)}.${legs ? ` Il ferme aussi ${legs}.` : ''}`
+    : legs ? `L’EA va fermer au marché, au prix du moment, ${legs} sur ${e.symbole}. Plus aucune entrée aujourd’hui.`
+    : `L’EA va annuler ses ordres du jour sur ${e.symbole} : pas de trade aujourd’hui.`;
+  $('close-word').value = '';
+  $('close-ok').disabled = true;
+  $('dlg-close').showModal();
+}
+
+function niceTicks(min, max, count) {
+  if (min === max) { min -= 1; max += 1; }
+  const raw = (max - min) / count;
+  const mag = Math.pow(10, Math.floor(Math.log10(raw)));
+  const step = [1, 2, 2.5, 5, 10].map((m) => m * mag).find((s) => s >= raw);
+  const ticks = [];
+  for (let v = Math.floor(min / step) * step; v <= max + step * 0.5; v += step) ticks.push(Number(v.toFixed(10)));
+  return ticks;
+}
+const UNITS = { argent: 'Argent', pct: '%', r: 'R' };
+/** Courbe du résultat cumulé : un point par trade clôturé, la ligne de zéro en repère. */
+function renderCurve() {
+  const host = $('chart-curve');
+  $('curve-unit').replaceChildren(...Object.entries(UNITS).map(([key, label]) => el('button', { class: 'chip', 'aria-pressed': String(unit === key), onclick: () => { unit = key; delete host.dataset.drawn; renderCurve(); } }, label)));
+  if (trades.length === 0) { delete host.dataset.drawn; return host.replaceChildren(el('div', { class: 'empty' }, 'Aucun trade clôturé pour l’instant : la courbe apparaîtra après la première sortie.')); }
+  const devise = trades[trades.length - 1].devise || 'USD';
+  const show = (v) => (unit === 'argent' ? moneySigned(v, devise) : unit === 'pct' ? pctSigned(v) : rSigned(v));
+  const axis = (v) => (unit === 'argent' ? money(v, devise, 0) : unit === 'pct' ? `${v.toLocaleString('fr-FR')} %` : `${v.toLocaleString('fr-FR')}R`);
+  let argent = 0, r = 0, compose = 1;
+  const points = [{ i: 0, value: 0 }];
+  trades.forEach((t, index) => {
+    argent += t.net; r += t.r || 0; if (t.pct != null) compose *= 1 + t.pct / 100;
+    points.push({ i: index + 1, value: unit === 'argent' ? argent : unit === 'pct' ? (compose - 1) * 100 : r, trade: t });
+  });
+  const W = Math.max(320, host.clientWidth), H = W > 520 ? 280 : 220, m = { l: 62, r: 78, t: 12, b: 26 };
+  const last = points[points.length - 1];
+  const drawn = [W, unit, points.length, last.value].join('|');
+  if (host.dataset.drawn === drawn) return;
+  host.dataset.drawn = drawn;
+  host.replaceChildren();
+  const values = points.map((p) => p.value);
+  const ticks = niceTicks(Math.min(...values), Math.max(...values), 4);
+  const y0 = ticks[0], y1 = ticks[ticks.length - 1];
+  const x = (i) => m.l + (i / Math.max(1, last.i)) * (W - m.l - m.r);
+  const y = (v) => m.t + (1 - (v - y0) / (y1 - y0)) * (H - m.t - m.b);
+  const root = svg('svg', { viewBox: `0 0 ${W} ${H}`, height: H, role: 'img', 'aria-label': 'Résultat cumulé des trades pris par l’EA' });
+  for (const tick of ticks) {
+    root.append(svg('line', { x1: m.l, x2: W - m.r, y1: y(tick), y2: y(tick), stroke: tick === 0 ? 'var(--axis)' : 'var(--grid)', 'stroke-width': 1 }));
+    const label = svg('text', { x: m.l - 8, y: y(tick) + 4, 'text-anchor': 'end' }); label.textContent = axis(tick); root.append(label);
+  }
+  for (const [i, anchor, text] of [[0, 'start', fmtDate(trades[0].sortie)], [last.i, 'end', fmtDate(trades[trades.length - 1].sortie)]]) {
+    const label = svg('text', { x: x(i), y: H - 6, 'text-anchor': anchor }); label.textContent = text; root.append(label);
+  }
+  const line = points.map((p, index) => `${index ? 'L' : 'M'}${x(p.i).toFixed(1)},${y(p.value).toFixed(1)}`).join(' ');
+  root.append(svg('path', { d: line, fill: 'none', stroke: 'var(--accent)', 'stroke-width': 2, 'stroke-linejoin': 'round', 'stroke-linecap': 'round' }));
+  if (points.length <= 60) for (const p of points.slice(1)) root.append(svg('circle', { cx: x(p.i), cy: y(p.value), r: 3, fill: 'var(--accent)', stroke: 'var(--surface)', 'stroke-width': 1.5 }));
+  root.append(svg('circle', { cx: x(last.i), cy: y(last.value), r: 4.5, fill: 'var(--accent)', stroke: 'var(--surface)', 'stroke-width': 2 }));
+  const end = svg('text', { x: x(last.i) + 9, y: y(last.value) + 4, style: 'fill:var(--ink);font-weight:600' }); end.textContent = show(last.value); root.append(end);
+  const cross = svg('line', { y1: m.t, y2: H - m.b, stroke: 'var(--axis)', 'stroke-width': 1, visibility: 'hidden' });
+  const dot = svg('circle', { r: 4.5, fill: 'var(--accent)', stroke: 'var(--surface)', 'stroke-width': 2, visibility: 'hidden' });
+  root.append(cross, dot);
+  const tip = el('div', { class: 'tip', hidden: true });
+  host.append(root, tip);
+  const hide = () => { cross.setAttribute('visibility', 'hidden'); dot.setAttribute('visibility', 'hidden'); tip.hidden = true; };
+  root.addEventListener('pointerleave', hide);
+  root.addEventListener('pointermove', (event) => {
+    const box = root.getBoundingClientRect();
+    const px = ((event.clientX - box.left) / box.width) * W;
+    let best = points[0];
+    for (const p of points) if (Math.abs(x(p.i) - px) < Math.abs(x(best.i) - px)) best = p;
+    cross.setAttribute('x1', x(best.i)); cross.setAttribute('x2', x(best.i)); cross.setAttribute('visibility', 'visible');
+    dot.setAttribute('cx', x(best.i)); dot.setAttribute('cy', y(best.value)); dot.setAttribute('visibility', 'visible');
+    const t = best.trade;
+    if (!t) tip.replaceChildren(el('b', {}, show(0)), el('span', {}, 'avant le premier trade'));
+    else tip.replaceChildren(el('b', {}, `Cumul ${show(best.value)}`), el('span', {}, `Trade ${best.i}, ${dateFr(t.date)}, ${t.symbole}, ${t.sens === 1 ? 'achat' : 'vente'}`), el('span', {}, `${rSigned(t.r)}, ${moneySigned(t.net, t.devise)}, ${pctSigned(t.pct)}`), el('span', {}, t.raison));
+    tip.hidden = false;
+    const left = (x(best.i) / W) * box.width;
+    tip.style.left = `${Math.min(Math.max(0, left + 12), box.width - tip.offsetWidth)}px`;
+    tip.style.top = `${Math.max(0, (y(best.value) / H) * box.height - tip.offsetHeight - 10)}px`;
+  });
+}
+function renderTrades(devise) {
+  $('trades-count').textContent = trades.length ? `${trades.length}` : '';
+  if (trades.length === 0) return $('trades').replaceChildren(el('div', { class: 'empty' }, 'Aucun trade clôturé pour l’instant.'));
+  const rows = trades.slice().reverse().slice(0, 200).map((t) => el('tr', {},
+    el('td', { class: 'num' }, dateFr(t.date), el('span', { class: 'opt' }, ` ${t.heure}`)),
+    el('td', { class: 'opt' }, t.symbole),
+    el('td', {}, t.sens === 1 ? 'Achat' : 'Vente', t.pyramide ? el('span', { class: 'opt' }, ' + pyramide') : null),
+    el('td', { class: 'num' }, delta(t.r || 0, rSigned(t.r))),
+    el('td', { class: 'num' }, pctSigned(t.pct)),
+    el('td', { class: 'num' }, moneySigned(t.net, t.devise || devise)),
+    el('td', { class: 'opt' }, t.raison)));
+  $('trades').replaceChildren(el('table', {},
+    el('thead', {}, el('tr', {}, el('th', {}, 'Sortie', el('span', { class: 'opt' }, ' (New York)')), el('th', { class: 'opt' }, 'Symbole'), el('th', {}, 'Sens'), el('th', { class: 'num' }, 'R'), el('th', { class: 'num' }, '%'), el('th', { class: 'num' }, 'Résultat'), el('th', { class: 'opt' }, 'Raison'))),
+    el('tbody', {}, ...rows)));
+}
+
+// ---------------------------------------------------------------- risque
+const RISK_PRESETS = [0.25, 0.5, 1, 2, 5, 10, 20];
+function bounds() { return state ? state.reglages.bornes : { risqueMin: 0.05, risqueMax: 20, risqueAConfirmer: 1, levierMax: 2000 }; }
+function roundRisk(v) { const step = v < 1 ? 0.05 : v < 5 ? 0.1 : 0.5; return Number((Math.round(v / step) * step).toFixed(2)); }
+function sliderToRisk(position) { const b = bounds(); return roundRisk(b.risqueMin * Math.pow(b.risqueMax / b.risqueMin, position / 1000)); }
+function riskToSlider(risk) { const b = bounds(); return Math.round((1000 * Math.log(risk / b.risqueMin)) / Math.log(b.risqueMax / b.risqueMin)); }
+const savedLever = () => (state && state.reglages.levier != null ? state.reglages.levier : null);
+const riskDirty = () => draft && state && (Math.abs(draft.risque - currentRisk()) > 1e-9 || draft.levier !== savedLever());
+function validDraft() { const b = bounds(); return draft && Number.isFinite(draft.risque) && draft.risque >= b.risqueMin && draft.risque <= b.risqueMax && (draft.levier === null || (draft.levier >= 1 && draft.levier <= b.levierMax)); }
+function renderRisk(fromInput) {
+  if (!state) return;
+  if (!draft) draft = { risque: currentRisk(), levier: savedLever() };
+  const a = account();
+  const used = eaRisk();
+  const status = $('risk-status');
+  const same = used != null && state.reglages.risquePct != null && Math.abs(used - state.reglages.risquePct) < 1e-9;
+  status.className = `status${same && !fixedLots() ? ' on' : ''}`;
+  status.lastChild.textContent = fixedLots() ? `L’EA est en lots fixes : ${num(fixedLots(), 2)} lot par cassure, réglé dans MetaTrader (« Lots fixes »). Le risque enregistré ici n’est pas utilisé tant que ce réglage vaut plus que 0 ; le risque réel suit alors la largeur du stop.`
+    : used == null ? 'L’EA n’a pas encore démarré : ce réglage sera pris à son lancement.'
+    : state.reglages.risquePct == null ? `L’EA utilise ${riskText(used)}, réglé dans MetaTrader. Enregistre une valeur ici pour la piloter depuis cette page.`
+    : same ? `L’EA utilise ${riskText(used)}, réglé ici.` : `Enregistré ici : ${riskText(state.reglages.risquePct)}. L’EA utilise encore ${riskText(used)}${a && a.en_marche ? ' (il relit ce réglage toutes les 2 secondes)' : ' : il est arrêté'}.`;
+  $('sum-risque').textContent = `${riskText(currentRisk())}${savedLever() ? ` · levier 1:${savedLever()}` : ''}`;
+  if (fromInput !== 'number') $('risk-input').value = Number.isFinite(draft.risque) ? draft.risque : '';
+  if (fromInput !== 'slider' && validDraft()) $('risk-slider').value = riskToSlider(draft.risque);
+  if (fromInput !== 'lever') $('lever-input').value = draft.levier === null ? '' : draft.levier;
+  $('risk-presets').replaceChildren(...RISK_PRESETS.map((value) => el('button', { class: 'chip', 'aria-pressed': String(Math.abs(draft.risque - value) < 1e-9), onclick: () => { draft.risque = value; renderRisk(); loadSim(); } }, riskText(value))));
+  const hint = a && a.levier_symbole ? `MetaTrader indique environ 1:${Math.round(a.levier_symbole)} sur ${a.symbole}${a.levier_compte ? ` (compte en 1:${Math.round(a.levier_compte)})` : ''}. Vide : l’EA s’en remet au calcul de MetaTrader.` : 'Vide : l’EA s’en remet au calcul de marge de MetaTrader. Exemple : 20 pour un levier de 1:20.';
+  $('lever-hint').textContent = hint;
+  const dirty = riskDirty();
+  $('risk-save').disabled = !dirty || !validDraft();
+  $('risk-cancel').disabled = !dirty;
+  if (!validDraft()) { $('risk-msg').className = 'msg err'; $('risk-msg').textContent = `Risque entre ${riskText(bounds().risqueMin)} et ${riskText(bounds().risqueMax)} ; levier entre 1 et ${bounds().levierMax}, ou vide.`; }
+  else if (dirty) { $('risk-msg').className = 'msg'; $('risk-msg').textContent = 'Non enregistré. Le nouveau risque vaudra pour le prochain trade, jamais pour un trade déjà ouvert.'; }
+  else if ($('risk-msg').dataset.keep !== '1') $('risk-msg').textContent = '';
+  renderSim();
+}
+let simTimer = null;
+function loadSim() {
+  clearTimeout(simTimer);
+  simTimer = setTimeout(async () => {
+    if (!validDraft()) return;
+    const asked = { ...draft };
+    try {
+      const result = await api(`/api/risque?pct=${asked.risque}${asked.levier ? `&levier=${asked.levier}` : ''}`);
+      if (draft && asked.risque === draft.risque && asked.levier === draft.levier) { sim = result; renderSim(); }
+    } catch (error) { /* la prochaine saisie relancera le calcul */ }
+  }, 120);
+}
+function renderSim() {
+  const host = $('tiles-sim');
+  if (!sim || !draft) return host.replaceChildren(el('div', { class: 'empty' }, 'Calcul…'));
+  const a = account();
+  const s = sim;
+  $('sim-title').textContent = `${riskText(s.risquePct)} par trade${s.levier ? ` · levier 1:${s.levier}` : ''}`;
+  $('sim-hint').textContent = `L’ancienne ORB v6 rejouée sur le Nasdaq du ${s.debut} au ${s.fin} (${s.trades} trades, ${String(s.annees).replace('.', ',')} ans), gains et pertes réinvestis.${s.levier ? '' : ' Sans levier saisi, la marge n’est pas prise en compte.'}`;
+  const gain = s.parAnPct > 100000 ? 'plus de 100 000 %' : pctSigned(s.parAnPct, s.parAnPct < 100 ? 1 : 0);
+  const tiles = [
+    tile('Gain par an dans le test', gain, 'si les années à venir ressemblent à 2018-2026'),
+    tile('Pire baisse du test', `−${num(s.pireBaissePct, 1)} %`, 'du plus haut au plus bas, 2018-2026', s.pireBaissePct >= 30 ? 'alert' : ''),
+    tile(`${s.serie} pertes de suite`, `−${num(s.seriePct, 1)} %`, 'la pire série du test', s.seriePct >= 30 ? 'alert' : ''),
+    tile('Si 2015-2017 revenait', `au moins −${num(s.ancienTestPct, 0)} %`, `l’ancien test a baissé de ${s.ancienTestR}R`, s.ancienTestPct >= 30 ? 'alert' : ''),
+  ];
+  if (s.levier) tiles.push(tile('Trades réduits par la marge', pct(s.reduitsPct), s.reduitsPct > 0 ? `risque réellement pris : ${riskText(Number(s.risqueMoyenPct.toFixed(2)))} en moyenne` : 'la marge suffit tous les jours du test', s.reduitsPct >= 50 ? 'alert' : ''));
+  if (a && a.solde != null && !fixedLots()) tiles.push(tile('Sur ton solde', `${money((a.solde * s.risquePct) / 100, a.devise)}`, `risqués par trade, pour ${money(a.solde, a.devise)}`));
+  host.replaceChildren(...tiles);
+  const notes = [];
+  if (s.levier && s.reduitsPct > 0) {
+    const needed = Math.ceil((s.risquePct / 100) * s.unites / (0.9 * s.stopRanges * s.rangeMedianPct / 100));
+    notes.push(el('div', { class: `banner${s.reduitsPct >= 50 ? ' bad' : ''}` }, el('b', {}, 'La marge manque certains jours. '),
+      `Avec un levier de 1:${s.levier}, ${pct(s.reduitsPct)} des trades du test n’auraient pas pu être ouverts à ${riskText(s.risquePct)} : l’EA réduit alors la taille pour garder la marge de toutes les entrées du jour et de leurs pyramides (${s.unites} unités en tout, 90 % de la marge libre au plus). Pour qu’un jour sur deux passe en entier, il faudrait environ 1:${needed}.`));
+  }
+  if (s.risquePct > bounds().risqueAConfirmer) notes.push(el('div', { class: 'banner bad' }, el('b', {}, 'Au-delà de ce que le test rend raisonnable. '), `À ${riskText(s.risquePct)} par trade, la pire série du test (${s.serie} pertes) coûte ${num(s.seriePct, 0)} % du compte, et une période comme 2015-2017 au moins ${num(s.ancienTestPct, 0)} %. Le gain par an affiché suppose qu’aucune de ces séries n’arrive plus tôt ou plus fort que dans le test.`));
+  $('sim-notes').replaceChildren(...notes);
+}
+async function saveRisk(confirmation) {
+  const values = {};
+  if (Math.abs(draft.risque - currentRisk()) > 1e-9 || state.reglages.risquePct == null) values.risquePct = draft.risque;
+  if (draft.levier !== savedLever()) values.levier = draft.levier;
+  try {
+    const result = await api('/api/reglages', { valeurs: values, confirmation: confirmation || '' });
+    state.reglages = result.reglages;
+    draft = null;
+    $('risk-msg').dataset.keep = '1';
+    $('risk-msg').className = 'msg';
+    $('risk-msg').textContent = !result.changees.length ? 'Rien à modifier.'
+      : fixedLots() ? 'Enregistré, mais sans effet tant que l’EA est en lots fixes (réglage « Lots fixes » dans MetaTrader).'
+      : 'Enregistré. L’EA le prend dans les 2 secondes, pour le prochain trade.';
+    setTimeout(() => { delete $('risk-msg').dataset.keep; }, 6000);
+  } catch (error) { $('risk-msg').className = 'msg err'; $('risk-msg').textContent = error.message; return; }
+  renderRisk();
+  renderOverview();
+}
+
+// ---------------------------------------------------------------- connexions
+// La page ne reçoit jamais une valeur enregistrée : seulement « renseignée » ou « vide ».
+async function saveConnection(values, done) {
+  try {
+    const result = await api('/api/connexions', { valeurs: values });
+    state.reglages = result.reglages;
+    toast(result.changees.length === 0 ? 'Rien à modifier.' : running().length ? 'Enregistré. L’EA le prend dans les 2 secondes.' : 'Enregistré. L’EA le prendra à son lancement.');
+    if (done) done(result);
+  } catch (error) { toast(error.message); }
+  renderConnections();
+}
+async function testTelegram() {
+  telegramResult = { pending: true };
+  renderConnections();
+  try { telegramResult = await api('/api/connexions/telegram-test', {}); } catch (error) { telegramResult = { error: error.message }; }
+  renderConnections();
+}
+async function testTelegramMt5() {
+  mt5Test = { pending: true };
+  renderConnections();
+  try { const result = await api('/api/connexions/telegram-test-mt5', {}); mt5Test = { numero: result.numero, depuis: Date.now() }; }
+  catch (error) { mt5Test = { error: error.message }; }
+  renderConnections();
+}
+/** Ce que l'EA a répondu à la demande d'essai en cours, s'il a répondu. */
+function mt5TestOutcome() {
+  if (!mt5Test || !mt5Test.numero || !state) return null;
+  for (const e of state.eas) {
+    const [numero, ...rest] = String(e.telegram_essai || '').split(':');
+    if (numero === mt5Test.numero) return { symbole: e.symbole, resultat: rest.join(':') };
+  }
+  return null;
+}
+const secretInput = (id, placeholder, type) => el('input', { type: type || 'password', id, placeholder, autocomplete: 'off', spellcheck: false, 'aria-label': placeholder });
+/** Un bloc repliable construit par le script (onglet Connexions). */
+function fold(key, title, defaultOpen, summary, ...children) {
+  const node = el('details', { class: 'card', 'data-fold': key, open: foldOpen(key, defaultOpen) },
+    el('summary', {}, el('h2', {}, title), summary ? el('span', { class: 'sum' }, summary) : null), ...children);
+  node.addEventListener('toggle', () => rememberFold(key, node.open));
+  return node;
+}
+const statusLine = (on, text) => el('div', { class: `status${on ? ' on' : ''}` }, el('span', { class: 'dot' }), text);
+const MT5_BLOCKED = 'MetaTrader bloque l’envoi. Dans MetaTrader 5 : Outils > Options > Expert Advisors, coche « Autoriser WebRequest pour les URL listées » et ajoute https://api.telegram.org, puis réessaie.';
+function renderConnections() {
+  const host = $('connections');
+  if (!state) return host.replaceChildren(el('div', { class: 'empty' }, 'Chargement…'));
+  // Ne pas effacer une saisie en cours : on ne redessine pas tant qu'un champ de cet onglet a le curseur.
+  if (host.contains(document.activeElement) && document.activeElement.tagName === 'INPUT' && renderConnections.drawn) return;
+  renderConnections.drawn = true;
+  const c = state.reglages;
+  const live = running();
+
+  // Telegram
+  const tokenInput = secretInput('k-telegram', 'Jeton du bot (123456789:AA…)');
+  const ready = c.telegramJeton && c.telegramDiscussion;
+  const outcome = el('div', {});
+  if (telegramResult) {
+    const r = telegramResult;
+    if (r.pending) outcome.append(el('div', { class: 'banner' }, 'Vérification auprès de Telegram…'));
+    else if (r.error) outcome.append(el('div', { class: 'banner bad' }, r.error));
+    else if (r.step === 'token-missing') outcome.append(el('div', { class: 'banner' }, 'Enregistre d’abord le jeton de ton bot.'));
+    else if (r.step === 'no-chat') outcome.append(el('div', { class: 'banner' }, `Jeton valide (bot @${r.bot}). Personne ne lui a encore écrit : dans Telegram, ouvre @${r.bot}, envoie-lui « bonjour », puis reclique sur le bouton.`));
+    else if (r.step === 'sent') outcome.append(el('div', { class: 'banner ok' }, `Message d’essai envoyé par @${r.bot} : regarde ton Telegram. Reste à vérifier que MetaTrader peut envoyer lui aussi (bouton suivant).`));
+    else if (r.step === 'choose-chat') outcome.append(el('div', { class: 'banner' }, `Jeton valide (bot @${r.bot}). Choisis la discussion où recevoir les alertes : `,
+      ...r.chats.map((chat) => el('button', { class: 'btn', style: 'margin:4px 6px 0 0', onclick: () => saveConnection({ telegram_discussion: chat.id }, () => testTelegram()) }, `${chat.name || 'discussion'} (${chat.id})`))));
+  }
+  if (mt5Test) {
+    const answer = mt5TestOutcome();
+    if (mt5Test.error) outcome.append(el('div', { class: 'banner bad' }, mt5Test.error));
+    else if (answer && answer.resultat === 'ok') outcome.append(el('div', { class: 'banner ok' }, `MetaTrader (${answer.symbole}) a envoyé son message d’essai : les alertes des trades arriveront.`));
+    else if (answer && answer.resultat === 'bloque') outcome.append(el('div', { class: 'banner bad' }, MT5_BLOCKED));
+    else if (answer && answer.resultat === 'occupe') outcome.append(el('div', { class: 'banner' }, `L’EA (${answer.symbole}) guette la cassure du range : il ne fait pas d’essai à ce moment-là. Réessaie après 9:45 New York.`));
+    else if (answer && answer.resultat === 'inactif') outcome.append(el('div', { class: 'banner' }, 'L’EA n’a pas encore pris le jeton et la discussion : réessaie dans quelques secondes.'));
+    else if (answer && answer.resultat === 'expire') outcome.append(el('div', { class: 'banner' }, 'La demande est arrivée trop tard à l’EA : réessaie.'));
+    else if (answer) outcome.append(el('div', { class: 'banner bad' }, `Telegram a refusé le message de MetaTrader (${answer.resultat}). Refais « Trouver ma discussion et tester ».`));
+    else if (mt5Test.pending || Date.now() - mt5Test.depuis < 20000) outcome.append(el('div', { class: 'banner' }, 'Demande envoyée à MetaTrader, réponse dans quelques secondes…'));
+    else outcome.append(el('div', { class: 'banner bad' }, 'MetaTrader n’a pas répondu. Vérifie que l’EA tourne (pastille en haut de la page) et que « Lire le risque, les cases et Telegram dans l’interface Étrave » est coché dans ses réglages.'));
+  }
+  const sending = live.find((e) => e.telegram_envoi === 'bloque');
+  const telegram = fold('telegram', 'Alertes Telegram', true, ready ? 'configuré' : 'non configuré',
+    el('div', { class: 'hint' }, 'Facultatif. Ordres placés, entrées, pyramide, stop déplacé et clôtures (en R, en % et en argent) arrivent sur ton téléphone.'),
+    statusLine(ready, ready ? (live.length && !live.some((e) => e.telegram) ? 'Configuré (l’EA le prend dans les 2 secondes)' : 'Configuré') : c.telegramJeton ? 'Jeton enregistré, discussion à choisir' : 'Non configuré'),
+    sending ? el('div', { class: 'banner bad' }, MT5_BLOCKED) : null,
+    el('ol', {},
+      el('li', {}, 'Dans Telegram, ouvre une discussion avec @BotFather (le compte officiel, coche bleue) et envoie /newbot.'),
+      el('li', {}, 'Il te donne un jeton : colle-le ci-dessous et enregistre.'),
+      el('li', {}, 'Toujours dans Telegram, ouvre ton nouveau bot et envoie-lui un message.'),
+      el('li', {}, 'Clique sur « Trouver ma discussion et tester ».'),
+      el('li', {}, 'Dans MetaTrader 5 : Outils > Options > Expert Advisors, coche « Autoriser WebRequest pour les URL listées » et ajoute https://api.telegram.org. Puis clique sur « Essai depuis MetaTrader ».')),
+    el('div', { class: 'secret-row' }, tokenInput,
+      el('button', { class: 'btn primary', onclick: () => { if (tokenInput.value.trim()) { telegramResult = null; mt5Test = null; renderConnections.drawn = false; saveConnection({ telegram_jeton: tokenInput.value, telegram_discussion: '' }); } } }, 'Enregistrer le jeton')),
+    el('div', { class: 'secret-row' },
+      el('button', { class: 'btn', disabled: !c.telegramJeton, onclick: () => testTelegram() }, ready ? 'Envoyer un message d’essai' : 'Trouver ma discussion et tester'),
+      el('button', { class: 'btn', disabled: !ready || live.length === 0, title: live.length === 0 ? 'L’EA doit tourner dans MetaTrader 5' : '', onclick: () => testTelegramMt5() }, 'Essai depuis MetaTrader'),
+      c.telegramDiscussion ? el('button', { class: 'btn', onclick: () => { telegramResult = null; mt5Test = null; saveConnection({ telegram_discussion: '' }); } }, 'Changer de discussion') : null,
+      c.telegramJeton ? el('button', { class: 'btn', onclick: () => { telegramResult = null; mt5Test = null; saveConnection({ telegram_jeton: '', telegram_discussion: '' }); } }, 'Désactiver Telegram') : null),
+    outcome);
+
+  // Compte MetaTrader 5
+  const a = account();
+  const m = state.mt5;
+  const login = secretInput('k-login', 'Numéro de compte (login)', 'text');
+  const password = secretInput('k-password', 'Mot de passe du compte');
+  const server = secretInput('k-server', 'Serveur (ex. MonCourtier-Demo)', 'text');
+  login.value = c.mt5Login || (a && a.compte_login) || '';
+  server.value = c.mt5Serveur || (a && a.compte_serveur) || '';
+  const pick = m.terminaux.length > 1 ? el('select', { id: 'k-terminal', 'aria-label': 'MetaTrader 5 à lancer' }, ...m.terminaux.map((t) => el('option', { value: String(t.id) }, t.dossier))) : null;
+  const canLaunch = m.windows && !m.ouvert && m.terminaux.length > 0;
+  const why = !m.windows ? 'MetaTrader 5 ne se lance que sous Windows : ouvre cette page sur l’ordinateur ou le VPS où il est installé.'
+    : m.ouvert ? 'MetaTrader 5 est ouvert. Pour changer de compte, ferme-le d’abord toi-même (vérifie qu’aucun trade n’est en cours), puis reviens ici.'
+    : m.terminaux.length === 0 ? 'MetaTrader 5 n’a pas été trouvé sur cet ordinateur : ouvre-le une première fois à la main et pose l’EA sur un graphique.' : '';
+  const launch = async (withAccount) => {
+    const body = { terminal: pick ? Number(pick.value) : 0, connexion: withAccount };
+    if (withAccount) Object.assign(body, { login: login.value, motDePasse: password.value, serveur: server.value });
+    try { await api('/api/mt5/lancer', body); password.value = ''; toast(withAccount ? 'MetaTrader 5 se lance et se connecte au compte.' : 'MetaTrader 5 se lance.'); }
+    catch (error) { toast(error.message); }
+  };
+  const install = async () => {
+    installResult = { pending: true };
+    renderConnections.drawn = false; renderConnections();
+    try { installResult = await api('/api/mt5/installer', { terminal: pick ? Number(pick.value) : 0 }); } catch (error) { installResult = { error: error.message }; }
+    renderConnections.drawn = false; renderConnections();
+  };
+  const option = async (values) => {
+    try { const result = await api('/api/mt5/options', values); state.reglages = result.reglages; if (result.demarrageWindows !== null) state.mt5.demarrageWindows = result.demarrageWindows; toast('Enregistré.'); }
+    catch (error) { toast(error.message); }
+    renderConnections.drawn = false; renderConnections();
+  };
+  const installed = el('div', {});
+  if (installResult) {
+    const r = installResult;
+    if (r.pending) installed.append(el('div', { class: 'banner' }, 'Copie et compilation en cours (jusqu’à une minute)…'));
+    else if (r.error) installed.append(el('div', { class: 'banner bad' }, r.error));
+    else installed.append(el('div', { class: `banner ${r.compile ? 'ok' : 'bad'}` },
+      el('b', {}, r.compile ? 'EA installé et compilé. ' : r.compile === false ? 'EA copié, mais la compilation a échoué. ' : 'EA copié, pas compilé. '),
+      r.compile ? `Il est dans ${r.emplacement} : glisse-le sur le graphique (une seule fois), MetaTrader s’en souviendra.` : 'Envoie les lignes ci-dessous pour correction :',
+      r.journal.length ? el('ul', { style: 'margin:8px 0 0' }, ...r.journal.map((line) => el('li', {}, line))) : null));
+  }
+  const mt5 = fold('mt5', 'Compte MetaTrader 5', true, a && a.en_marche ? `${a.compte_type === 'reel' ? 'RÉEL' : 'démo'} ${a.compte_login}` : 'arrêté',
+    el('div', { class: 'hint' }, 'Lance MetaTrader 5 et le connecte au compte de ton courtier. Le mot de passe n’est jamais gardé par cette page : MetaTrader le retient lui-même.'),
+    statusLine(a && a.en_marche, a ? (a.en_marche ? `Connecté au compte ${a.compte_type === 'reel' ? 'RÉEL' : 'démo'} ${a.compte_login}, serveur ${a.compte_serveur}` : `MetaTrader arrêté (dernier compte vu : ${a.compte_login}, serveur ${a.compte_serveur})`) : 'Aucun EA vu pour l’instant'),
+    why ? el('p', {}, why) : null,
+    el('div', { class: 'form' },
+      el('div', {}, el('label', { for: 'k-login' }, 'Numéro de compte'), login),
+      el('div', {}, el('label', { for: 'k-password' }, 'Mot de passe'), password),
+      el('div', {}, el('label', { for: 'k-server' }, 'Serveur'), server),
+      pick ? el('div', {}, el('label', { for: 'k-terminal' }, 'MetaTrader à lancer'), pick) : null),
+    el('div', { class: 'secret-row' },
+      el('button', { class: 'btn primary', disabled: !canLaunch, onclick: () => launch(true) }, 'Lancer MetaTrader 5 et se connecter'),
+      el('button', { class: 'btn', disabled: !canLaunch, onclick: () => launch(false) }, 'Ouvrir MetaTrader 5 tel quel'),
+      el('button', { class: 'btn', disabled: !m.windows || m.terminaux.length === 0, onclick: install }, 'Installer ou mettre à jour l’EA')),
+    installed,
+    el('div', { class: 'checks' },
+      el('label', { class: 'switch' }, el('input', { type: 'checkbox', checked: c.mt5Auto, onchange: (event) => option({ auto: event.target.checked }) }), 'Ouvrir MetaTrader 5 tout seul quand Étrave démarre'),
+      el('label', { class: 'switch' }, el('input', { type: 'checkbox', checked: m.demarrageWindows, disabled: !m.windows, onchange: (event) => option({ demarrageWindows: event.target.checked }) }), 'Lancer Étrave à l’ouverture de la session Windows')),
+    el('p', { style: 'margin-top:10px' }, 'Avec ces deux cases, un VPS qui redémarre relance tout seul Étrave puis MetaTrader, qui se reconnecte au compte et retrouve l’EA sur son graphique (si Windows ouvre la session automatiquement).'),
+    el('p', {}, 'Après un changement de compte, vérifie dans MetaTrader que l’EA est toujours sur son graphique et que le bouton « Trading algo » est actif : cette page te le dit en haut.'));
+
+  const note = fold('note', 'Où vont ces réglages', false, '',
+    el('p', {}, 'Le risque, le levier, les cases et Telegram sont écrits dans un fichier du dossier commun de MetaTrader, sur cet ordinateur, que l’EA relit toutes les 2 secondes. Une fois enregistré, le jeton Telegram n’est plus jamais affiché. Le mot de passe du compte n’est écrit que le temps du lancement de MetaTrader, puis effacé. Cette page ne répond qu’à cet ordinateur (127.0.0.1) : elle n’est pas visible depuis le réseau.'));
+  host.replaceChildren(telegram, mt5, note);
+}
+
+// ---------------------------------------------------------------- chargement
+async function loadState() {
+  try { state = await api('/api/etat'); } catch (error) { state = null; }
+  renderHeader();
+  if (!state) return;
+  if (!$('tab-overview').hidden) renderOverview();
+  if (!$('tab-risk').hidden) renderRisk('poll');
+  if (!$('tab-connections').hidden) renderConnections();
+}
+async function loadTrades() {
+  try { trades = (await api('/api/trades')).trades; } catch (error) { return; }
+  if (!$('tab-overview').hidden && state) renderOverview();
+}
+const ONGLETS = ['overview', 'risk', 'connections'];
+function showTab(name) {
+  for (const button of document.querySelectorAll('nav button')) button.setAttribute('aria-selected', String(button.dataset.tab === name));
+  for (const id of ONGLETS) $(`tab-${id}`).hidden = id !== name;
+  try { localStorage.setItem('onglet', name); } catch (error) { /* sans gravité */ }
+  if (!state) return;
+  if (name === 'overview') renderOverview();
+  if (name === 'risk') { renderRisk(); loadSim(); }
+  if (name === 'connections') { renderConnections.drawn = false; renderConnections(); }
+}
+document.querySelectorAll('nav button').forEach((button) => button.addEventListener('click', () => showTab(button.dataset.tab)));
+$('risk-input').addEventListener('input', () => { draft.risque = Number(String($('risk-input').value).replace(',', '.')); renderRisk('number'); loadSim(); });
+$('risk-slider').addEventListener('input', () => { draft.risque = sliderToRisk(Number($('risk-slider').value)); renderRisk('slider'); loadSim(); });
+$('lever-input').addEventListener('input', () => { const raw = $('lever-input').value.trim(); draft.levier = raw === '' ? null : Number(raw.replace(',', '.')); renderRisk('lever'); loadSim(); });
+$('risk-cancel').addEventListener('click', () => { draft = null; renderRisk(); loadSim(); });
+$('risk-save').addEventListener('click', () => {
+  if (draft.risque > bounds().risqueAConfirmer && draft.risque > savedRisk()) {
+    $('risk-dlg-text').textContent = `Tu passes à ${riskText(draft.risque)} du solde par trade.${sim && sim.risquePct === draft.risque ? ` Dans le test, la pire baisse à ce risque est de ${num(sim.pireBaissePct, 0)} %, et ${sim.serie} pertes de suite coûtent ${num(sim.seriePct, 0)} % du compte.` : ''} Au-delà de ${riskText(bounds().risqueAConfirmer)}, c’est ton choix : rien dans le test ne le recommande.`;
+    $('risk-word').value = '';
+    $('risk-dlg-ok').disabled = true;
+    return $('dlg-risk').showModal();
+  }
+  saveRisk('');
+});
+$('risk-word').addEventListener('input', () => ($('risk-dlg-ok').disabled = $('risk-word').value.trim().toUpperCase() !== 'RISQUE'));
+$('risk-dlg-cancel').addEventListener('click', () => $('dlg-risk').close());
+$('risk-dlg-ok').addEventListener('click', () => { $('dlg-risk').close(); saveRisk('RISQUE'); });
+$('close-word').addEventListener('input', () => ($('close-ok').disabled = $('close-word').value.trim().toUpperCase() !== 'CLOTURER'));
+$('close-cancel').addEventListener('click', () => $('dlg-close').close());
+$('close-ok').addEventListener('click', async () => {
+  $('dlg-close').close();
+  try { await api('/api/cloturer', { symbole: closing, confirmation: 'CLOTURER' }); toast('Demande envoyée : l’EA s’en occupe dans les 2 secondes.'); } catch (error) { toast(error.message); }
+});
+// Thème : clair par défaut, nuit si l'ordinateur est réglé en sombre ; le choix fait ici est retenu.
+function setTheme(theme) {
+  document.documentElement.dataset.theme = theme;
+  $('btn-theme').textContent = theme === 'dark' ? 'Mode jour' : 'Mode nuit';
+}
+$('btn-theme').addEventListener('click', () => {
+  const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+  setTheme(next);
+  try { localStorage.setItem('theme', next); } catch (error) { /* stockage indisponible : sans gravité */ }
+});
+{
+  let saved = null;
+  try { saved = localStorage.getItem('theme'); } catch (error) { /* idem */ }
+  setTheme(saved === 'dark' || saved === 'light' ? saved : window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+}
+window.addEventListener('resize', () => { if (!$('tab-overview').hidden && state) { renderCurve(); renderSeance(); } });
+
+(async () => {
+  await Promise.all([loadState(), loadTrades()]);
+  setInterval(loadState, 2000);
+  setInterval(loadTrades, 10000);
+  let onglet = 'overview';
+  try { onglet = localStorage.getItem('onglet') || 'overview'; } catch (error) { /* idem */ }
+  showTab(ONGLETS.includes(onglet) ? onglet : 'overview');
+})();
+</script>
+</body>
+</html>

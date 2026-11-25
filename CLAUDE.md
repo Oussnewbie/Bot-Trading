@@ -1,0 +1,132 @@
+# CLAUDE.md — Strategy V10
+
+## Le projet
+Un seul robot, **Strategy V10** : cassure du range M5 de 9:30 New York (A), repli VWAP (B), continuations D1 à D3, stop à 3 ranges et
+lots divisés par 3, risque par défaut de 0,25 % par trade. Deux versions qui suivent les mêmes règles :
+- l'EA MetaTrader 5, `robot/Strategy-V10.mq5`, version de référence ;
+- le script TradingView, `robot/Strategy-V10.pine`.
+
+Les règles, l'installation et les chiffres des tests sont dans `README.md`.
+
+**Périmètre (verrou du 25/11/2026, choix de l'utilisateur) : le Nasdaq 100 et le S&P 500, tradés ensemble** (un graphique M5 chacun).
+- Le robot refuse tout autre symbole (`MarcheAutorise` dans l'EA, `runtime.error` dans le Pine). Le Dow est exclu.
+- **Règles verrouillées en constantes** dans l'EA et le Pine : toutes les entrées (A, B, D1-D3), stop à 3 ranges, plancher de bruit
+  (H1) coupé, pyramide, mémoire. Profil choisi par l'utilisateur comme le plus rentable (critère gain). Seuls restent réglables le
+  compte (risque, lots fixes ; solde, taille de contrat et pas de lot dans le Pine), l'heure du serveur, les FOMC après janvier 2028,
+  l'exécution, les notifications et l'affichage. Ne rends pas une règle réglable sans que l'utilisateur le demande.
+- Hors sujet : bitcoin, or, devises, DAX.
+
+## Échanges
+- Réponds en français simple, sans jargon, avec des chiffres honnêtes (gains comme baisses).
+- Le profil de l'utilisateur, son compte et ses choix personnels sont dans la mémoire privée de Claude sur son ordinateur, jamais dans
+  ce fichier : le dépôt est public.
+
+## Arborescence et commandes
+```
+robot/     Strategy-V10.mq5, Strategy-V10.pine, test_robot.py (contrôles du code de l'EA et du Pine),
+           mt5/ (demo.ini, demo_1000.set, testeur.ini)
+etrave/    interface web locale de l'EA (Python sans dépendance) + test_interface.py
+```
+- Tests : `.venv/bin/python -m pytest robot etrave -q` (70 tests). Le `.venv` du dépôt tourne sous Python 3.15.
+- Étrave en essai : `.venv/bin/python etrave/etrave.py --sans-navigateur --port 8799 --dossier <dossier jetable>`, puis
+  `http://127.0.0.1:8799`. Pour voir la page avec des données, écrire de faux `etat-<symbole>.txt` (format dans
+  `etrave/test_interface.py`, `faux_etat`) et un `trades-<symbole>.csv`, et les réécrire toutes les 2 secondes (au-delà de 15 s sans
+  nouvelle, l'EA est vu comme arrêté).
+
+## MetaTrader 5 sur ce Mac
+- **MetaTrader 5 pour Mac** (`/Applications/MetaTrader 5.app`, Wine fourni) et Rosetta 2 sont installés. Préfixe Wine :
+  `~/Library/Application Support/net.metaquotes.wine.metatrader5`, plateforme dans `drive_c/Program Files/MetaTrader 5`.
+- **Compiler** (depuis le dossier de la plateforme, après avoir copié `robot/Strategy-V10.mq5` dans `MQL5/Experts/Etrave/`) :
+  `WINEPREFIX=<préfixe> WINEDEBUG=-all "/Applications/MetaTrader 5.app/Contents/SharedSupport/wine/bin/wine" "C:\Program Files\MetaTrader 5\metaeditor64.exe" /compile:"MQL5\Experts\Etrave\Strategy-V10.mq5" /log:"MQL5\Experts\Etrave\compile.log"`,
+  puis lire la ligne `Result:` du journal (UTF-16 : `iconv -f UTF-16LE -t UTF-8`). Après toute modification du `.mq5`, compile et
+  rapporte la ligne `Result:` ; ne dis jamais « ça compile » sans l'avoir lue. Pour compiler une version qui n'est pas encore sur
+  `main` sans toucher à l'EA installé, utilise un autre dossier de `MQL5/Experts/`, puis supprime-le.
+- **Testeur** : MetaTrader fermé, `wine "C:\Program Files\MetaTrader 5\terminal64.exe" /config:"C:\Program Files\MetaTrader 5\<f>.ini"`,
+  modèle `robot/mt5/testeur.ini` (fins de ligne Windows). Le terminal se ferme seul ; rapport HTML (UTF-16) dans `Tester/`, journal de
+  l'agent dans `Tester/Agent-127.0.0.1-300x/logs/`. Dis à l'utilisateur de ne pas fermer MetaTrader pendant un test. **Piège** : sans
+  `[TesterInputs]`, le testeur reprend les réglages du passage précédent ; écris toujours `InpFixedLots` et vérifie-le en tête du
+  rapport. Les règles sont des constantes : une ligne `.set` ou `[TesterInputs]` à leur nom est ignorée sans message.
+- **Compte de test : démo TradinGlobal-Real, hedging.** Symboles NDX100 et SPX500. NDX100 : 1 lot = 1 $ par point, minimum 0,1 lot,
+  20 lots au plus par ordre ; heure du serveur GMT+2 / GMT+3 avec l'heure d'été américaine (réglages par défaut de l'EA).
+- macOS 27 est la dernière version avec Rosetta complet : ne pas passer ce Mac à macOS 28 avant d'avoir un serveur Windows.
+
+## Ce qu'on ne peut pas vérifier sur ce Mac
+- **Le Pine** (pas de TradingView) : n'affirme jamais qu'un `.pine` modifié passe l'analyseur. La version du 21/11/2026 l'avait
+  passé ; les modifications suivantes n'ont pas été analysées.
+- **Étrave sous Windows** (lancement de MetaTrader, installation de l'EA, démarrage avec Windows) et la police Bahnschrift.
+- **Pas de `.ex5` dans le dépôt.** On compile sur ce Mac, ou l'utilisateur avec F7 dans MetaEditor, ou avec le bouton d'Étrave.
+- Les deux fichiers du robot sont la source : on les modifie directement, en gardant l'EA et le Pine d'accord.
+  - `etrave/test_interface.py` vérifie l'accord entre Étrave et l'EA (clés, bornes, journal des trades, heures des règles) et le
+    calendrier des fériés entre l'EA et le Pine.
+  - `robot/test_robot.py` relit le code pour vérifier chaque correctif. Un nouveau correctif ajoute son contrôle.
+
+## État au 25 novembre 2026 et prochaine action
+1. **Testeur MT5** (NDX100 TradinGlobal, 20/11/2025 → 19/11/2026, ticks réels) : mêmes 123 jours de trade que le simulateur de la
+   recherche, du même signe chaque jour. Ajouts de pyramide de plus de 20 lots refusés par le courtier : l'ajout est désormais borné à
+   20 lots (pas encore repassé dans le testeur ; sans effet à 0,1 lot).
+2. **Testeur, 12 mois, 0,1 lot fixe sur 1 000 $** (`InpFixedLots = 0.1`) : +1 887 $, 52 % de jours gagnants, pire jour −91 $, pire
+   baisse −323 $. Une bonne année (+76 R contre environ +51 R pour une année médiane).
+3. **Démo préparée, jamais lancée en séance.** Relance : MetaTrader fermé, copier `robot/mt5/demo.ini` dans le dossier de la
+   plateforme et `robot/mt5/demo_1000.set` en UTF-16 dans `MQL5/Presets/StrategyV10_demo_1000.set`, puis
+   `terminal64.exe /config:"C:\Program Files\MetaTrader 5\demo.ini"` et `caffeinate -i -w <pid>`, avant 9:30 New York. But : mesurer
+   le **glissement réel** (les tests supposent 1 point). Deux MetaTrader ne tournent pas ensemble : arrêter la démo pour un test.
+4. Interrupteur, sur 60 jours de trade : moins de 28 % de jours gagnants, un total pire que −40 R, ou une baisse de plus de 66 R. Non
+   codé, calculé pour toutes les entrées à 0,25 %. En lots fixes sur 1 000 $, −40 R serait le compte entier.
+5. Le risque par trade se décide une fois le glissement réel connu. C'est la décision de l'utilisateur.
+
+## Discipline
+- **Ne règle plus rien sur le Nasdaq à partir du backtest** : tout l'historique 2010 → 18/11/2026 a servi à la mise au point
+  (environ 2 000 essais). Les seules données neuves sont celles de la démo et des trades réels. Le S&P 500 et le Dow 2019-2026 du
+  courtier ont aussi été vus.
+- Tout chiffre trouvé sur l'historique est un candidat, pas une preuve. Écrire l'hypothèse et le critère avant de regarder ; compter
+  le spread réel + 1 point de glissement par exécution, puis 2 à 3 points en test de résistance.
+- Ne jamais augmenter le risque par trade sans l'accord de l'utilisateur.
+
+## Pièges connus du code
+- `InstrumentOf()` (EA) classe le symbole « nasdaq », « sp500 » ou « autre » ; `MarcheAutorise()` s'en sert. Chaque marché a sa
+  case marche / arrêt dans Étrave (`pont.INSTRUMENTS`, `INSTRUMENTS` de la page). Le risque, le levier et Telegram d'Étrave
+  s'appliquent aux deux.
+- Clôture depuis Étrave : une clé `cloturer_<symbole>` par marché, plus l'ancienne clé `cloturer` pour un EA plus ancien.
+- La marge du stop de B (`B_BUF_PB` = 0,5 pb) et le coût du garde-fou (`COST_SLIP_PB` = 0,6 pb dans l'EA, `COST_BP` = 1,65 pb
+  dans le Pine) sont en pb du prix, pour valoir sur les deux indices.
+- **FOMC** : jours de décision codés jusqu'au 26/01/2028 (calendrier révisé de la Fed du 12/11/2026, provisoire). Le 27/10/2027 n'y
+  est pas : pas de décision annoncée. Les suivants se saisissent dans `InpFomc` (EA) et `fomcExtra` (Pine). Si la Fed déplace une
+  date, corriger les deux listes (un test vérifie leur accord).
+- Les numéros magiques 50930 à 50935 sont partagés avec d'anciennes versions (V9, ORB v6). Préfixe d'état `StratV10_`. Compte
+  **hedging** obligatoire.
+- Le risque réglé dans Étrave passe avant les 0,25 % de l'EA. Après une mise à jour depuis la v6, il peut encore valoir 0,5 %.
+- `etrave/reference.json` contient les trades de l'**ORB v6** : la page Risque simule donc la v6, avec la marge de la V10 (15 unités
+  réservées, position 3 fois plus petite). Le refaire à partir des trades V10 est un chantier ouvert.
+- **Étrave en direct** : le détail (lots, stop) ne concerne que la cassure A. Pour B et D, la page affiche les lignes d'état `v8_b`
+  et `v9_d` et leur résultat ouvert `v8_resultat`. La clé `jambes` garde le bouton « Clôturer » visible après la sortie de A ;
+  `lots_fixes` dit à la page que le risque en % n'est pas utilisé ; `sortie_ny` donne l'heure de sortie du jour.
+- Les entrées D ne posent aucun ordre chez le courtier : l'EA guette le niveau et entre au marché.
+- Jours fériés et demi-séances : aucun trade (`InpSkipShort`), même si `FlatMin` prévoit une sortie à 12:45.
+- **Page d'Étrave (« carte marine », 25/11/2026)** : thème clair par défaut, mode nuit ; chiffres en DIN (Bahnschrift sous Windows,
+  DIN Alternate en gras seulement sur Mac), aucune police extérieure (CSP). L'onglet Séance dessine les fenêtres des règles
+  (`REGLES_NY`, accord avec l'EA vérifié par un test) et ne les allume que si l'EA a des ordres ou des positions. Le magenta
+  (`--mark`) est réservé à l'aiguille « maintenant ». Les noms des variables CSS sont utilisés par le script : changer leurs valeurs,
+  pas leurs noms. Pas de « · » pour joindre des textes générés par la page.
+- **Revues de code** : les constats corrigés portent leur numéro (EA-xx, X-xx, PINE-xx, ET-xx) dans un commentaire de l'EA et un test
+  de `robot/test_robot.py`. Avant de déclarer un constat réglé, vérifie le code. Encore ouverts :
+  - X-11 / ET-04 : deux terminaux sur un même ordinateur partagent `reglages.txt` et les clôtures (règle d'usage dans le README) ;
+  - X-02 : les sorties et le stop virtuel exigent un EA en marche (VPS) ;
+  - R-04 : une bougie est perdue si `CopyRates` échoue ;
+  - R-05 : l'achat se déclenche sur l'ask (voulu) ;
+  - Pine : côté bloqué vu à la clôture, ajout au prix de clôture, pas de commission par défaut (limites du backtest TradingView) ;
+  - R-06 : le prochain jour faux du calendrier est le 31/12/2027.
+
+## Données et archives (hors dépôt)
+- **Sauvegarde complète de l'ancien dépôt** (recherche, rapports, simulateur, toutes les branches et étiquettes, avant le nouveau
+  départ du 25/11/2026) : `~/Desktop/Bot-Trading-sauvegarde-2026-11-25.bundle`. Pour la consulter :
+  `git clone ~/Desktop/Bot-Trading-sauvegarde-2026-11-25.bundle <dossier>`.
+- Archive de la recherche : `~/Desktop/Strategy v10.zip`. Nasdaq M1 Dukascopy 2018 → 18/11/2026 : `~/Desktop/Nasdaq 8 ans/`.
+- `donnees/` (ignoré par git) : données de travail locales.
+
+## Git
+- Le dépôt GitHub est **public**. Aucune donnée personnelle dans le code (chat ID, numéro de compte réel, jetons).
+- Historique repris à zéro le 25/11/2026 à la demande de l'utilisateur : `main` ne contient que la version finale.
+- Ne mettre sur `main` que le robot, Étrave et ce qui les sert. Pas de dossier de recherche.
+- `communication/roadmap-tiktok` : logo d'Étrave et roadmap TikTok de l'utilisateur, hors `main` à sa demande (PR #1 ouverte).
+- Le jeton `gh` n'a pas la portée `workflow` : pousser un fichier `.github/workflows` est refusé.
+- Pousser sur `main` ne déploie rien.
