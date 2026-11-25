@@ -161,6 +161,22 @@ def test_interrupteur_indicatif_avant_60_jours(tmp_path):
     assert 'verdict = "SEUIL FRANCHI : "' in open(os.path.join(ICI, "export.py"), encoding="utf-8").read()
 
 
+def test_interrupteur_marche_par_marche(tmp_path):
+    """ET-16 : les seuils (calculés pour un marché) se jugent marché par marché. 60 jours à -0,6 R sur chacun : -36 R par marché,
+    au-dessus du seuil de -40 R ; additionnés, -72 R auraient franchi le seuil du total à tort."""
+    jours = [(datetime.date(2027, 1, 1) + datetime.timedelta(days=i)).isoformat() for i in range(60)]
+    trades = [{"date": j, "symbole": s, "r": -0.6} for j in jours for s in ("NDX100", "SPX500")]
+    par_marche = export.interrupteurs(trades, datetime.date(2027, 12, 31))
+    assert set(par_marche) == {"NDX100", "SPX500"} and all(i["complet"] and "total" not in i["franchi"] for i in par_marche.values())
+    assert "total" in export.interrupteur(trades, datetime.date(2027, 12, 31))["franchi"]       # l'ancienne addition
+    dossier = str(tmp_path)
+    ecrire(os.path.join(dossier, "trades-NDX100.csv"), [trade("2027-01-04", "NDX100", -1.0, -27.0)])
+    ecrire(os.path.join(dossier, "trades-SPX500.csv"), [trade("2027-01-04", "SPX500", 0.5, 4.0)])
+    chemin, _ = export.exporter(dossier, "2027-T1", aujourdhui=datetime.date(2027, 4, 10))
+    texte = open(os.path.join(chemin, "resume.md"), encoding="utf-8").read()
+    assert "Interrupteur NDX100, sur ses 1 derniers jours" in texte and "Interrupteur SPX500" in texte
+
+
 def test_date_du_jour_a_new_york():
     """ET-10 : la date de New York, pas celle de l'ordinateur (Paris, VPS), et sans zoneinfo (Windows sans tzdata)."""
     utc = lambda *a: datetime.datetime(*a, tzinfo=datetime.timezone.utc)

@@ -157,7 +157,7 @@ chaque lancement ; n'ouvre jamais son port sur internet.
 
 Après chaque trimestre (dates de New York), Étrave écrit tout seul `exports/<trimestre>/` : les lignes du trimestre, un résumé
 (`resume.md`, et `resume.json` pour l'analyse), la description des colonnes, le rapprochement avec le journal des trades et l'état
-de l'interrupteur. Le bouton « Exporter le trimestre en cours » le fait à la demande. Dans le testeur de stratégie, les journaux vont
+de l'interrupteur, marché par marché (ses seuils ont été calculés pour un marché). Le bouton « Exporter le trimestre en cours » le fait à la demande. Dans le testeur de stratégie, les journaux vont
 dans le sous-dossier `testeur\` et ne sont jamais exportés.
 
 Sur 60 jours de trade, coupe le robot et fais le point si l'un de ces seuils est franchi : moins de 28 % de jours gagnants, un total

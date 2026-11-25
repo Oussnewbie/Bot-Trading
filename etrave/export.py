@@ -225,6 +225,14 @@ def interrupteur(trades, jusqua):
     }
 
 
+def interrupteurs(trades, jusqua):
+    """ET-16 (26/11/2026, décision de l'utilisateur) : l'interrupteur jugé marché par marché. Ses seuils ont été calculés pour un
+    seul marché ; additionner le Nasdaq et le S&P le même jour faisait bouger le total environ deux fois plus vite, et pouvait dire
+    « coupe le robot » alors que chaque marché restait dans sa norme. {symbole: interrupteur(...)}."""
+    symboles = sorted({t.get("symbole") or "?" for t in trades})
+    return {s: interrupteur([t for t in trades if (t.get("symbole") or "?") == s], jusqua) for s in symboles}
+
+
 def resumer(trimestre, trades_tous, executions, seances, aujourdhui, en_cours):
     debut, fin = bornes(trimestre)
     dans = lambda j: j is not None and debut <= j <= fin
@@ -313,7 +321,7 @@ def resumer(trimestre, trades_tous, executions, seances, aujourdhui, en_cours):
               if (j, s) in net_exec and abs(net_trades.get((j, s), 0.0) - net_exec[(j, s)]) > 0.05]
     sans_journal = sorted(f"{j} {s}" for (j, s) in net_trades if (j, s) not in net_exec)
     resume["rapprochement"] = {"ecarts": ecarts, "jours_sans_journal_execution": sans_journal}
-    resume["interrupteur"] = interrupteur(trades_tous, min(fin, aujourdhui))
+    resume["interrupteur"] = interrupteurs(trades_tous, min(fin, aujourdhui))
     return resume
 
 
@@ -370,17 +378,18 @@ def resume_lisible(r):
                   f"{len(rap['ecarts'])} écart(s) : " + ", ".join(f"{e['jour']} {e['symbole']} ({_txt(e['trades'])} contre {_txt(e['execution'])})" for e in rap["ecarts"]) + "."))
     if rap["jours_sans_journal_execution"]:
         lignes.append(f"- Jours de trade sans journal d'exécution (EA plus ancien) : {_liste(rap['jours_sans_journal_execution'])}.")
-    i = r["interrupteur"]
-    if i.get("jours"):
+    for symbole, i in r["interrupteur"].items():          # ET-16 : chaque marché à part
+        if not i.get("jours"):
+            continue
         # Correctif ET-11 (audit du 25/11/2026) : avant 60 jours de trade, un seuil dépassé disait « coupe le robot » (deux jours
         # perdants suffisaient). Les seuils se jugent sur 60 jours : avant, ce n'est qu'une indication.
         if not i["franchi"]:
             verdict = "Aucun seuil franchi."
         elif i["complet"]:
-            verdict = "SEUIL FRANCHI : " + ", ".join(i["franchi"]) + " : coupe le robot et fais le point."
+            verdict = "SEUIL FRANCHI : " + ", ".join(i["franchi"]) + f" : coupe {symbole} et fais le point."
         else:
             verdict = "Au-delà du seuil pour l'instant : " + ", ".join(i["franchi"]) + " (à juger sur 60 jours de trade)."
-        lignes.append(f"- Interrupteur sur les {i['jours']} derniers jours de trade{'' if i['complet'] else ' (moins de 60 : indicatif)'} : "
+        lignes.append(f"- Interrupteur {symbole}, sur ses {i['jours']} derniers jours de trade{'' if i['complet'] else ' (moins de 60 : indicatif)'} : "
                       f"{_pct(i['jours_gagnants_pct'])} de jours gagnants (seuil 28 %), total {_txt(i['total_r'], ' R', True)} (seuil −40 R), "
                       f"baisse {_txt(i['baisse_r'], ' R')} (seuil 66 R). " + verdict)
     lignes += ["", "Ces chiffres sont ceux d'un trimestre : assez pour mesurer l'exécution (glissement, spread), trop peu pour juger la stratégie.", ""]
