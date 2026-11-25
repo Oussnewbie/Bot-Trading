@@ -28,7 +28,7 @@ robot/     Strategy-V10.mq5, Strategy-V10.pine, test_robot.py (contrôles du cod
 etrave/    interface web locale de l'EA (Python sans dépendance), export.py (export trimestriel) + test_interface.py, test_export.py
 video/     (branche communication/outil-video) vidéos TikTok : récap de séance et présentation, `python3 video/outil.py` ; README
 ```
-- Tests : `.venv/bin/python -m pytest robot etrave -q` (108 tests ; sur la branche `communication/outil-video`, ajouter `video`). Le `.venv` du dépôt tourne sous Python 3.15.
+- Tests : `.venv/bin/python -m pytest robot etrave -q` (109 tests ; sur la branche `communication/outil-video`, ajouter `video`). Le `.venv` du dépôt tourne sous Python 3.15.
 - Étrave en essai : `.venv/bin/python etrave/etrave.py --sans-navigateur --port 8799 --dossier <dossier jetable>`, puis
   `http://127.0.0.1:8799`. Pour voir la page avec des données, écrire de faux `etat-<symbole>.txt` (format dans
   `etrave/test_interface.py`, `faux_etat`) et un `trades-<symbole>.csv`, et les réécrire toutes les 2 secondes (au-delà de 15 s sans
@@ -75,7 +75,8 @@ video/     (branche communication/outil-video) vidéos TikTok : récap de séanc
    `terminal64.exe /config:"C:\Program Files\MetaTrader 5\demo.ini"` et `caffeinate -i -w <pid>`, avant 9:30 New York. But : mesurer
    le **glissement réel** (les tests supposent 1 point). Deux MetaTrader ne tournent pas ensemble : arrêter la démo pour un test.
 4. Interrupteur, sur 60 jours de trade : moins de 28 % de jours gagnants, un total pire que −40 R, ou une baisse de plus de 66 R. Non
-   codé, calculé pour toutes les entrées à 0,25 %. En lots fixes sur 1 000 $, −40 R serait le compte entier.
+   codé, calculé pour toutes les entrées à 0,25 %, pour un marché : l'export le juge **marché par marché** (ET-16, choix de
+   l'utilisateur du 26/11/2026). En lots fixes sur 1 000 $, −40 R serait le compte entier.
 5. Le risque par trade se décide une fois le glissement réel connu. C'est la décision de l'utilisateur.
 
 ## Discipline
@@ -159,8 +160,8 @@ video/     (branche communication/outil-video) vidéos TikTok : récap de séanc
     - EA, rares, signalés à l'audit : la perte d'une position fermée par `CloseOpposite` n'entre pas dans le R ; `gDayTxt` et
       `gFiltTxt` ne sont pas sauvegardés (ligne « fin » fausse après un redémarrage) ; un jour où `Setup` n'aboutit pas de toute la
       bougie de 9:35 disparaît sans message ; `JournalFlush(true)` dans `OnDeinit` peut dépasser le délai de MetaTrader ;
-    - Étrave, décisions de l'utilisateur : l'interrupteur additionne les R du Nasdaq et du S&P le même jour (seuils calculés pour
-      toutes les entrées, pas pour deux marchés) ; l'export ne sépare pas démo et réel (colonne `source` des journaux) ;
+    - Étrave : l'export ne sépare pas démo et réel (colonne `source` des journaux ; « pas grave » pour l'utilisateur). Réglé le
+      26/11/2026 : l'interrupteur est jugé marché par marché (ET-16) ;
     - Vidéo, à décider avec l'utilisateur : le trait « Jusqu'à +106 pts » est vert et l'épingle des photos rouge, alors que vert et
       rouge sont réservés au résultat ; sur Mac, la capture de MetaTrader n'est pas contrôlée (écran verrouillé).
 - Test des stops (25/11/2026, pré-enregistré, historique déjà vu) : fermer B/D au stop de A ≈ neutre ; B/D à l'entrée dès +0,5R,
