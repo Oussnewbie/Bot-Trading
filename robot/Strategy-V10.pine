@@ -1,85 +1,57 @@
 //@version=6
-// Strategy V10 — Cassure du range d'ouverture de New York (5 minutes), dans le sens de l'élan de l'ouverture, avec une
-//          pyramide sur les journées de tendance (v7), + entrée sur repli vers le VWAP (B) + 3 continuations (D),
-//          et un STOP ÉLARGI (profil Confort, par défaut). L'entrée de 10:00 (C) est coupée par défaut. NASDAQ UNIQUEMENT.
-// Graphique M5. Toutes les heures sont en heure de New York (9:30 NY = 15:30 à Paris la plupart de l'année).
+// Strategy V10 — cassure du range d'ouverture de New York (5 minutes), repli sur le VWAP et continuations, stop à 3 ranges.
+// Mêmes règles que l'EA MetaTrader (Strategy-V10.mq5), qui voit le bid et l'ask et reste la version de référence.
+// Marchés : Nasdaq 100 et S&P 500 seulement (tout autre symbole arrête le script). Graphique M5, avec les bougies hors séance.
+// Règles VERROUILLÉES le 25/11/2026 à la demande de l'utilisateur : ce sont des constantes plus bas. Toutes les heures sont celles
+// de New York (9:30 NY = 15:30 à Paris la plupart de l'année).
 //
-// Règles :
-//  1. Range    : high et low de la première bougie M5 de la séance (9:30-9:35).
-//  2. Filtres  : achat permis seulement si le RSI14 M5 de la bougie de 9:30 est au-dessus de 50 et si son high dépasse
-//                le plus haut de 9:00-9:30. Vente : RSI sous 50 et low sous le plus bas de 9:00-9:30.
-//  3. Ordres   : à 9:35, achat stop sur le high et/ou vente stop sur le low, selon les côtés permis, valables
-//                2 bougies (jusqu'à 9:45). Le premier exécuté annule l'autre. Si un seul côté est permis et que
-//                l'autre côté du range est touché d'abord, l'ordre est annulé.
-//  4. Stop     : de l'autre côté du range. 1R = la somme perdue si le stop est touché (taille de départ × range).
-//  5. Gestion  : stop au prix d'entrée dès +1,5R. Sortie à la clôture de la bougie de 15:45 (15:50) ; à 12:45 les jours
-//                fériés américains et les demi-séances, où le marché ferme vers 13:00.
-//  6. PYRAMIDE : quand une bougie clôture à +2R ou plus, on ajoute DEUX unités au marché et le stop de l'ensemble
-//                monte à 1R sous le prix de l'ajout (donc au moins à +1R pour la première unité). Après l'ajout, le
-//                pire cas reste -1R, comme au départ : l'ajout perd 2R, la première unité gagne au moins 1R.
-//                Un seul ajout par trade.
-//  7. Une seule cassure par jour. Le R affiché = résultat net de tout le trade (ajout compris) ÷ somme risquée au départ.
-//  8. v7 — MÉMOIRE : après un trade qui finit gagnant (plus de +0,05R), le signal suivant n'est pas pris (un seul). Ce
-//                jour-là aucun ordre n'est posé : le script regarde seulement si la cassure permise se serait déclenchée.
-//                Si oui, la règle est consommée et le trading reprend au signal d'après ; sinon elle reste en attente.
-//  9. v7 — Aucun ordre les jours de décision de la Fed (FOMC) ni les jours fériés américains / demi-séances.
-//     Ces règles ne font que retirer des trades : le risque par trade ne change pas.
+// CASSURE (A)
+//  1. Range     : high et low de la bougie M5 de 9:30.
+//  2. Filtres   : achat permis si le RSI 14 M5 de 9:30 est au-dessus de 50 et si son high atteint ou dépasse le plus haut de
+//                 9:00-9:30 ; vente : RSI sous 50 et low au plus bas de 9:00-9:30 ou en dessous.
+//  3. Ordres    : à 9:35, achat stop sur le high et/ou vente stop sur le low, selon les côtés permis, valables jusqu'à 9:45. Le
+//                 premier exécuté annule l'autre. Si un seul côté est permis et que l'autre côté du range est touché d'abord,
+//                 l'ordre est annulé.
+//  4. Stop      : 3 ranges au-delà du niveau de cassure, taille divisée par 3 : la somme risquée (1R) ne change pas.
+//  5. Gestion   : stop au prix d'entrée dès +1,5R. Sortie à la clôture de la bougie de 15:45 (15:50).
+//  6. Pyramide  : quand une bougie clôture à +2R ou plus, ajout de DEUX unités au marché et stop de l'ensemble à 1R sous le prix de
+//                 l'ajout (au moins +1R pour la première unité) : le pire cas reste −1R. Un seul ajout par trade.
+//  7. Mémoire   : après une cassure qui finit au-delà de +1R, le signal suivant n'est pas pris. Ce jour-là aucun ordre : le script
+//                 regarde seulement si la cassure permise se serait déclenchée. Si oui, la règle est consommée ; sinon elle attend.
+//  R affiché = résultat net de tout le trade (ajout compris) ÷ somme risquée au départ.
 //
-// STRATEGY V8 = la v7 ci-dessus (trade A, la cassure) + deux entrées de plus, les jours où la cassure est prise :
-// 10. B — REPLI SUR LE VWAP : après la cassure, la première bougie M5 (après celle de la cassure) qui touche le prix moyen
-//                de séance (VWAP depuis 9:30, à 0,1 range près), clôture du bon côté du VWAP et dans le sens du trade
-//                déclenche une entrée au marché à la clôture de cette bougie. Stop au-delà de l'extrême des 2 dernières
-//                bougies, avec une marge de 0,5 pb du prix (B_BUF_PB). Même gestion que la cassure (stop à l'entrée à
-//                +1,5R, pyramide à +2R), en multiples du stop de cette entrée. Jusqu'à 14:00 ; abandonné si une bougie clôture de l'autre côté du range.
-// 11. C — ENTRÉE À 10:00 : si à 10:00 le prix est toujours au-delà du niveau de cassure et que le stop du range n'a pas
-//                été touché, entrée au marché, stop de l'autre côté du range, stop à l'entrée à +1,5R, sortie 15:50.
-// 12. TAILLE   : B et C ne prennent jamais plus d'unités que la cassure et ne risquent jamais plus qu'elle (1R).
-//                Jusqu'à 3 positions en même temps, dans le même sens. La règle mémoire ne regarde que la cassure.
+// ENTRÉES SUPPLÉMENTAIRES, seulement les jours où la cassure est prise, dans son sens :
+//  8. B, repli sur le VWAP : la première bougie M5 après celle de la cassure qui touche le VWAP de la séance (depuis 9:30, à 0,1
+//                 range près), clôture du bon côté du VWAP et dans le sens du trade. Entrée au marché à sa clôture, jusqu'à 14:00, une
+//                 fois par jour ; abandonnée si une bougie clôture de l'autre côté du range. Stop au-delà de l'extrême des 2
+//                 dernières bougies (marge B_BUF_PB = 0,5 pb du prix), écart multiplié par 3.
+//  9. D1 à D3, continuations : à la clôture des bougies de 9:35, 9:40 et 9:45, tant que A est ouverte et que l'autre bord du range
+//                 n'a pas été touché depuis la cassure, un ordre stop est posé sur l'extrême de la bougie, valable 10 minutes,
+//                 annulé si le prix touche d'abord l'autre extrême. Stop à cet autre extrême, écart multiplié par 3 et compté depuis
+//                 le déclenchement.
+// 10. B et D suivent la gestion de A dans leur propre R (stop à l'entrée à +1,5R, pyramide à +2R), ne prennent jamais plus
+//                 d'unités ni plus de risque que A et restent ouvertes si A sort avant elles. Jusqu'à 5 positions, même sens.
 //
-// STRATEGY V9 = la V8 ci-dessus, revue après un examen sur 7 années jamais vues pendant la recherche (2010-2017) :
-// 13. D — CONTINUATIONS : tant que la cassure A est ouverte, à la clôture de chacune des 3 bougies M5 qui suivent celle du
-//                range (9:35, 9:40, 9:45), un ordre stop est posé sur l'extrême de cette bougie dans le sens du trade,
-//                valable 10 minutes, stop à l'autre extrême de la bougie. Annulé si le prix touche d'abord ce stop.
-//                Même gestion que la cassure (stop à l'entrée à +1,5R, pyramide à +2R), en multiples du stop de cette
-//                entrée. Taille : comme B (jamais plus d'unités que A, jamais plus de 1R).
-// 14. C (entrée de 10:00) est COUPÉE PAR DÉFAUT : sur les données jamais vues elle ne gagne presque rien.
-// 15. GARDE-FOU COÛT : aucun ordre si le coût d'un aller-retour (réglage, en points) pèse plus de 25 % du risque du jour
-//     (V10 : le risque vaut « largeur du stop » × range, soit 3 ranges par défaut).
-//     Jusqu'à 5 positions en même temps dans le même sens : risque par trade à régler plus bas qu'avec la V8.
-//     Ce que disent les tests (rapports de recherche hors dépôt depuis le 25/11/2026) :
-//       2018-2026, période de recherche, spread réel + 1 point         : V9 +1 614 R, pire baisse  56 R (V8 : +986 R, 38 R).
-//       2010-2017, JAMAIS VU, coûts ramenés à leur poids d'aujourd'hui : V9   +577 R, pire baisse 170 R (V8 : +281 R, 102 R).
-//       2010-2017 avec les coûts au poids de 2018                       : V9   -157 R (V8 : -159 R).
-//     Le backtest 2018-2026 est donc une vision optimiste. Aucun gain n'est garanti.
+// JOURS SANS TRADE : décisions de la Fed (FOMC, codées jusqu'au 26/01/2028, puis « Jours FOMC en plus »), jours fériés américains
+// et demi-séances, et garde-fou coût : aucun ordre si le coût d'un aller-retour (COST_BP = 1,65 pb du prix) pèse plus de 25 % du
+// risque du jour (3 ranges). Présents dans le code mais coupés : entrée C de 10:00, plancher de bruit, tendance H4, SAR, sortie au
+// temps.
+// HISTOIRE : v7 (cassure, pyramide, mémoire, FOMC et fériés), V8 (+ B et C), V9 (+ D, C coupée, garde-fou coût), V10 (stop à
+// 3 ranges, mémoire à +1R, D armées tant que l'autre bord n'est pas touché, Nasdaq et S&P 500). Chiffres des tests : README.md.
 //
-// STRATEGY V10 = la V9 ci-dessus + un réglage, « largeur du stop », né de l'autopsie des stops : un stop sur trois est suivi
-//     d'un mouvement de +2R ou plus DANS LE SENS du trade. La première cause des stops est un stop trop court.
-// 16. PROFIL CONFORT (par défaut, largeur du stop = 3) : mêmes signaux, stop 3 fois plus loin, taille 3 fois plus petite : la somme
-//                risquée par trade ne change pas. Stop à l'entrée (+1,5R) et pyramide (+2R) comptés avec ce nouveau R. Mémoire : après
-//                un trade de cassure à plus de +1R, le signal suivant est sauté. Continuations armées seulement si l'autre bord
-//                du range n'a pas été touché depuis la cassure.
-// 17. PROFIL TENDANCE = la V9 : largeur du stop = 1 et « gagnant au-delà de » = 0,05 R.
-// 18. RISQUE PAR TRADE : 0,25 % par défaut, comme la V9. Le remonter (0,5 % était le réglage des V6 à V8) double les gains ET les
-//                baisses : c'est ta décision.
-//     Nasdaq, 2018-2026 : Confort +477 R, 47 % de réussite, pire baisse 32 R (Tendance : +1 614 R, 18 %, 56 R).
-//     Nasdaq, 2010-2017 (coûts au poids d'aujourd'hui) : Confort +194 R, 44 %, 53 R, 8 années sur 8 (Tendance : +577 R, 15 %, 170 R).
-//     À pire baisse égale les deux profils rapportent à peu près autant. Le Confort a été mis au point après avoir vu tout
-//     l'historique du Nasdaq : ce n'est pas une preuve. Appliqué tel quel au Dow, au DAX, à l'or, au BTC, à l'EUR/USD et au
-//     GBP/USD, ce script ne gagne sur aucun.
+// SUR LE GRAPHIQUE : rectangle « 9:30 » et tirets « Achat stop » / « Vente stop » = ordres de A. Ligne orange = VWAP de séance.
+// Étiquettes « ACHAT B » / « VENTE B » = la bougie à la clôture de laquelle on entre. Tirets « D1 stop »… = ordre stop d'une
+// continuation (10 minutes). « + » = pyramide. Le tableau dit en clair ce qui est attendu. Les alertes (« Appels de la fonction
+// alert() uniquement ») donnent chaque action à faire chez le courtier, avec le lot calculé dans « Lots chez le courtier ».
 //
-// SUR LE GRAPHIQUE : ligne orange = VWAP de séance. Bande bleue = zone de repli guettée pour l'entrée B. Trait vertical
-// violet = heure de l'entrée C. Étiquettes « ACHAT B », « VENTE C »… = la bougie à la clôture de laquelle on entre.
-// Tirets verts = ordre stop d'une continuation D (10 minutes). Le tableau dit en clair ce qui est attendu pour A, B, C et D.
-//
-// Nasdaq (NAS100) uniquement. Le testeur de TradingView ne compte pas le spread d'un CFD : ajoute une commission
-// dans « Propriétés ». L'EA MetaTrader (Strategy-V10.mq5), qui voit le bid et l'ask, est la version de référence.
-// CORRECTIFS DU 24/11/2026 : l'alerte « ORDRES ORB placés » donne le stop élargi (elle donnait l'autre bord du range) ; quand la
-// taille du backtest TradingView s'arrondit à zéro, elle est portée au pas minimum pour que les ordres et alertes restent affichés.
-// Version non passée par l'analyseur de TradingView au moment de ces correctifs.
-// CORRECTIF PINE-04 DU 25/11/2026 : close_entries_rule = "ANY". Par défaut (« FIFO »), TradingView ferme toujours la position la plus
-// ancienne : le stop d'une continuation D fermait la cassure A à sa place (étiquettes « D2 −1,3R » impossibles, A vue fermée trop
-// tôt, règle mémoire et stop à l'entrée de A calculés sur le mauvais trade). Chaque sortie ferme maintenant sa propre position,
-// comme dans l'EA. Non passé par l'analyseur de TradingView : à vérifier sur un graphique (chaque stop sous la bonne entrée).
+// LIMITES DU BACKTEST TRADINGVIEW : il ne voit que des bougies (côté bloqué et annulation des D vus à la clôture, ajout au prix de
+// clôture) et ne compte pas le spread d'un CFD : ajoute une commission dans « Propriétés ». Ses résultats sont un peu plus beaux
+// que ceux de l'EA.
+// CORRECTIFS : 24/11/2026, l'alerte « ORDRES ORB placés » donne le stop élargi ; une taille arrondie à zéro est portée au pas
+// minimum. PINE-04 (25/11/2026) : close_entries_rule = "ANY", chaque sortie ferme sa propre position, comme dans l'EA (en FIFO,
+// le stop d'une D fermait A). PINE-05 : la bougie de cassure compte pour le bord opposé. PINE-06 à PINE-08 (audit du 25/11/2026) :
+// alertes d'annulation des D, de fin de journée et lot de la pyramide des jambes. Rien de tout cela n'est encore passé par
+// l'analyseur de TradingView : à vérifier sur un graphique.
 strategy("Strategy V10 — ORB New York, stop élargi (Confort) + repli VWAP + continuations", shorttitle = "Strategy V10", overlay = true,
      initial_capital = 10000, currency = currency.USD, pyramiding = 20, close_entries_rule = "ANY",
      process_orders_on_close = true, margin_long = 0, margin_short = 0, slippage = 2,
@@ -803,7 +775,9 @@ openLegStop(string nm, int d, float trig, float stop, float inval, float q, bool
         g.eLn := line.new(g.tFill, trig, x2, trig, xloc = xloc.bar_time, color = color.new(g.col, 15), style = line.style_dashed, width = 1)
         g.sLn := line.new(g.tFill, stop, x2, stop, xloc = xloc.bar_time, color = color.new(g.col, 55), style = line.style_dotted, width = 1)
         g.eLb := sideLabel(x2, trig, nm + " stop · " + fmt(trig), g.col, "Entrée " + nm + " (continuation) : " + sens + "si le prix " + (d == 1 ? "dépasse " : "passe sous ") + fmt(trig) + " dans les " + str.tostring(nBars * 5) + " minutes. Stop : " + fmt(stop) + ".")
+    // Correctif PINE-06 (audit du 25/11/2026) : l'alerte dit aussi le niveau qui annule l'ordre (l'autre extrême de la bougie).
     notify(nm + " GUETTÉE : ordre stop " + (d == 1 ? "d'achat" : "de vente") + " à " + fmt(trig) + " pendant " + str.tostring(nBars * 5) + " min · stop " + fmt(stop) + " (" + distTxt(g.risk) + ")" +
+         "\nAnnule l'ordre si le prix touche " + fmt(nz(inval, stop)) + " avant (une alerte « ANNULÉE » le rappelle)" +
          "\nTaille : " + str.tostring(q) + (na(lots) ? "" : lots > 0 ? " (" + lotTxt(lots) + " chez le courtier)" : " (moins de " + str.tostring(lotStep) + " lot chez le courtier)") + " — au plus la taille et le risque de la cassure")
     g
 
@@ -855,7 +829,10 @@ legManage(Leg g) =>
                 label.new(time, close, "+", xloc = xloc.bar_time, color = color.new(g.col, 20), textcolor = color.white, size = size.tiny,
                      style = g.dir == 1 ? label.style_label_up : label.style_label_down,
                      tooltip = "Pyramide de l'entrée " + g.name + " : +" + str.tostring(q) + " à " + fmt(close) + " · stop de l'ensemble à " + fmt(lockPx))
-            notify(g.id + " : PYRAMIDE, ajout de " + str.tostring(q) + " à " + fmt(close) + "\nStop de l'ensemble : " + fmt(lockPx))
+            // Correctif PINE-08 (audit du 25/11/2026) : le lot à passer chez le courtier, comme pour la pyramide de la cassure.
+            float lotsAdd = legLots(g.risk)
+            lotsAdd := na(lotsAdd) ? na : math.floor(lotsAdd * pyrSize / lotStep + 0.000001) * lotStep
+            notify(g.id + " : PYRAMIDE, ajout de " + str.tostring(q) + (na(lotsAdd) ? "" : " (" + lotTxt(lotsAdd) + " chez le courtier)") + " à " + fmt(close) + "\nStop de l'ensemble : " + fmt(lockPx))
     if not pyrNow and beR > 0 and not g.be and bar_index > g.fillBar and (g.dir == 1 ? high >= g.entry + beR * g.risk : low <= g.entry - beR * g.risk)
         g.be := true
         strategy.exit("X" + g.id, from_entry = g.id, stop = g.entry, comment_loss = "Stop à l'entrée", comment_profit = "Stop à l'entrée")
@@ -942,6 +919,9 @@ legStep(Leg g, int idx) =>
                 strategy.cancel(g.id)
                 strategy.cancel("X" + g.id)
                 v8.dTxt := g.name + " non déclenchée"
+                // Correctif PINE-06 (audit du 25/11/2026) : l'abandon d'une D guettée n'était pas annoncé. Celui qui trade à la main
+                // gardait son ordre stop chez le courtier, qui pouvait partir plus tard, hors de la stratégie.
+                notify(g.name + " ANNULÉE : supprime l'ordre stop " + (g.dir == 1 ? "d'achat" : "de vente") + " à " + fmt(g.entry) + " chez le courtier (" + (bar_index >= g.expBar or inFlat ? "délai passé" : "niveau d'annulation " + fmt(nz(g.inval, g.sl)) + " touché d'abord") + ")")
             legErase(g)
             fini := true
     if g.ok
@@ -1118,6 +1098,8 @@ if useTime and not na(cur) and openQtyOf(0) != 0 and not cur.timeDone and hour(t
 // Fin de journée (et sécurité : une position ne passe jamais la nuit, même un jour de fermeture anticipée)
 if strategy.position_size != 0 and (inFlat or (not na(cur) and nyDate != cur.day) or (v8.day != 0 and nyDate != v8.day))
     strategy.close_all(comment = "Fin de journée")
+    // Correctif PINE-07 (audit du 25/11/2026) : la sortie de 15:50 n'avait pas d'alerte (seulement « clôturé » 5 minutes après).
+    notify("FIN DE JOURNÉE : ferme maintenant au marché toutes les positions de la stratégie")
 
 // ═════════════════════════ Ordres en attente : annulation ═════════════════════════
 if pend and strategy.position_size == 0 and bar_index > pBar

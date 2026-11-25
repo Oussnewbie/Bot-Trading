@@ -32,8 +32,8 @@ demande de modifier le code et de recompiler.
 
 **Cassure (A)**
 1. **Range** : plus haut et plus bas de la bougie M5 de 9:30.
-2. **Filtres** : l'achat est permis si le RSI 14 M5 de cette bougie dépasse 50 et si son plus haut dépasse celui de 9:00-9:30. La
-   vente suit la règle inverse. Si aucun côté n'est permis, pas de trade.
+2. **Filtres** : l'achat est permis si le RSI 14 M5 de cette bougie dépasse 50 et si son plus haut atteint ou dépasse celui de
+   9:00-9:30. La vente suit la règle inverse. Si aucun côté n'est permis, pas de trade.
 3. **Ordres** : à 9:35, achat stop sur le haut et vente stop sur le bas, valables jusqu'à 9:45. Le premier exécuté annule l'autre.
 4. **Stop** : 3 ranges au-delà du niveau de cassure. La taille est divisée par 3, donc la somme risquée (1 R) ne change pas.
 5. **Gestion** : stop au prix d'entrée dès +1,5 R. Quand une bougie clôture à +2 R, ajout de 2 unités (pyramide) et stop de
@@ -74,8 +74,8 @@ feront.
 
 - La dernière ligne est une bonne année (+76 R, contre environ +51 R pour une année médiane).
 - Le glissement réel compte beaucoup : avec 3 points par exécution au lieu de 1, le gain baisse d'environ 37 % et la pire baisse double.
-- Le S&P 500 n'a eu qu'un contrôle de la version précédente (V9), avec un avantage qui disparaît à coûts doublés. Le Dow Jones est
-  exclu : testé tel quel, il ne gagne rien.
+- Le S&P 500 gagne nettement moins que le Nasdaq et dépend davantage des coûts : sur les 12 mois du testeur, à 0,25 %, environ
+  +47 R contre environ +84 R pour le Nasdaq (avant le correctif X-13). Le Dow Jones est exclu : testé tel quel, il ne gagne rien.
 - Le capital peut stagner longtemps : jusqu'à 20 mois sans nouveau plus haut dans les tests 2018-2026.
 
 ## Installer l'EA dans MetaTrader 5
@@ -90,7 +90,8 @@ feront.
 
 À savoir :
 - **Compte « hedging » obligatoire.** Sur un compte « netting », B et D sont coupées.
-- **Numéros magiques** : A = 50930, B = +1, D1 à D3 = +3 à +5. Ne fais jamais tourner un autre robot qui les utilise sur le même compte.
+- **Numéros magiques** : A = 50930, B = +1, D1 à D3 = +3 à +5. Le filet de sécurité de l'EA surveille de 50930 à 50939 : ne fais
+  jamais tourner sur le même compte un autre robot qui utilise l'un de ces numéros.
 - **Telegram** : dans Outils > Options > Expert Advisors, autorise `https://api.telegram.org` pour WebRequest.
 - **Où le faire tourner** : un ordinateur sans mise en veille pour la démo, un VPS Windows pour le réel. MetaTrader doit rester ouvert
   de 9:30 à 15:50.
@@ -101,7 +102,8 @@ feront.
 
 **Contrôle dans le testeur de stratégie** (Expert `Etrave\Strategy-V10`, M5, « Chaque tick basé sur des ticks réels », compte
 hedging, modèle `robot/mt5/testeur.ini`) : du 20/11/2025 au 19/11/2026, la simulation donnait environ 410 trades sur 122 jours de
-trade, 54 % de gagnants et +76 R ; le testeur doit en être proche. Sur une autre période, avec nettement moins de trades, moins de 35 %
+trade, 54 % de gagnants et +76 R (sur les prix du courtier : 413 trades sur 123 jours, les mêmes jours que le testeur) ; le testeur
+doit en être proche. Sur une autre période, avec nettement moins de trades, moins de 35 %
 de gagnants ou un résultat négatif, ne passe pas en réel.
 
 ## Utiliser le script TradingView
@@ -119,11 +121,15 @@ de gagnants ou un résultat négatif, ne passe pas en réel.
 | Ligne orange | prix moyen de la séance (VWAP) | rien, c'est le repère de B |
 | Étiquette « ACHAT B » ou « VENTE B » | signal B | entrer au marché, stop sur la ligne « SL B » |
 | Tirets « D1 stop » | continuation guettée 10 minutes | poser un ordre stop à ce prix, dans le sens de la cassure |
-| Étiquette « + » | pyramide | ajouter 2 fois la taille de départ, remonter le stop |
+| Alerte « D1 ANNULÉE » | délai passé, ou niveau d'annulation (dans l'alerte « GUETTÉE ») touché d'abord | supprimer l'ordre stop de cette D |
+| Ligne pointillée grise, alerte « stop déplacé au prix d'entrée » | +1,5 R atteint | remonter le stop au prix d'entrée |
+| Étiquette « + » | pyramide | ajouter 2 fois la taille de départ (lot donné dans l'alerte), remonter le stop |
+| Alerte « FIN DE JOURNÉE » | 15:50 | fermer toutes les positions au marché |
 | « ⏸ mémoire », « ⏸ FOMC », « ⏸ férié » | pas de trade aujourd'hui | rien |
 
-TradingView ne voit que des bougies de 5 minutes et ne compte pas le spread : ses résultats sont un peu plus beaux que ceux de l'EA, qui
-reste la référence.
+TradingView ne voit que des bougies (5 minutes, et 1 minute pour le VWAP) et ne compte pas le spread : ses résultats sont un peu plus
+beaux que ceux de l'EA, qui reste la référence. Le lot affiché ne connaît pas le minimum de ton courtier : sous ce minimum, n'entre
+pas (l'EA saute alors l'entrée).
 
 ## Étrave, l'interface de l'EA
 

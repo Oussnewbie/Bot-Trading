@@ -512,3 +512,24 @@ def test_en_tete_a_jour():
         assert ancien not in entete, ancien
     assert "Nasdaq 100 et S&P 500" in entete and "3 ranges" in entete
     assert "Nasdaq uniquement" not in re.search(r'#property description "([^"]*)"', EA).group(1)
+
+
+def test_alertes_du_pine_pour_trader_a_la_main():
+    """PINE-06 à PINE-08 : annulation d'une D guettée annoncée (avec son niveau dès l'alerte « GUETTÉE »), alerte à la sortie de
+    15:50, lot de l'ajout des jambes chez le courtier. Non passé par l'analyseur de TradingView."""
+    pine = open(os.path.join(ICI, "Strategy-V10.pine"), encoding="utf-8").read()
+    assert "Annule l'ordre si le prix touche \" + fmt(nz(inval, stop))" in pine
+    annule = pine.index('notify(g.name + " ANNULÉE : supprime l\'ordre stop "')
+    assert pine.rindex('strategy.cancel(g.id)', 0, annule) > pine.rindex("if g.pend\n", 0, annule)
+    fin = pine.index('strategy.close_all(comment = "Fin de journée")')
+    assert pine.index('notify("FIN DE JOURNÉE', fin) - fin < 300
+    assert 'float lotsAdd = legLots(g.risk)' in pine and '" (" + lotTxt(lotsAdd) + " chez le courtier)"' in pine
+
+
+def test_en_tete_du_pine_a_jour():
+    pine = open(os.path.join(ICI, "Strategy-V10.pine"), encoding="utf-8").read()
+    entete = pine[:pine.index('strategy("Strategy V10')]
+    assert entete.startswith("//@version=6\n")
+    for ancien in ("NASDAQ UNIQUEMENT", "(NAS100) uniquement", "Version non passée", "+0,05R", "Stop     : de l'autre côté du range"):
+        assert ancien not in entete, ancien
+    assert "Nasdaq 100 et S&P 500" in entete and "3 ranges" in entete
