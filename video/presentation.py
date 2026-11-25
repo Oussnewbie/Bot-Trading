@@ -144,6 +144,8 @@ def fabriquer(config, journal=print):
                                    os.path.join(travail, "musique.wav"), journal)
     finale = os.path.join(sortie, "presentation-etrave.mp4")
     mixage.assembler(muette, voix, bruitages, finale, travail, musique)
+    import controle
+    controle.verifier(finale, travail, journal)          # VID-30 : prévient, ne bloque pas
     return finale
 
 

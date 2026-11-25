@@ -9,9 +9,9 @@ de la vidéo, avec une entrée et une fin en fondu, sa basse est allégée, et e
 téléphone en fait entendre) ; elle baisse encore quand la voix parle.
 
 Étapes : chaque son est ramené à un même pic (-6 dBFS) puis réglé par son gain, coupé à sa durée, filtré (passe-haut) et posé à son
-instant ; le groupe des bruitages passe dans un compresseur commandé par la voix (il baisse quand elle parle), la musique aussi (plus
-doucement) ; le tout est mesuré (LUFS intégrés) et amené au niveau visé par un simple gain, puis un limiteur garde le pic sous
--1,5 dBFS. Sortie en 48 kHz.
+instant ; les bruitages et la musique baissent d'un gain fixe pendant chaque phrase de la voix (une enveloppe calculée d'avance sur
+la piste de voix, avec des rampes douces), jamais syllabe par syllabe ; le tout est mesuré (LUFS intégrés) et amené au niveau visé
+par un simple gain, puis un limiteur garde le pic sous -1,5 dBFS. Sortie en 48 kHz.
 """
 import json
 import os
@@ -28,6 +28,13 @@ NIVEAU_VOIX = -15.0         # LUFS de la piste de voix avant le mélange : les g
 NIVEAU_MUSIQUE_AIGUS, NIVEAU_MUSIQUE_MAX = -29.0, -22.0
 EQ_MUSIQUE = "highpass=f=50,bass=g=-5:f=150:w=0.7"     # moins de basse : elle ne s'entend pas sur un téléphone et brouille la voix
 FORMATS_MUSIQUE = (".mp3", ".wav", ".m4a", ".aac", ".flac", ".ogg")
+# VID-23 (audit du 26/11/2026) : les bruitages passaient dans un compresseur commandé par la voix (attaque 8 ms, ratio 8) : chaque
+# syllabe les écrasait d'environ 20 dB et chaque silence entre deux mots les rendait, ils étaient hachés (« des coupures, comme du
+# lag ») ; la musique pompait aussi, plus doucement. Ils baissent maintenant d'un gain fixe pendant les phrases (les mots à moins de
+# ECART_PHRASE s réunis), avec une rampe de RAMPE s avant et après. Les gains sont la baisse moyenne mesurée de l'ancien réglage
+# (récaps du 17 et du 18/11 : -8,7 dB et -2,5 dB pendant la parole), pour garder l'équilibre validé.
+BAISSE_BRUITAGES, BAISSE_MUSIQUE = -9.0, -2.5
+ECART_PHRASE, RAMPE, SEUIL_PAROLE = 0.6, 0.15, -45
 
 
 def catalogue():
@@ -152,6 +159,36 @@ def piste_musique(reglage, jour, duree, sortie, journal=print):
     return sortie
 
 
+def blocs_parole(voix, duree=None, ecart=ECART_PHRASE, seuil_db=SEUIL_PAROLE):
+    """Les moments où la voix parle [(début, fin)] : tout ce qui n'est pas un silence d'au moins `ecart` s (les mots d'une même
+    phrase, et deux phrases proches, ne font qu'un bloc)."""
+    sortie = subprocess.run(["ffmpeg", "-hide_banner", "-nostats", "-i", voix, "-af", f"silencedetect=noise={seuil_db}dB:d={ecart}",
+                             "-f", "null", "-"], capture_output=True, text=True).stderr
+    debuts = [max(0.0, float(x)) for x in re.findall(r"silence_start: (-?[\d.]+)", sortie)]
+    fins = [float(x) for x in re.findall(r"silence_end: (-?[\d.]+)", sortie)]
+    if duree is None:
+        m = re.search(r"Duration: (\d+):(\d+):([\d.]+)", sortie)
+        duree = int(m.group(1)) * 3600 + int(m.group(2)) * 60 + float(m.group(3)) if m else 0.0
+    blocs, t = [], 0.0
+    for d, f in zip(debuts, fins + [None] * (len(debuts) - len(fins))):
+        if d > t + 0.01:
+            blocs.append((round(t, 3), round(d, 3)))
+        t = f if f is not None else duree
+    if t < duree - 0.01:
+        blocs.append((round(t, 3), round(duree, 3)))
+    return blocs
+
+
+def enveloppe(blocs, baisse_db, rampe=RAMPE):
+    """L'expression ffmpeg du gain (filtre volume, eval=frame) : 1 hors des blocs, 10^(baisse/20) dedans, des rampes linéaires de
+    `rampe` s qui commencent avant le bloc (la baisse est faite quand la phrase commence) et finissent après."""
+    if not blocs:
+        return "1"
+    g = 10 ** (baisse_db / 20)
+    rampes = "+".join(f"clip(min((t-{a:.3f})/{rampe}+1,({b:.3f}-t)/{rampe}+1),0,1)" for a, b in blocs)
+    return f"1-{1 - g:.5f}*clip({rampes},0,1)"
+
+
 def assembler(video_muette, voix, bruitages, sortie, dossier_travail, musique=None):
     """La vidéo finale : l'image muette + la voix + les bruitages et la musique baissés sous la voix, au niveau visé, en AAC 48 kHz."""
     pistes = [p for p in (voix, bruitages, musique) if p]
@@ -163,27 +200,25 @@ def assembler(video_muette, voix, bruitages, sortie, dossier_travail, musique=No
     for p in pistes:
         entrees += ["-i", p]
     k = 0
+    blocs = blocs_parole(voix) if voix else []
     if voix:
-        cles = (1 if bruitages else 0) + (1 if musique else 0)
-        filtres.append(f"[0:a]asplit={cles + 1}[vx]" + "".join(f"[cle{c}]" for c in range(cles)) if cles else "[0:a]anull[vx]")
+        filtres.append("[0:a]anull[vx]")
         a_mixer.append("[vx]")
         k = 1
-    c = 0
     if bruitages:
         if voix:
-            filtres.append(f"[{k}:a][cle{c}]sidechaincompress=threshold=0.03:ratio=8:attack=8:release=280:makeup=1,asplit=2[sfx][sfx_seuls]")
+            # par tranches de 5 ms : le gain suit la rampe sans marche audible
+            filtres.append(f"[{k}:a]asetnsamples=n=240,volume='{enveloppe(blocs, BAISSE_BRUITAGES)}':eval=frame,asplit=2[sfx][sfx_seuls]")
             extra = ["-map", "[sfx_seuls]", "-ar", "48000", "-c:a", "pcm_s24le", os.path.join(dossier_travail, "bruitages-sous-voix.wav")]
-            c += 1
         else:
             filtres.append(f"[{k}:a]anull[sfx]")
         a_mixer.append("[sfx]")
         k += 1
     if musique:
         if voix:
-            # la musique baisse d'environ 3,5 dB quand la voix parle (mesuré : environ 13 dB sous la voix pendant qu'elle parle,
-            # au-dessus de 300 Hz) et remonte doucement entre les phrases. Avec threshold=0.02:ratio=3, elle tombait à 23 dB sous
-            # la voix : inaudible sur un téléphone.
-            filtres.append(f"[{k}:a][cle{c}]sidechaincompress=threshold=0.1:ratio=2:attack=30:release=600:makeup=1,asplit=2[mus][mus_seule]")
+            # la musique baisse de 2,5 dB pendant les phrases (environ 13 dB sous la voix au-dessus de 300 Hz) et remonte entre elles.
+            # Plus bas (23 dB sous la voix), elle était inaudible sur un téléphone.
+            filtres.append(f"[{k}:a]asetnsamples=n=240,volume='{enveloppe(blocs, BAISSE_MUSIQUE)}':eval=frame,asplit=2[mus][mus_seule]")
             extra += ["-map", "[mus_seule]", "-ar", "48000", "-c:a", "pcm_s24le", os.path.join(dossier_travail, "musique-sous-voix.wav")]
         else:
             filtres.append(f"[{k}:a]anull[mus]")

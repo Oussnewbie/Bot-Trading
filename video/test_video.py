@@ -725,3 +725,104 @@ def test_certificat_floute_quand_des_masques_sont_regles(tmp_path, monkeypatch):
     assert source_de("presentation.py").count("copier_certificat(profil, os.path.join(") == 2      # fabriquer et couverture
     exemple = json.load(open(os.path.join(ICI, "config.exemple.json"), encoding="utf-8"))["presentation"]
     assert "<prop firm>" not in json.dumps(exemple) and exemple["libelle_montant"] == "de récompenses en prop firm"
+
+
+# ───────────────────────── audit du 26/11/2026 : coupures du son et défauts d'image (VID-23 à VID-30) ─────────────────────────
+def _ffmpeg(*args):
+    import subprocess
+    subprocess.run(["ffmpeg", "-v", "error", "-y", *args], check=True)
+
+
+def _phrases(tmp_path):
+    """Une fausse voix : une phrase de 5 mots (0,25 s, 0,2 s entre eux), 1,5 s de silence, une phrase de 4 mots."""
+    voix = str(tmp_path / "voix.wav")
+    mots = [0.5 + 0.45 * i for i in range(5)] + [4.0 + 0.45 * i for i in range(4)]
+    expr = "+".join(f"between(t,{a:.2f},{a + 0.25:.2f})" for a in mots)
+    _ffmpeg("-f", "lavfi", "-i", "sine=f=220:d=6:r=48000", "-af", f"volume='0.5*({expr})':eval=frame", voix)
+    return voix
+
+
+@pytest.mark.skipif(not __import__("shutil").which("ffmpeg"), reason="ffmpeg absent")
+def test_bruitages_et_musique_jamais_haches_par_la_voix(tmp_path):
+    """VID-23 : plus de compresseur commandé par la voix (il hachait les bruitages syllabe par syllabe) ; une baisse fixe pendant
+    chaque phrase, avec des rampes. VID-30 : le contrôle mesure le hachage et le signale."""
+    import controle
+    assert "sidechaincompress" not in source_de("mixage.py")
+    voix = _phrases(tmp_path)
+    blocs = mixage.blocs_parole(voix)
+    # les mots d'une phrase ne font qu'un bloc ; un silence de moins de 0,6 s (ici au début et à la fin du fichier) aussi
+    assert len(blocs) == 2 and blocs[0][1] == pytest.approx(2.55, abs=0.05) and blocs[1][0] == pytest.approx(4.0, abs=0.05)
+    sfx, sous = str(tmp_path / "bruitages.wav"), str(tmp_path / "bruitages-sous-voix.wav")
+    _ffmpeg("-f", "lavfi", "-i", "sine=f=1000:d=6:r=48000", "-af", "volume=0.3", sfx)
+    _ffmpeg("-i", sfx, "-af", f"asetnsamples=n=240,volume='{mixage.enveloppe(blocs, mixage.BAISSE_BRUITAGES)}':eval=frame", sous)
+    a, b = controle.niveaux(sfx), controle.niveaux(sous)
+    assert controle.hachage(sfx, sous) < 3.0
+    assert b[150] - a[150] == pytest.approx(-9.0, abs=0.3) and b[160] - a[160] == pytest.approx(-9.0, abs=0.3)   # dans la phrase
+    assert b[330] - a[330] == pytest.approx(0.0, abs=0.3)                                                       # entre les phrases
+    hache = str(tmp_path / "hache.wav")               # l'ancien défaut : la baisse suit chaque syllabe
+    _ffmpeg("-i", sfx, "-af", "volume='if(lt(mod(t,0.45),0.25),0.1,1)':eval=frame", hache)
+    assert controle.hachage(sfx, hache) > 10
+
+
+@pytest.mark.skipif(not __import__("shutil").which("ffmpeg"), reason="ffmpeg absent")
+def test_controle_de_la_video_finie(tmp_path):
+    """VID-30 : la voix coupée net et les bruitages hachés sont signalés dans controle.txt et le journal, sans bloquer."""
+    import controle
+    voix = _phrases(tmp_path)
+    assert controle.bords_durs(voix)                  # des mots qui commencent et finissent net : signalés
+    doux = str(tmp_path / "doux.wav")
+    _ffmpeg("-f", "lavfi", "-i", "sine=f=220:d=3:r=48000", "-af", "volume=0.5,afade=t=in:d=0.2,afade=t=out:st=2.6:d=0.4", doux)
+    assert controle.bords_durs(doux) == []
+    video = str(tmp_path / "v.mp4")
+    _ffmpeg("-f", "lavfi", "-i", "color=c=white:s=108x192:d=3", "-i", doux, "-shortest", "-c:a", "aac", video)
+    os.replace(doux, str(tmp_path / "voix.wav"))
+    lignes = []
+    remarques = controle.verifier(video, str(tmp_path), lignes.append)
+    assert open(tmp_path / "controle.txt", encoding="utf-8").read() and all(r in " ".join(lignes) for r in remarques)
+    assert "controle.verifier(finale, travail, journal)" in source_de("recap.py") + source_de("recap_periode.py") + source_de("presentation.py")
+
+
+def _scene(tmp_path, positions):
+    recap.POLICE = os.path.expanduser(recap.POLICE)
+    j = _journee(tmp_path, positions=positions)
+    return j, recap.scene_marche(j, j["marches"][0], 0, None, "r", 9.0)[1]
+
+
+def test_rien_ne_deborde_du_graphique(tmp_path):
+    """VID-25 : la découpe s'arrête au-dessus de l'axe des heures (caméra zoomée, les bougies passaient dessus). VID-26 : les ronds
+    des sorties de fin de séance restent entiers dans le cadre (ils étaient coupés à moitié sur le bord droit)."""
+    j, corps = _scene(tmp_path, ((-1, "A", 9, 36, 100, 15, 59, 104, "Fin de journée"), (-1, "D1", 9, 41, 99, 15, 59, 97, "Fin de journée")))
+    clip = re.search(r'<clipPath id="m0-clip"><rect x="([\d.-]+)" y="([\d.-]+)" width="([\d.-]+)" height="([\d.-]+)"', corps)
+    axe = float(re.search(r'<line id="m0-axe"[^>]* y1="([\d.]+)"', corps).group(1))
+    bas_clip, droite_clip = float(clip.group(2)) + float(clip.group(4)), float(clip.group(1)) + float(clip.group(3))
+    assert bas_clip < axe
+    ronds = re.findall(r'<circle cx="([\d.]+)" cy="[\d.]+" r="(\d+)" fill="#[0-9a-f]+" stroke=', corps.split('id="m0-ronds"')[1])
+    assert ronds and all(float(cx) + float(r) <= droite_clip - 2 for cx, r in ronds)
+
+
+def test_groupes_meles_et_stop_suivant(tmp_path):
+    """VID-27 : un groupe de sorties qui gagne et perd à la fois n'est ni vert ni rouge (« 2 stops » en rouge à côté d'un
+    « Stop +51 pts » vert), et la voix dit si l'autre stop gagne ou perd."""
+    j, corps = _scene(tmp_path, ((-1, "A", 9, 36, 100, 11, 36, 98, "Stop"), (-1, "D1", 9, 41, 96, 11, 40, 99, "Stop")))
+    assert f'background:{recap.COUL["encre2"]}; color:{recap.COUL["blanc"]}">2 stops<' in corps
+    f = recap.faits(j["marches"][0])
+    assert recap.phrase_stops(f).endswith("Un autre stop suit, en perte.")
+    assert recap.couleur_groupe(f["stops"]) == recap.COUL["encre2"]
+    assert recap.couleur_groupe(f["stops"][:1]) == recap.COUL["vert"] and recap.couleur_groupe(f["stops"][1:]) == recap.COUL["rouge"]
+
+
+def test_meme_creux_dit_une_seule_fois_et_meme_scenario_avec_les_memes_resultats():
+    """VID-28 : le plus loin des positions de fin de séance n'est pas redit s'il tombe sur la même bougie que celui du stop
+    (« +106 » puis « +108 » pour le même creux). VID-29 : « Même scénario » seulement si les sorties ont aussi les mêmes résultats."""
+    h = lambda mm: datetime.datetime(2026, 11, 17, 15, mm, tzinfo=UTC)
+    bougies = [{"heure": h(5 * i), "h": 101, "l": 80 if i == 4 else 99, "o": 100, "c": 99.5} for i in range(10)]
+    stop = {"sens": -1, "entree": h(1), "sortie": h(30), "mfe": 106, "points": 51, "r": 0.5, "raison": "Stop"}
+    fin = {"sens": -1, "entree": h(2), "sortie": h(48), "mfe": 108, "points": 40, "r": 0.4, "raison": "Fin de journée"}
+    m = {"bougies": bougies}
+    f = {"stops": [stop], "fins": [fin], "autres": [], "n": 2, "sens": {-1}, "cote": "bas"}
+    assert recap.mfe_deja_dit(m, f)
+    assert recap.phrase_fins(f, True) == "L'autre position tient jusqu'à la fin de séance."
+    assert "cent huit" in recap.phrase_fins(f)
+    perte = dict(fin, r=-0.4, points=-40)
+    g = dict(f, fins=[perte])
+    assert recap.meme_scenario(f, dict(f)) and not recap.meme_scenario(f, g)

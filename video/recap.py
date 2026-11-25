@@ -37,6 +37,9 @@ HYPERFRAMES = [shutil.which("npx") or "npx", "-y", "hyperframes@0.9.94"]
 # de y = 840 ; sous y = 840, rien à droite de x = 780 (les boutons j'aime, commentaires, partage). Le graphique tient au-dessus de 840.
 X0, X1, Y_HAUT, Y_BAS = 100, 950, 480, 820          # le graphique
 X_DROITE, X_DROITE_BAS, Y_FIN = 960, 780, 1260       # bords des zones sûres
+# VID-26 (audit du 26/11/2026) : la dernière bougie finissait sur le bord droit, et les ronds des sorties de 21:50 (rayon 11, décalés
+# de 7 quand un vert et un rouge se partagent l'endroit) étaient coupés à moitié par le cadre. Les bougies s'arrêtent avant.
+GOUTTIERE = 22
 ZOOM = 2.2                                           # la caméra sur une bougie
 ARRET = 1.5                                          # durée minimale d'un arrêt de la caméra (le temps de lire l'étiquette)
 COUL = {"papier": "#f6f8fa", "eau": "#e2edf5", "grille": "#dde4ea", "axe": "#94a3b2", "encre": "#18222e", "encre2": "#46546a",
@@ -166,12 +169,17 @@ def phrase_stops(f):
         texte = f"{sujet} touche son stop{a_heure}."
     if len(st) > 1:
         k = len(st) - 1
-        texte += f" {_majuscule(_une(k))} autre{_s(k)} stop{_s(k)} sui{'vent' if k > 1 else 't'}."
+        texte += f" {_majuscule(_une(k))} autre{_s(k)} stop{_s(k)} sui{'vent' if k > 1 else 't'}"
+        # VID-27 : « Un autre stop suit. » ne disait pas s'il gagnait ou perdait, alors que l'écran le montrait (rond rouge ou vert)
+        signes = {(_r_pos(q) or 0) > 0 for q in st[1:] if _r_pos(q)}
+        texte += {frozenset({True}): ", en gain.", frozenset({False}): ", en perte."}.get(frozenset(signes), ".")
     return texte
 
 
-def phrase_fins(f):
-    """Les positions gardées jusqu'à la fin de séance : jusqu'où le prix est allé en notre faveur, et s'il en a repris une partie."""
+def phrase_fins(f, sans_mfe=False):
+    """Les positions gardées jusqu'à la fin de séance : jusqu'où le prix est allé en notre faveur, et s'il en a repris une partie.
+    sans_mfe (VID-28) : ce plus loin est le même que celui déjà dit pour le stop (même bougie) ; deux chiffres différents
+    (« +106 », puis « +108 » : chaque position compte depuis son prix d'entrée) pour le même creux embrouillaient."""
     fi, n = f["fins"], f["n"]
     k = len(fi)
     avec = [p for p in fi if p.get("mfe") is not None]
@@ -184,7 +192,7 @@ def phrase_fins(f):
         sujet = "L'autre position tient jusqu'à la fin de séance"
     else:
         sujet = f"Les {nombres.entier(k)} autres tiennent jusqu'à la fin de séance"
-    if meilleure is None or meilleure["mfe"] <= 0:
+    if meilleure is None or meilleure["mfe"] <= 0 or (sans_mfe and n > 1):
         return f"{sujet}." if n > 1 else f"Sortie en fin de séance, à {_heure_voix(fi[0]['sortie'])}."
     reprise = ""
     if meilleure["points"] is not None and meilleure["points"] < 0.5 * meilleure["mfe"]:
@@ -199,9 +207,60 @@ def phrase_autres(f):
     return f"{_majuscule(_une(ka, True))} sortie{_s(ka)} pendant la séance."
 
 
+def _signe(ps):
+    v = _somme(ps) if ps else 0
+    return 0 if not v else (1 if v > 0 else -1)
+
+
 def meme_scenario(a, b):
-    """Deux marchés qui ont vécu la même séance (même côté, même sens, mêmes sorties) : la voix ne refait pas la présentation."""
-    return (a["cote"], a["sens"], a["n"], len(a["stops"]), len(a["fins"])) == (b["cote"], b["sens"], b["n"], len(b["stops"]), len(b["fins"]))
+    """Deux marchés qui ont vécu la même séance (même côté, même sens, mêmes sorties, et chaque groupe de sorties du même côté du
+    zéro) : la voix ne refait pas la présentation. VID-29 : le 18/11, « Même scénario » sur le S&P alors que ses sorties de fin de
+    séance gagnaient et celles du Nasdaq perdaient."""
+    cle = lambda x: (x["cote"], x["sens"], x["n"], len(x["stops"]), len(x["fins"]), _signe(x["stops"]), _signe(x["fins"]), _signe(x["autres"]))
+    return cle(a) == cle(b)
+
+
+def _bougie_extreme(m, p):
+    """L'indice de la bougie où la position est allée le plus loin en notre faveur (None sans excursion connue)."""
+    b = m["bougies"]
+    if not b or not p.get("mfe") or p["entree"] is None or p["sortie"] is None:
+        return None
+
+    def indice(instant):
+        return max(0, sum(1 for c in b if c["heure"] <= instant) - 1)
+    bs = list(range(indice(p["entree"]), indice(p["sortie"]) + 1)) or [indice(p["entree"])]
+    return min(bs, key=lambda q: b[q]["l"]) if p["sens"] == -1 else max(bs, key=lambda q: b[q]["h"])
+
+
+def _stop_raconte(f):
+    """Le stop dont la voix raconte le chemin (le premier sorti), et s'il dit jusqu'où le prix est allé en notre faveur."""
+    st = sorted(f["stops"], key=lambda q: q["sortie"] or datetime.datetime.max.replace(tzinfo=datetime.timezone.utc))
+    if not st:
+        return None, False
+    p = st[0]
+    return p, bool(p.get("mfe")) and ((p["points"] is not None and p["points"] > 0) or (_avance(p) and p["points"] is not None))
+
+
+def mfe_deja_dit(m, f):
+    """VID-28 : la meilleure des positions de fin de séance a son plus loin sur la même bougie que le stop déjà raconté."""
+    p, dit_mfe = _stop_raconte(f)
+    avec = [q for q in f["fins"] if q.get("mfe") is not None]
+    if not dit_mfe or not avec:
+        return False
+    meilleure = max(avec, key=lambda q: q["mfe"])
+    i = _bougie_extreme(m, p)
+    return i is not None and i == _bougie_extreme(m, meilleure)
+
+
+def couleur_groupe(ps):
+    """VID-27 : vert si toutes les positions du groupe gagnent, rouge si toutes perdent, neutre si elles se partagent (« 2 stops » en
+    rouge à côté d'un « Stop +51 pts » vert disait le contraire de l'écran)."""
+    vals = [_r_pos(p) for p in ps]
+    if vals and all(v is not None and v > 0 for v in vals):
+        return COUL["vert"]
+    if vals and all(v is not None and v < 0 for v in vals):
+        return COUL["rouge"]
+    return COUL["encre2"]
 
 
 def valeur(m, unite):
@@ -266,7 +325,7 @@ def recit_marche(m, precedent, unite, expliquer_r):
     if f["stops"]:
         parts.append(("stop", phrase_stops(f)))
     if f["fins"]:
-        parts.append(("fin", phrase_fins(f)))
+        parts.append(("fin", phrase_fins(f, mfe_deja_dit(m, f))))
     if f["autres"]:
         parts.append(("autre", phrase_autres(f)))
     v = valeur(m, unite)
@@ -413,7 +472,7 @@ def _echelles(m):
     bas, haut = min(prix), max(prix)
     marge = (haut - bas) * 0.07 or 1
     bas, haut = bas - marge, haut + marge
-    pas = (X1 - X0) / max(1, len(b))
+    pas = (X1 - GOUTTIERE - X0) / max(1, len(b))
 
     def y(p):
         return Y_BAS - (p - bas) / (haut - bas) * (Y_BAS - Y_HAUT)
@@ -562,6 +621,7 @@ def scene_marche(j, m, k, rep, unite, duree, expliquer_r=False, precedent=None):
         (xs, ys), n = ds[0]["sortie"], len(ds)
         if (cle[0], cle[1], not cle[2]) in groupes_sortie:
             xs += 7 if cle[2] else -7
+        xs = min(xs, X1 - (8 if n == 1 else 11) - 2)          # VID-26 : le rond reste entier dans le cadre
         chiffre = (f'<text x="{xs:.1f}" y="{ys + 4.5:.1f}" font-size="13" fill="{COUL["blanc"]}" text-anchor="middle" data-layout-ignore>{n}</text>'
                    if n > 1 else "")
         ronds.append(f'<g id="{ident}-s{g_i}"><circle cx="{xs:.1f}" cy="{ys:.1f}" r="{8 if n == 1 else 11}" fill="{couleur(_somme([d["p"] for d in ds]))}" '
@@ -571,11 +631,9 @@ def scene_marche(j, m, k, rep, unite, duree, expliquer_r=False, precedent=None):
 
     def extreme(p):
         """Le point le plus loin en notre faveur pendant la position (prix du journal de l'EA, bougie où il a été atteint)."""
-        if not p.get("mfe") or p["entree"] is None or p["sortie"] is None or p["prix_entree"] is None:
+        i_x = _bougie_extreme(m, p)
+        if i_x is None or p["prix_entree"] is None:
             return None
-        i0, i1 = indice(p["entree"]), indice(p["sortie"])
-        bs = list(range(i0, i1 + 1)) or [i0]
-        i_x = min(bs, key=lambda q: b[q]["l"]) if p["sens"] == -1 else max(bs, key=lambda q: b[q]["h"])
         return (X0 + pas * (i_x + 0.5), y(p["prix_entree"] + p["sens"] * p["mfe"]))
 
     # ── les arrêts de la caméra, chacun sur la phrase qui le raconte ──
@@ -614,12 +672,12 @@ def scene_marche(j, m, k, rep, unite, duree, expliquer_r=False, precedent=None):
                 avec = [d for d in ds if d["p"].get("mfe")]
                 rep_p = max(avec, key=lambda d: d["p"]["mfe"]) if avec else ds[-1]
                 cible = max(ds, key=lambda d: d["p"]["sortie"])
-                ex = extreme(rep_p["p"]) if avec and nom == "fin" else None
+                ex = extreme(rep_p["p"]) if avec and nom == "fin" and not mfe_deja_dit(m, f) else None
                 n = len(ds)
                 hh = f"{cible['p']['sortie']:%H:%M}"
-                pastilles = [["sortie", f"Sortie {hh}" if n == 1 else f"{n} sorties {hh}", couleur(_somme([d["p"] for d in ds])), COUL["blanc"], t0]]
+                pastilles = [["sortie", f"Sortie {hh}" if n == 1 else f"{n} sorties {hh}", couleur_groupe([d["p"] for d in ds]), COUL["blanc"], t0]]
                 if ex:
-                    mots_fin = phrase_fins(f).split()      # le dernier « jusqu'à » : celui des points, pas « jusqu'à la fin »
+                    mots_fin = phrase_fins(f, mfe_deja_dit(m, f)).split()      # le dernier « jusqu'à » : celui des points, pas « jusqu'à la fin »
                     rang_jusqu = max((r for r, w in enumerate(mots_fin) if w == "jusqu'à"), default=None)
                     pastilles.append(["exc", f"Jusqu'à {pts_ecran(rep_p['p']['mfe'])}", COUL["vert"], COUL["blanc"],
                                       _mot(rep, ancres[nom] + rang_jusqu) if rang_jusqu is not None and ancres.get(nom) is not None else None])
@@ -693,7 +751,7 @@ def scene_marche(j, m, k, rep, unite, duree, expliquer_r=False, precedent=None):
                 texte = {"stop": f"{n} stop{_s(n)}",
                          "fin": f"{n} sortie{_s(n)} à {hs.pop()}" if len(hs) == 1 else f"{n} en fin de séance",
                          "autre": f"{n} autre{_s(n)} sortie{_s(n)}"}[nom]
-                pastilles.append((f"{ident}-r-{nom}", texte, couleur(_somme(liste)), COUL["blanc"]))
+                pastilles.append((f"{ident}-r-{nom}", texte, couleur_groupe(liste), COUL["blanc"]))
         resume, bas_resume = _rangee(pastilles, 34, Y_BAS + 132)
     v = valeur(m, unite)
     resultat, t_rappel = "", None
@@ -746,10 +804,12 @@ def scene_marche(j, m, k, rep, unite, duree, expliquer_r=False, precedent=None):
     .rappel {{ position: absolute; left: 290px; font-size: 28px; color: {COUL['encre2']}; line-height: 1; }}
     .{ident}-sans {{ position: absolute; left: 124px; line-height: 1; }}
     #{ident}-cadre {{ fill: none; stroke: {COUL['axe']}; stroke-opacity: 0.35; stroke-width: 2; }}"""
+    # VID-25 (audit du 26/11/2026) : la découpe descendait 10 px sous l'axe des heures ; caméra zoomée, les bougies et la colonne
+    # jaune passaient sur l'axe. Elle s'arrête maintenant au-dessus (Y_BAS + 10, l'axe est à Y_BAS + 12).
     corps = f"""    <div class="date" id="{ident}-date">{e(nombres.date_courte(j['jour']))}</div>
     <div id="{ident}-nom">{e(m['nom'])}</div>
     <svg class="plan" viewBox="0 0 1080 1920" data-layout-allow-overflow>
-      <defs><clipPath id="{ident}-clip"><rect x="{X0 - 12}" y="{Y_HAUT - 22}" width="{X1 - X0 + 22}" height="{Y_BAS - Y_HAUT + 44}" /></clipPath></defs>
+      <defs><clipPath id="{ident}-clip"><rect x="{X0 - 12}" y="{Y_HAUT - 22}" width="{X1 - X0 + 22}" height="{Y_BAS - Y_HAUT + 32}" /></clipPath></defs>
       <rect id="{ident}-cadre" x="{X0 - 12}" y="{Y_HAUT - 22}" width="{X1 - X0 + 22}" height="{Y_BAS - Y_HAUT + 44}" rx="10" />
       <line id="{ident}-axe" x1="{X0}" x2="{X1}" y1="{Y_BAS + 12}" y2="{Y_BAS + 12}" stroke="{COUL['axe']}" stroke-width="3" />
       <g id="{ident}-heures">{''.join(etiquettes)}</g>
@@ -1182,4 +1242,6 @@ def fabriquer(j, config, dossier_sortie, journal=print, rendre=True, exiger_voix
     nom = f"recap-{j['jour'].isoformat()}.mp4"
     finale = os.path.join(dossier_sortie, nom)
     mixage.assembler(muette, piste_v, piste_b, finale, travail, piste_m)
+    import controle
+    controle.verifier(finale, travail, journal)          # VID-30 : prévient, ne bloque pas
     return finale

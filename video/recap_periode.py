@@ -517,4 +517,6 @@ def fabriquer(p, config, dossier_sortie, journal=print, rendre=True, exiger_voix
     piste_m = mixage.piste_musique(config.get("musique"), p["fin"], duree, os.path.join(travail, "musique.wav"), journal)
     finale = os.path.join(dossier_sortie, ("recap-semaine-" if p["genre"] == "semaine" else "recap-mois-") + p["debut"].isoformat()[:10 if p["genre"] == "semaine" else 7] + ".mp4")
     mixage.assembler(muette, piste_v, piste_b, finale, travail, piste_m)
+    import controle
+    controle.verifier(finale, travail, journal)          # VID-30 : prévient, ne bloque pas
     return finale

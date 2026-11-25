@@ -95,7 +95,7 @@ risque.
    licence permet l'usage commercial dans des vidéos, mais pas de les redistribuer seuls : c'est pourquoi ils ne sont pas dans le dépôt.
 5. **Musique de fond** (facultative) : un morceau, ou un dossier de morceaux (un par jour, choisi par la date), dans `musique`.
    Elle est coupée à la durée de la vidéo, en fondu, sa basse allégée, réglée sur ce qu'un téléphone en fait entendre (14 dB sous
-   la voix au-dessus de 250 Hz, et jamais à moins de 7 dB sous la voix en tout), et elle baisse encore quand la voix parle. Elle n'est jamais
+   la voix au-dessus de 250 Hz, et jamais à moins de 7 dB sous la voix en tout), et elle baisse encore de 2,5 dB pendant les phrases. Elle n'est jamais
    dans le dépôt. Un morceau fait avec ElevenLabs Music sur un plan payant peut servir sur les réseaux sociaux (pas au cinéma, à
    la télévision ni à la radio : conditions d'ElevenLabs). Sans morceau, la vidéo est faite sans musique ; tu peux aussi ajouter un
    son de TikTok à la publication.
@@ -120,6 +120,8 @@ La vidéo arrive dans le dossier `sortie` de la configuration, `recap-AAAA-MM-JJ
 30 images par seconde, son à -15 LUFS. À côté se trouvent :
 
 - `image-muette.mp4` : l'image seule ;
+- `son/controle.txt` : le contrôle du son de la vidéo finie (bruitages ou musique hachés par la voix, voix coupée net, niveau,
+  pic). Une remarque s'affiche aussi dans le journal ; elle ne bloque pas la vidéo ;
 - `recap.json` : les scènes, les textes lus et les instants des bruitages ;
 - `projet/` : le projet HyperFrames, à ouvrir avec `npx hyperframes preview` pour retoucher une scène à la main.
 
@@ -201,7 +203,8 @@ historique.py    la photo de l'onglet Historique de MetaTrader (Windows : PrintW
 windows/         Deconnecter-sans-fermer.cmd : quitter le Bureau à distance du VPS sans éteindre l'écran
 recap_periode.py les récaps de la semaine et du mois (barres, courbe, bilan)
 installation.py  la copie de l'outil et le lancement chaque soir (launchd sur Mac, tâches planifiées sous Windows)
-mixage.py        ffmpeg : voix, bruitages et musique baissés sous la voix, niveau final
+mixage.py        ffmpeg : voix, bruitages et musique baissés d'un gain fixe pendant les phrases (jamais syllabe par syllabe), niveau final
+controle.py      le contrôle du son de chaque vidéo finie (controle.txt)
 police.py        largeur des textes dans la police DIN, pour que les étiquettes restent dans les zones sûres de TikTok
 nombres.py       nombres, heures et dates en toutes lettres pour la voix
 sons.json        le catalogue des bruitages (nom, adresse Mixkit)

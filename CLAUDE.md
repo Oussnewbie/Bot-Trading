@@ -28,7 +28,7 @@ robot/     Strategy-V10.mq5, Strategy-V10.pine, test_robot.py (contrôles du cod
 etrave/    interface web locale de l'EA (Python sans dépendance), export.py (export trimestriel) + test_interface.py, test_export.py
 video/     (branche communication/outil-video) vidéos TikTok : récap de séance et présentation, `python3 video/outil.py` ; README
 ```
-- Tests : `.venv/bin/python -m pytest robot etrave video -q` (166 tests ; sur `main`, sans `video` : 108). Le `.venv` du dépôt tourne sous Python 3.15.
+- Tests : `.venv/bin/python -m pytest robot etrave video -q` (171 tests ; sur `main`, sans `video` : 108). Le `.venv` du dépôt tourne sous Python 3.15.
 - Étrave en essai : `.venv/bin/python etrave/etrave.py --sans-navigateur --port 8799 --dossier <dossier jetable>`, puis
   `http://127.0.0.1:8799`. Pour voir la page avec des données, écrire de faux `etat-<symbole>.txt` (format dans
   `etrave/test_interface.py`, `faux_etat`) et un `trades-<symbole>.csv`, et les réécrire toutes les 2 secondes (au-delà de 15 s sans
@@ -132,7 +132,9 @@ video/     (branche communication/outil-video) vidéos TikTok : récap de séanc
   étiquettes posées dans les zones sûres de TikTok (`police.py` mesure les textes ; un test le vérifie). Musique facultative
   (`musique` de la configuration), jamais dans le dépôt. **Jamais de vidéo muette** (VID-18 à VID-22) : sans voix, pas de
   publication, nouvel essai au lancement suivant, la notification dit la cause ; `outil.py verifier` lit la clé, la voix et les
-  crédits ElevenLabs sans rien dépenser.
+  crédits ElevenLabs sans rien dépenser. **Mixage** (VID-23) : bruitages et musique baissent d'un gain fixe pendant les phrases
+  de la voix (-9 et -2,5 dB, rampes de 0,15 s), jamais par un compresseur commandé par la voix (il hachait les bruitages : « des
+  coupures, comme du lag ») ; `controle.py` mesure chaque vidéo finie (`son/controle.txt`, prévient sans bloquer).
 - **Conformité TikTok (25/11/2026, validée par l'utilisateur ; détail dans `video/README.md`)** : rien à vendre (plus d'annonce
   de copy trading : la scène « Bilan public » de la présentation donne rendez-vous dans 3 mois) ; la voix et les écrans disent
   « Abonne-toi », le Telegram n'est que dans la description (« gratuit, rien à vendre ») ; la prop firm n'est jamais nommée (ni
@@ -157,7 +159,10 @@ video/     (branche communication/outil-video) vidéos TikTok : récap de séanc
     port sous Windows, aucun risque imposé par la page, dates de New York, export unique, encodages Windows), VID-01 à VID-17 (outil
     vidéo, sur sa branche : rendu et fuseaux sous Windows, jamais de vidéo muette ni de photo après 17:00 New York, semaines
     complètes), VID-18 à VID-22 (voix exigée partout, pannes passagères réessayées, cause claire, prise vérifiée avant le cache,
-    écritures sûres, contrôle de la clé et des crédits). En-têtes de l'EA et du Pine réécrits (ils disaient « Nasdaq uniquement »).
+    écritures sûres, contrôle de la clé et des crédits). Audit des vidéos du 26/11/2026 : VID-23 (bruitages hachés par la voix),
+    VID-25 et VID-26 (bougies sur l'axe en zoom, ronds de 21:50 coupés au bord), VID-27 (groupe de sorties mêlé ni vert ni rouge,
+    « Un autre stop suit, en perte »), VID-28 (le même creux dit une fois), VID-29 (« Même scénario » seulement avec les mêmes
+    résultats), VID-30 (contrôle du son). VID-24 : voix de la présentation à vitesse naturelle (hors dépôt). En-têtes de l'EA et du Pine réécrits (ils disaient « Nasdaq uniquement »).
   - **Encore ouverts** :
     - X-11 / ET-04 : deux terminaux sur un même ordinateur partagent `reglages.txt` et les clôtures (règle d'usage dans le README) ;
     - X-02 : les sorties et le stop virtuel exigent un EA en marche (VPS) ;
