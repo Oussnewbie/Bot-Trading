@@ -17,6 +17,8 @@ import json
 import os
 import shutil
 import statistics
+import threading
+import time
 
 import pont
 
@@ -94,6 +96,21 @@ def jour_de(texte):
         return datetime.date.fromisoformat(str(texte)[:10].replace(".", "-"))
     except ValueError:
         return None
+
+
+def aujourdhui_ny(maintenant=None):
+    """La date du jour à New York. Correctif ET-10 (audit du 25/11/2026) : la date de l'ordinateur (Paris, le VPS) passait au
+    lendemain six heures avant New York, et « Exporter le trimestre en cours » pouvait viser le trimestre neuf, encore vide.
+    Sans zoneinfo (Python de Windows sans le paquet tzdata) : règle américaine de l'heure d'été, comme l'EA (UsDst)."""
+    utc = maintenant or datetime.datetime.now(datetime.timezone.utc)
+    annee = utc.year
+    mars = datetime.datetime(annee, 3, 1, tzinfo=datetime.timezone.utc)
+    novembre = datetime.datetime(annee, 11, 1, tzinfo=datetime.timezone.utc)
+    # deuxième dimanche de mars et premier dimanche de novembre, à 2:00 heure de New York (7:00 puis 6:00 UTC)
+    debut_ete = mars + datetime.timedelta(days=(6 - mars.weekday()) % 7 + 7, hours=7)
+    fin_ete = novembre + datetime.timedelta(days=(6 - novembre.weekday()) % 7, hours=6)
+    decalage = 4 if debut_ete <= utc < fin_ete else 5
+    return (utc - datetime.timedelta(hours=decalage)).date()
 
 
 # ───────────────────────── trimestres ─────────────────────────
@@ -355,10 +372,17 @@ def resume_lisible(r):
         lignes.append(f"- Jours de trade sans journal d'exécution (EA plus ancien) : {_liste(rap['jours_sans_journal_execution'])}.")
     i = r["interrupteur"]
     if i.get("jours"):
+        # Correctif ET-11 (audit du 25/11/2026) : avant 60 jours de trade, un seuil dépassé disait « coupe le robot » (deux jours
+        # perdants suffisaient). Les seuils se jugent sur 60 jours : avant, ce n'est qu'une indication.
+        if not i["franchi"]:
+            verdict = "Aucun seuil franchi."
+        elif i["complet"]:
+            verdict = "SEUIL FRANCHI : " + ", ".join(i["franchi"]) + " : coupe le robot et fais le point."
+        else:
+            verdict = "Au-delà du seuil pour l'instant : " + ", ".join(i["franchi"]) + " (à juger sur 60 jours de trade)."
         lignes.append(f"- Interrupteur sur les {i['jours']} derniers jours de trade{'' if i['complet'] else ' (moins de 60 : indicatif)'} : "
                       f"{_pct(i['jours_gagnants_pct'])} de jours gagnants (seuil 28 %), total {_txt(i['total_r'], ' R', True)} (seuil −40 R), "
-                      f"baisse {_txt(i['baisse_r'], ' R')} (seuil 66 R). " + ("Aucun seuil franchi." if not i["franchi"] else
-                                                                            "SEUIL FRANCHI : " + ", ".join(i["franchi"]) + " : coupe le robot et fais le point."))
+                      f"baisse {_txt(i['baisse_r'], ' R')} (seuil 66 R). " + verdict)
     lignes += ["", "Ces chiffres sont ceux d'un trimestre : assez pour mesurer l'exécution (glissement, spread), trop peu pour juger la stratégie.", ""]
     return "\n".join(lignes)
 
@@ -379,9 +403,32 @@ def _ecrire_csv(chemin, entete, lignes):
             f.write(";".join(str(ligne.get(c, "")) for c in entete) + "\r\n")
 
 
+# Correctif ET-12 (audit du 25/11/2026) : un export à la fois. Un double clic sur « Exporter » lançait deux fils sur le même
+# dossier provisoire (l'un l'effaçait pendant que l'autre écrivait).
+_VERROU_EXPORT = threading.Lock()
+
+
+def _remplacer(source, cible):
+    """os.replace, avec de nouveaux essais : sous Windows, renommer un dossier échoue tant qu'un fichier dedans est ouvert
+    (Excel, l'antivirus, l'indexeur)."""
+    for essai in range(20):
+        try:
+            os.replace(source, cible)
+            return
+        except PermissionError:
+            if essai == 19:
+                raise
+            time.sleep(0.25)
+
+
 def exporter(dossier, trimestre, aujourdhui=None):
     """Écrit exports/<trimestre>/ (remplace un export existant du même trimestre). Retourne (chemin, résumé)."""
-    aujourdhui = aujourdhui or datetime.date.today()
+    with _VERROU_EXPORT:
+        return _exporter(dossier, trimestre, aujourdhui)
+
+
+def _exporter(dossier, trimestre, aujourdhui=None):
+    aujourdhui = aujourdhui or aujourdhui_ny()
     debut, fin = bornes(trimestre)
     en_cours = not termine(trimestre, aujourdhui)
     dans = lambda texte: (lambda j: j is not None and debut <= j <= fin)(jour_de(texte))
@@ -417,8 +464,8 @@ def exporter(dossier, trimestre, aujourdhui=None):
     if os.path.exists(final):
         ancien = os.path.join(racine, f".{trimestre}.{os.getpid()}.ancien")
         shutil.rmtree(ancien, ignore_errors=True)
-        os.replace(final, ancien)
-    os.replace(provisoire, final)
+        _remplacer(final, ancien)
+    _remplacer(provisoire, final)
     if ancien:
         shutil.rmtree(ancien, ignore_errors=True)
     return final, resume
@@ -434,7 +481,7 @@ def trimestres_avec_donnees(dossier):
 
 def exporter_trimestres_finis(dossier, aujourdhui=None):
     """Exporte chaque trimestre terminé qui a des données et pas encore d'export. Retourne les trimestres exportés."""
-    aujourdhui = aujourdhui or datetime.date.today()
+    aujourdhui = aujourdhui or aujourdhui_ny()
     faits = {e["nom"] for e in exports_faits(dossier) if not e["en_cours"]}
     nouveaux = []
     for trimestre in trimestres_avec_donnees(dossier):

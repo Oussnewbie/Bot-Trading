@@ -597,3 +597,75 @@ def test_la_frise_de_la_seance_suit_les_heures_de_l_ea():
     assert regles["finB"] == const("InpBEnd") and regles["sortie"] == const("InpFlat") and regles["sortieCourte"] == const("InpFlatShort")
     assert 'Kv(h, "sortie_ny", StringFormat("%02d:%02d", flatNy / 60, flatNy % 60));' in EA
     assert "(live[0] && live[0].sortie_ny) || REGLES_NY.sortie" in PAGE
+
+
+# ───────────────────────── audit du 25/11/2026 (ET-05 à ET-15) ─────────────────────────
+PAGE = open(os.path.join(RACINE, "etrave", "page.html"), encoding="utf-8").read()
+
+
+def test_une_seule_etrave_par_port_sous_windows():
+    """ET-05 : sous Windows, SO_REUSEADDR laissait une deuxième Étrave écouter sur le même port (jetons mélangés)."""
+    assert issubclass(etrave.Serveur, etrave.ThreadingHTTPServer)
+    assert etrave.Serveur.allow_reuse_address == (not sys.platform.startswith("win"))
+    source = open(os.path.join(RACINE, "etrave", "etrave.py"), encoding="utf-8").read()
+    assert "SO_EXCLUSIVEADDRUSE" in source and 'serveur = Serveur(("127.0.0.1", port), Requete)' in source
+
+
+def test_la_page_n_impose_pas_de_risque_par_defaut():
+    """ET-06 : sans réglage ni EA vu, la page partait de 0,5 % et l'enregistrait avec le levier."""
+    assert "const RISQUE_EA = 0.25;" in PAGE and ": 0.5);" not in PAGE
+    assert re.search(r"InpRiskPct\s*=\s*0\.25;", EA)                          # la valeur de l'EA
+    assert "if (draft.risqueTouche && (Math.abs(draft.risque - currentRisk())" in PAGE
+    assert PAGE.count("draft.risqueTouche = true;") == 3                      # champ, curseur, boutons
+
+
+def test_tasklist_illisible_ne_casse_pas_la_page():
+    """ET-07 : la sortie de tasklist n'est pas en UTF-8 sur un Windows français."""
+    vus = {}
+
+    def executer(commande, **options):
+        vus.update(options)
+        raise UnicodeDecodeError("utf-8", b"\xff", 0, 1, "invalid start byte")
+    assert mt5.est_ouvert(systeme="win32", executer=executer) is None
+    assert vus.get("errors") == "replace"
+
+
+def test_demarrage_avec_windows_chemin_accentue(tmp_path):
+    """ET-08 : le fichier de démarrage est en UTF-8 ; cmd.exe doit passer en UTF-8 avant de lire le chemin."""
+    env = {"APPDATA": str(tmp_path)}
+    mt5.demarrage_windows(True, r"C:\Users\Jérôme\Bot-Trading\etrave", env=env)
+    texte = open(mt5.fichier_demarrage(env), encoding="utf-8").read()
+    assert texte.index("chcp 65001") < texte.index("start ") and "Jérôme" in texte
+
+
+def test_les_motifs_refusent_un_retour_a_la_ligne(dossier):
+    """ET-09 : avec match, « $ » acceptait un « \\n » final (clé de réglage coupée en deux, dossier « 2027-T1\\n »)."""
+    with pytest.raises(pont.Refus):
+        pont.demander_cloture(dossier, "NAS100\n", "CLOTURER")
+    with pytest.raises(etrave.Erreur):
+        etrave.Application(dossier).traiter("POST", "/api/exports", {}, {"trimestre": "2027-T1\n"})
+    assert not etrave.TRIMESTRE.fullmatch("2027-T1\n") and etrave.TRIMESTRE.fullmatch("2027-T1")
+    with pytest.raises(pont.Refus):
+        mt5.controler("123456\n7", "x", "TradinGlobal-Real")
+    for nom in ("etrave.py", "pont.py", "mt5.py"):
+        assert not re.search(r"[A-Z_]+\.match\(", open(os.path.join(RACINE, "etrave", nom), encoding="utf-8").read()), nom
+
+
+def test_le_rafraichissement_ne_reecrit_pas_un_champ_en_saisie():
+    """ET-13 : « 0. » devenait « 0 » au rafraîchissement, et la suite de la frappe donnait « 05 » (5 %)."""
+    assert "const typing = (id) => fromInput === 'poll' && document.activeElement === $(id);" in PAGE
+    assert "if (fromInput !== 'number' && !typing('risk-input'))" in PAGE and "if (fromInput !== 'lever' && !typing('lever-input'))" in PAGE
+
+
+def test_textes_de_la_page():
+    """ET-14 : pas de « · » pour joindre des textes générés par la page (règle de la page) ; l'export se fait 3 jours après."""
+    script = PAGE[PAGE.index("<script"):]
+    assert "` · " not in script and " · levier" not in script
+    assert "au premier démarrage qui suit la fin du trimestre" not in PAGE and "trois jours après la fin du trimestre" in PAGE
+
+
+def test_le_lanceur_essaie_python_avant_de_s_en_servir():
+    """ET-15 : « python » peut être le raccourci du Microsoft Store, qui ne lance rien."""
+    bat = open(os.path.join(RACINE, "etrave", "Etrave.bat"), encoding="utf-8").read()
+    assert 'if defined PY %PY% -c "import sys" >nul 2>nul || set PY=' in bat
+    assert bat.index("|| set PY=") < bat.index("if not defined PY (")

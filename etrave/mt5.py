@@ -31,8 +31,8 @@ import time
 
 from pont import Refus
 
-LOGIN = re.compile(r"^\d{3,15}$")
-SERVEUR = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 ._-]{1,63}$")
+LOGIN = re.compile(r"\d{3,15}")   # fullmatch (ET-09)
+SERVEUR = re.compile(r"[A-Za-z0-9][A-Za-z0-9 ._-]{1,63}")
 MOT_DE_PASSE_MAX = 128
 EFFACER_APRES_S = 60
 PROGRAMME = "terminal64.exe"
@@ -58,9 +58,13 @@ def est_ouvert(systeme=sys.platform, executer=subprocess.run):
     """MetaTrader 5 tourne-t-il sur cet ordinateur ? None si on ne peut pas le savoir (autre système que Windows)."""
     if not systeme.startswith("win"):
         return None
+    # Correctif ET-07 (audit du 25/11/2026) : tasklist écrit dans la page de code de la console (cp850 sur un Windows français),
+    # pas en UTF-8. Un octet illisible (l'espace des milliers) levait UnicodeDecodeError à chaque rafraîchissement : erreur 500
+    # et page « Interface arrêtée ». Les octets illisibles sont remplacés : seul le nom du programme compte.
     try:
-        sortie = executer(["tasklist", "/FI", f"IMAGENAME eq {PROGRAMME}", "/NH"], capture_output=True, text=True, timeout=10).stdout
-    except (OSError, subprocess.SubprocessError):
+        sortie = executer(["tasklist", "/FI", f"IMAGENAME eq {PROGRAMME}", "/NH"], capture_output=True, text=True,
+                          encoding="utf-8", errors="replace", timeout=10).stdout
+    except (OSError, ValueError, subprocess.SubprocessError):
         return None
     return PROGRAMME in sortie.lower()
 
@@ -143,7 +147,9 @@ def demarrage_windows(actif, dossier, env=None):
     if actif:
         os.makedirs(os.path.dirname(fichier), exist_ok=True)
         with open(fichier, "w", encoding="utf-8", newline="") as f:
-            f.write(f'@echo off\r\nrem Lance Etrave (interface de l EA) a l ouverture de la session.\r\nstart "" /min "{os.path.join(dossier, "Etrave.bat")}" --sans-navigateur\r\n')
+            # Correctif ET-08 (audit du 25/11/2026) : fichier en UTF-8, lu par cmd.exe dans la page de code de la console ; sans
+            # « chcp 65001 », un chemin accentué (C:\\Users\\Jérôme\\…) était mal lu et Étrave ne démarrait pas avec Windows.
+            f.write(f'@echo off\r\nchcp 65001 >nul\r\nrem Lance Etrave (interface de l EA) a l ouverture de la session.\r\nstart "" /min "{os.path.join(dossier, "Etrave.bat")}" --sans-navigateur\r\n')
     elif os.path.exists(fichier):
         os.remove(fichier)
     return os.path.exists(fichier)
@@ -156,9 +162,9 @@ def texte_config(login, mot_de_passe, serveur):
 
 def controler(login, mot_de_passe, serveur):
     """Refuse des identifiants mal formés. Les messages ne répètent jamais le mot de passe."""
-    if not isinstance(login, str) or not LOGIN.match(login.strip()):
+    if not isinstance(login, str) or not LOGIN.fullmatch(login.strip()):
         raise Refus("Numéro de compte : ce sont des chiffres uniquement (le « login » donné par ton courtier).")
-    if not isinstance(serveur, str) or not SERVEUR.match(serveur.strip()):
+    if not isinstance(serveur, str) or not SERVEUR.fullmatch(serveur.strip()):
         raise Refus("Serveur : recopie le nom exact donné par ton courtier, par exemple « MonCourtier-Demo ».")
     if not isinstance(mot_de_passe, str) or not (1 <= len(mot_de_passe) <= MOT_DE_PASSE_MAX) or any(ord(c) < 32 for c in mot_de_passe):
         raise Refus("Mot de passe vide ou illisible.")
