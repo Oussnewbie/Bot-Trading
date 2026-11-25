@@ -22,9 +22,10 @@ ICI = os.path.dirname(os.path.abspath(__file__))
 NIVEAU_VISE = -15.0         # LUFS : la voix au premier plan, comme sur TikTok
 NIVEAU_SANS_VOIX = -18.0    # LUFS : les bruitages seuls restent discrets
 NIVEAU_VOIX = -15.0         # LUFS de la piste de voix avant le mélange : les gains des bruitages sont réglés pour elle
-# La musique se règle sur ce qu'un téléphone en fait entendre (au-dessus de 250 Hz) : 18 dB sous la voix dans cette bande, et
-# jamais plus de -26 LUFS en tout (11 dB sous la voix), pour qu'une basse forte ne couvre pas la voix au casque.
-NIVEAU_MUSIQUE_AIGUS, NIVEAU_MUSIQUE_MAX = -33.0, -26.0
+# La musique se règle sur ce qu'un téléphone en fait entendre (au-dessus de 250 Hz) : 14 dB sous la voix dans cette bande, et
+# jamais plus de -22 LUFS en tout (7 dB sous la voix), pour qu'une basse forte ne couvre pas la voix au casque. (Plus bas, -33 et
+# -26, elle était jugée trop faible.)
+NIVEAU_MUSIQUE_AIGUS, NIVEAU_MUSIQUE_MAX = -29.0, -22.0
 EQ_MUSIQUE = "highpass=f=50,bass=g=-5:f=150:w=0.7"     # moins de basse : elle ne s'entend pas sur un téléphone et brouille la voix
 FORMATS_MUSIQUE = (".mp3", ".wav", ".m4a", ".aac", ".flac", ".ogg")
 
@@ -113,14 +114,15 @@ def piste_bruitages(reperes, dossier_sons, duree, sortie):
     return sortie, sorted(set(manquants))
 
 
-def choisir_musique(reglage, jour):
-    """Le morceau du jour : le fichier donné, ou, pour un dossier, un de ses morceaux choisi par la date (le même si on refait la vidéo)."""
+def choisir_musique(reglage, jour=None):
+    """Le morceau du jour : le fichier donné, ou, pour un dossier, un de ses morceaux choisi par la date (le même si on refait la vidéo) ;
+    sans date, le premier du dossier."""
     if not reglage:
         return None
     chemin = os.path.expanduser(reglage)
     if os.path.isdir(chemin):
         morceaux = sorted(f for f in os.listdir(chemin) if f.lower().endswith(FORMATS_MUSIQUE) and not f.startswith("."))
-        return os.path.join(chemin, morceaux[jour.toordinal() % len(morceaux)]) if morceaux else None
+        return os.path.join(chemin, morceaux[(jour.toordinal() if jour else 0) % len(morceaux)]) if morceaux else None
     return chemin if os.path.exists(chemin) else None
 
 
@@ -177,8 +179,12 @@ def assembler(video_muette, voix, bruitages, sortie, dossier_travail, musique=No
         a_mixer.append("[sfx]")
         k += 1
     if musique:
-        if voix:      # la musique baisse d'environ 4 dB quand la voix parle, et remonte doucement entre les phrases
-            filtres.append(f"[{k}:a][cle{c}]sidechaincompress=threshold=0.02:ratio=3:attack=30:release=600:makeup=1[mus]")
+        if voix:
+            # la musique baisse d'environ 3,5 dB quand la voix parle (mesuré : environ 13 dB sous la voix pendant qu'elle parle,
+            # au-dessus de 300 Hz) et remonte doucement entre les phrases. Avec threshold=0.02:ratio=3, elle tombait à 23 dB sous
+            # la voix : inaudible sur un téléphone.
+            filtres.append(f"[{k}:a][cle{c}]sidechaincompress=threshold=0.1:ratio=2:attack=30:release=600:makeup=1,asplit=2[mus][mus_seule]")
+            extra += ["-map", "[mus_seule]", "-ar", "48000", "-c:a", "pcm_s24le", os.path.join(dossier_travail, "musique-sous-voix.wav")]
         else:
             filtres.append(f"[{k}:a]anull[mus]")
         a_mixer.append("[mus]")

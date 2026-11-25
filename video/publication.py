@@ -68,6 +68,64 @@ def publier(j, video, config, journal=print):
     return dossier
 
 
+def description_periode(p, config):
+    """Le texte de la publication d'un récap de la semaine ou du mois."""
+    import recap_periode
+    accroche = recap_periode.accroche(p)[1]
+    if p["genre"] == "semaine":
+        quoi = f"récap de la semaine du {p['debut'].day} au {p['fin'].day} {nombres.MOIS[p['fin'].month - 1]} {p['fin'].year}"
+    else:
+        mois = nombres.MOIS[p["debut"].month - 1]
+        quoi = f"récap du mois {'d' + chr(39) if mois[0] in 'aeiouéè' else 'de '}{mois} {p['debut'].year}"
+    lignes = [f"{accroche} : {quoi}.", recap_periode.mot_periode(p), "", f"Total : {recap.ecran(p['total'], 'r')}"]
+    lignes += [f"{nom} : {recap.ecran(v, 'r')}" for nom, v in p["par_marche"].items()]
+    lignes.append(f"Jours de trade : {len(p['avec'])} sur {len(p['jours'])}, dont {len(p['gagnants'])} gagnant{recap._s(len(p['gagnants']))}")
+    if p["meilleur"] and p["meilleur"]["total"] > 0:
+        lignes.append(f"Meilleur jour : {recap_periode._jour_court(p['meilleur']['jour'])}, {recap.ecran(p['meilleur']['total'], 'r')}")
+    if p["pire"] and p["pire"]["total"] < 0:
+        lignes.append(f"Pire jour : {recap_periode._jour_court(p['pire']['jour'])}, {recap.ecran(p['pire']['total'], 'r')}")
+    lignes += ["1 R = le risque pris sur un trade.", "", config.get("mention_compte") or COMPTE.get(p["source"], ""),
+               "Chaque séance, gains comme pertes, sur le Telegram : lien en bio.",
+               "Pas un conseil en investissement. Le trading comporte un risque de perte en capital.", "",
+               " ".join(config.get("hashtags") or HASHTAGS)]
+    return "\n".join(lignes).strip() + "\n"
+
+
+def publier_periode(p, video, config):
+    """Le dossier d'un récap de la semaine (« Semaine du AAAA-MM-JJ ») ou du mois (« Mois AAAA-MM »)."""
+    import recap_periode
+    dossier = os.path.join(os.path.expanduser(config.get("dossier_publication") or BUREAU), recap_periode.nom_dossier(p))
+    os.makedirs(dossier, exist_ok=True)
+    nom = os.path.basename(video)
+    provisoire = os.path.join(dossier, "." + nom + ".partiel")
+    shutil.copyfile(video, provisoire)
+    os.replace(provisoire, os.path.join(dossier, nom))
+    with open(os.path.join(dossier, "description.txt"), "w", encoding="utf-8") as f:
+        f.write(description_periode(p, config))
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-ss", "3.2", "-i", video, "-frames:v", "1", "-q:v", "2",
+                    os.path.join(dossier, "couverture.jpg")], check=False)
+    return dossier
+
+
+def periodes_finies(jours, aujourd_hui, depuis):
+    """Les semaines (lundi-vendredi) et les mois finis : [(genre, début, fin)]. Une période est finie quand sa dernière séance
+    possible est passée, ou quand la séance de son dernier jour ouvré est finie dans les journaux. Seules celles qui se terminent
+    à partir de `depuis` comptent."""
+    import recap_periode
+    finis, vues, res = set(jours), set(), []
+    for jour in sorted(jours):
+        for genre, (debut, fin) in (("semaine", recap_periode.semaine_de(jour)), ("mois", recap_periode.mois_de(jour))):
+            if (genre, debut) in vues or fin < depuis:
+                continue
+            vues.add((genre, debut))
+            dernier_ouvre = fin
+            while dernier_ouvre.weekday() > 4:
+                dernier_ouvre -= datetime.timedelta(days=1)
+            if aujourd_hui > fin or dernier_ouvre in finis:
+                res.append((genre, debut, fin))
+    return res
+
+
 def prevenir(titre, texte):
     """Une notification du système (Mac) ; rien ailleurs."""
     if sys.platform == "darwin":
@@ -111,6 +169,29 @@ def auto(config, dossier_journaux, journal=print, aujourd_hui=None):
             continue
         journal(f"{jour} : prêt dans {dossier}")
         prevenir("Étrave", f"Récap du {nombres.date_courte(jour)} prêt à publier (dossier « {os.path.basename(racine)} »).")
+        faits.append(dossier)
+    # les récaps de la semaine et du mois, une fois la période finie (rattrapés au lancement suivant s'ils ont été manqués)
+    import recap_periode
+    for genre, debut, fin in periodes_finies(journee.jours_finis(dossier_journaux), aujourd_hui, depuis):
+        if not config.get("auto_hebdo" if genre == "semaine" else "auto_mensuel", True):
+            continue
+        p = recap_periode.charger(dossier_journaux, debut, fin, genre)
+        cible = os.path.join(racine, recap_periode.nom_dossier(p))
+        if (os.path.isdir(cible) and any(n.endswith(".mp4") for n in os.listdir(cible))) or not p["jours"]:
+            continue
+        if not p["avec"] and not config.get("auto_sans_trade"):
+            continue
+        sortie = os.path.join(os.path.expanduser(config["sortie"]), recap_periode.nom_dossier(p).replace(" ", "-").lower())
+        os.makedirs(sortie, exist_ok=True)
+        journal(f"{recap_periode.nom_dossier(p)} : {len(p['avec'])} jour(s) de trade, fabrication de la vidéo…")
+        try:
+            video = recap_periode.fabriquer(p, config, sortie, journal)
+            dossier = publier_periode(p, video, config)
+        except Exception as err:
+            journal(f"{recap_periode.nom_dossier(p)} : échec ({type(err).__name__} : {err}). Nouvel essai au prochain lancement.")
+            continue
+        journal(f"{recap_periode.nom_dossier(p)} : prêt dans {dossier}")
+        prevenir("Étrave", f"{recap_periode.nom_dossier(p)} : récap prêt à publier.")
         faits.append(dossier)
     if not faits:
         journal(f"Rien de nouveau à publier ({aujourd_hui.isoformat()}).")

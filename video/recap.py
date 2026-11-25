@@ -111,12 +111,9 @@ def faits(m):
 
 
 def pts_voix(x):
-    """Des points dits à voix haute, courts : à la dizaine à partir de 100 (« environ trois cents points » ; l'écran donne le chiffre
-    exact), entiers à partir de 10, sinon un chiffre après la virgule (« zéro virgule six point ») ; « point » au singulier sous 2."""
+    """Des points dits à voix haute, exactement comme l'écran les montre : entiers à partir de 10 (« deux cent quatre-vingt-dix-sept
+    points »), sinon un chiffre après la virgule (« zéro virgule six point ») ; « point » au singulier sous 2."""
     x = abs(x)
-    if x >= 99.5:
-        arrondi = int(round(x, -1))
-        return f"{'' if abs(arrondi - x) < 0.5 else 'environ '}{nombres.entier(arrondi)} points"
     mots = nombres.entier(round(x)) if x >= 9.95 else nombres.decimal(round(x, 1), 1)
     return f"{mots} point{'s' if round(x, 1) >= 2 else ''}"
 

@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1080, height=1920" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/gsap.min.js"></script>
+    <style>
+      /* La couverture de la vidéo de présentation : l'encre de nuit d'Étrave, l'accroche en grand, le bleu du logo pour la promesse.
+         Tout ce qui compte tient entre y = 300 et y = 1600 : la grille du profil TikTok coupe le haut et le bas (format 3:4). */
+      @font-face { font-family: "DIN Etrave"; src: url("assets/fonts/din-alternate-bold.ttf") format("truetype"); font-weight: 700; }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { width: 1080px; height: 1920px; overflow: hidden; background: #18222e; }
+      #root { position: relative; width: 1080px; height: 1920px; font-family: "DIN Etrave", sans-serif; color: #ffffff; }
+      #fond { position: absolute; inset: 0; background-color: #18222e;
+        background-image: linear-gradient(rgba(255,255,255,0.045) 2px, transparent 2px), linear-gradient(90deg, rgba(255,255,255,0.045) 2px, transparent 2px);
+        background-size: 90px 90px; background-position: 42px 40px; }
+      #logo { position: absolute; left: 96px; top: 330px; width: 150px; height: 150px; }
+      #marque { position: absolute; left: 262px; top: 382px; font-size: 54px; letter-spacing: 0.2em; color: #ffffff; }
+      .ligne { position: absolute; left: 100px; font-size: 128px; line-height: 1; }
+      #l1 { top: 600px; color: rgba(255,255,255,0.72); }
+      #l2 { top: 742px; }
+      #l3 { top: 884px; }
+      #l3 span { background: #2f7bd9; padding: 0.04em 0.18em 0 0.18em; margin-left: -0.18em; border-radius: 0.08em; }
+      .pastille { position: absolute; top: 1080px; font-size: 46px; line-height: 1; padding: 0.24em 0.46em 0.16em; border-radius: 0.2em;
+        background: rgba(255,255,255,0.1); color: #ffffff; }
+      #carte { position: absolute; left: 640px; top: 1200px; width: 330px; border-radius: 18px; overflow: hidden;
+        box-shadow: 0 30px 60px rgba(0,0,0,0.45); }
+      #carte img { display: block; width: 100%; }
+      #montant { position: absolute; left: 100px; top: 1250px; font-size: 76px; line-height: 1; }
+      #libelle { position: absolute; left: 104px; top: 1340px; font-size: 38px; line-height: 1.2; color: rgba(255,255,255,0.72); width: 500px; }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-composition-id="main" data-start="0" data-duration="1" data-width="1080" data-height="1920">
+      <div id="fond" class="clip" data-start="0" data-duration="1" data-track-index="0" data-layout-ignore></div>
+      <div id="tout" class="clip" data-start="0" data-duration="1" data-track-index="1" data-layout-allow-overlap>
+        <svg id="logo" viewBox="0 0 40 40">
+          <path d="M8 8c1.8 9.5 5.8 17.5 12 24 6.2-6.5 10.2-14.5 12-24" fill="none" stroke="#2f7bd9" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" />
+          <path d="M20 5v27" fill="none" stroke="#2f7bd9" stroke-width="2.6" stroke-linecap="round" />
+          <path d="M3 33c2.8-2.3 5.7-2.3 8.5 0M28.5 33c2.8-2.3 5.7-2.3 8.5 0" fill="none" stroke="#2f7bd9" stroke-width="2.6" stroke-linecap="round" opacity="0.6" />
+        </svg>
+        <div id="marque">ÉTRAVE</div>
+        <div id="l1" class="ligne">Mon robot trade.</div>
+        <div id="l2" class="ligne">Je publie</div>
+        <div id="l3" class="ligne"><span>tous mes trades.</span></div>
+        <div class="pastille" style="left: 100px">Nasdaq 100</div>
+        <div class="pastille" style="left: 404px">S&amp;P 500</div>
+        <div class="pastille" style="left: 654px">chaque séance</div>
+        <div id="montant">{{MONTANT}}</div>
+        <div id="libelle">{{LIBELLE_MONTANT}}</div>
+        <div id="carte"><img src="assets/certificat.png" alt="{{ALT_CERTIFICAT}}" /></div>
+      </div>
+    </div>
+    <script>
+      const tl = gsap.timeline({ paused: true });
+      tl.set("#carte", { rotation: 6, transformOrigin: "50% 50%" }, 0);
+      window.__timelines["main"] = tl;
+    </script>
+  </body>
+</html>

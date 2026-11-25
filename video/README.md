@@ -115,6 +115,10 @@ python3 video/outil.py installer
   - `description.txt`, le texte à coller dans TikTok : l'accroche, le petit mot, les résultats, le compte (réel ou démo,
     d'après le journal de l'EA), les mentions et les hashtags ;
   - `couverture.jpg`, l'écran titre.
+- **Le récap de la semaine** (lundi-vendredi) et **le récap du mois** se font de la même façon, une fois la période finie :
+  dossiers `Semaine du AAAA-MM-JJ/` et `Mois AAAA-MM/`. Une barre par séance, la courbe du cumul en R, le total de chaque marché,
+  le meilleur et le pire jour. Leurs chiffres sont ceux des récaps de chaque jour (le total de la semaine est la somme des bilans
+  quotidiens). `auto_hebdo` / `auto_mensuel` : false pour les couper.
 - Une notification prévient quand c'est prêt.
 - Seules les séances à partir du jour de l'installation sont faites (`auto_depuis` pour remonter plus loin).
 - Le journal du mode automatique est `recap-auto.log`, dans le dossier de l'outil copié
@@ -155,12 +159,14 @@ recap.py         écrit les scènes du récap et le minutage calé sur la voix, 
 presentation.py  remplit le modèle de la présentation avec le profil, rend et mixe
 voix.py          ElevenLabs (clone de ta voix) : une prise par vidéo coupée par scène, heure de chaque mot, rythme, cache
 publication.py   le dossier du jour (vidéo, description TikTok, couverture) et le mode automatique
+recap_periode.py les récaps de la semaine et du mois (barres, courbe, bilan)
 installation.py  la copie de l'outil et le lancement chaque soir (launchd sur Mac, tâches planifiées sous Windows)
 mixage.py        ffmpeg : voix, bruitages et musique baissés sous la voix, niveau final
 police.py        largeur des textes dans la police DIN, pour que les étiquettes restent dans les zones sûres de TikTok
 nombres.py       nombres, heures et dates en toutes lettres pour la voix
 sons.json        le catalogue des bruitages (nom, adresse Mixkit)
 modeles/presentation/   le projet HyperFrames de la présentation, avec des {{…}} à la place de ce qui est personnel
+modeles/couverture-presentation/   la couverture de la présentation (accroche, logo, marchés, certificat)
 test_video.py    les contrôles (dont : rien de personnel ni de fichier sous licence dans ce dossier)
 ```
 

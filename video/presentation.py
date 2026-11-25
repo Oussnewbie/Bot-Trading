@@ -104,6 +104,32 @@ def fabriquer(config, journal=print):
     bruitages, manquants = mixage.piste_bruitages(reperes, config.get("sons"), DUREE, os.path.join(travail, "bruitages.wav"))
     if manquants:
         journal(f"{len(manquants)} bruitage(s) absent(s) : python3 video/outil.py sons")
+    # la musique de fond : `musique_presentation` si tu en choisis une, sinon le premier morceau du dossier `musique`
+    musique = mixage.piste_musique(config.get("musique_presentation") or config.get("musique"), None, DUREE,
+                                   os.path.join(travail, "musique.wav"), journal)
     finale = os.path.join(sortie, "presentation-etrave.mp4")
-    mixage.assembler(muette, voix, bruitages, finale, travail)
+    mixage.assembler(muette, voix, bruitages, finale, travail, musique)
     return finale
+
+
+COUVERTURE = os.path.join(ICI, "modeles", "couverture-presentation")
+
+
+def couverture(config, sortie_jpg, journal=print):
+    """La couverture de la vidéo de présentation (1080 x 1920, JPG) : l'accroche, le logo, les marchés, le certificat."""
+    profil = config.get("presentation") or {}
+    travail = os.path.join(os.path.expanduser(config["sortie"]), "presentation", "couverture")
+    if os.path.isdir(travail):
+        shutil.rmtree(travail)
+    shutil.copytree(COUVERTURE, travail)
+    os.makedirs(os.path.join(travail, "assets", "fonts"), exist_ok=True)
+    shutil.copy(os.path.expanduser(config["police"]), os.path.join(travail, "assets", "fonts", "din-alternate-bold.ttf"))
+    shutil.copy(os.path.expanduser(profil["certificat"]), os.path.join(travail, "assets", "certificat.png"))
+    remplir(profil, travail)
+    images = os.path.join(travail, "images")
+    subprocess.run(HYPERFRAMES + ["snapshot", "--at", "0.5", "--no-end", "-o", images], cwd=travail, check=True,
+                   stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
+    png = next(os.path.join(images, n) for n in sorted(os.listdir(images)) if n.startswith("frame-") and n.endswith(".png"))
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", png, "-q:v", "2", sortie_jpg], check=True)
+    return sortie_jpg
+

@@ -74,11 +74,12 @@ def _position(e):
     }
 
 
-def charger(dossier, jour=None):
+def charger(dossier, jour=None, bougies_requises=True):
     """La journée `jour` (date de New York ; par défaut la dernière séance finie) : un dictionnaire prêt à raconter.
 
     marches : un par symbole qui a une ligne « fin » ce jour-là, Nasdaq puis S&P 500 ; chacun avec sa zone, ses bougies (heure de
     Paris), ses positions (dans l'ordre d'entrée) et ses totaux (points, R, argent, % du solde si le journal des trades est là).
+    bougies_requises=False : pour les récaps de la semaine et du mois, qui n'ont besoin que des résultats.
     """
     if not os.path.isdir(dossier):
         raise JourneeIncomplete(f"Dossier des journaux introuvable : {dossier}")
@@ -102,7 +103,7 @@ def charger(dossier, jour=None):
         fin = [x for x in lignes if x["moment"] == "fin"][-1]
         sources.update(x.get("source", "") for x in lignes)
         b = [x for x in bougies if x["jour_ny"] == cle and x["symbole"] == s]
-        if not b:
+        if not b and bougies_requises:
             raise JourneeIncomplete(f"Pas de bougies pour {s} le {cle} : l'EA qui tournait ce jour-là n'écrivait pas encore le journal "
                                     "des bougies (bougies-<symbole>.csv). Installe l'EA de cette version, le récap marchera dès la séance suivante.")
         bas, haut = export.nombre(fin.get("range_bas")), export.nombre(fin.get("range_haut"))

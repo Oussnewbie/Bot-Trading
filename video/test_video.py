@@ -144,12 +144,12 @@ def test_le_mouvement_du_prix_est_raconte_en_points():
     f = recap.faits({"positions": [fin, stop]})
     assert recap.phrase_stops(f) == ("La dernière vente va jusqu'à vingt-cinq points en notre faveur… puis le marché se retourne de "
                                      "quatre-vingt-cinq points : stop touché.")
-    assert recap.phrase_fins(f) == ("L'autre position tient jusqu'à la fin de séance : jusqu'à environ deux cent quatre-vingts points "
+    assert recap.phrase_fins(f) == ("L'autre position tient jusqu'à la fin de séance : jusqu'à deux cent soixante-seize points "
                                     "en notre faveur, puis le prix remonte.")
     aussitot = recap.faits({"positions": [_pos(1, 13, 96.5, 100.0, "Stop", 0.4, 3.5)]})
     assert recap.phrase_stops(aussitot) == "Le prix part aussitôt contre nous : stop touché, trois virgule cinq points plus bas."
     gagnant = recap.faits({"positions": [_pos(1, 13, 151.0, 100.0, "Stop remonté", 106.1, 36.0)]})
-    assert recap.phrase_stops(gagnant) == ("Le prix va jusqu'à environ cent dix points en notre faveur, puis sort au stop, "
+    assert recap.phrase_stops(gagnant) == ("Le prix va jusqu'à cent six points en notre faveur, puis sort au stop, "
                                            "avec cinquante et un points de gain.")
     assert recap.pts_ecran(-297.2) == "−297 pts" and recap.pts_ecran(0.57) == "+0,6 pt" and recap.pts_ecran(14.12) == "+14 pts"
 
@@ -335,3 +335,39 @@ def test_mode_automatique(tmp_path, monkeypatch):
     ecrire_journee(str(journaux), datetime.date(2026, 4, 16), positions=())                               # sans trade : rien
     config["dossier_publication"] = str(tmp_path / "bureau2")
     assert publication.auto(config, str(journaux), lambda t: None, datetime.date(2026, 4, 16)) == []
+
+
+def test_semaines_et_mois_finis():
+    j = datetime.date
+    jours = [j(2026, 11, 23), j(2026, 11, 24), j(2026, 11, 25), j(2026, 11, 26), j(2026, 11, 27), j(2026, 11, 30)]
+    # le vendredi 27 au soir : la semaine du 23 est finie (sa séance du vendredi est dans les journaux), novembre ne l'est pas
+    assert publication.periodes_finies(jours[:5], j(2026, 11, 27), j(2026, 11, 25)) == [("semaine", j(2026, 11, 23), j(2026, 11, 27))]
+    # le lundi 30 au soir : novembre est fini (dernier jour ouvré), la semaine du 30 non
+    assert ("mois", j(2026, 11, 1), j(2026, 11, 30)) in publication.periodes_finies(jours, j(2026, 11, 30), j(2026, 11, 25))
+    assert ("semaine", j(2026, 11, 30), j(2026, 12, 4)) not in publication.periodes_finies(jours, j(2026, 11, 30), j(2026, 11, 25))
+    # une semaine finie avant `depuis` n'est pas refaite
+    assert publication.periodes_finies([j(2026, 11, 16)], j(2026, 11, 30), j(2026, 11, 25)) == []
+
+
+def test_recap_de_la_semaine_egal_a_la_somme_des_jours(tmp_path):
+    import recap_periode
+    for jour, ps in ((datetime.date(2026, 4, 13), 115.0), (datetime.date(2026, 4, 14), 90.0), (datetime.date(2026, 4, 15), None)):
+        ecrire_journee(str(tmp_path), jour, positions=() if ps is None else ((1, "A", 9, 36, 100.0, 15, 50, ps, "Fin de journée"),))
+        os.rename(tmp_path / "execution-NDX100.csv", tmp_path / f"e-{jour}.csv")
+        for nom in ("seances", "bougies"):
+            os.rename(tmp_path / f"{nom}-NDX100.csv", tmp_path / f"{nom[0]}-{jour}.csv")
+    for nom, lettre in (("execution", "e"), ("seances", "s"), ("bougies", "b")):
+        morceaux = sorted(tmp_path.glob(f"{lettre}-*.csv"))
+        with open(tmp_path / f"{nom}-NDX100.csv", "w", encoding="utf-8") as f:
+            f.write(morceaux[0].read_text(encoding="utf-8").splitlines(keepends=True)[0])
+            for m in morceaux:
+                f.writelines(m.read_text(encoding="utf-8").splitlines(keepends=True)[1:])
+    p = recap_periode.charger(str(tmp_path), datetime.date(2026, 4, 13), datetime.date(2026, 4, 17), "semaine")
+    jours = {d["jour"]: d for d in p["jours"]}
+    assert len(p["jours"]) == 3 and len(p["avec"]) == 2 and len(p["gagnants"]) == 1 and len(p["perdants"]) == 1
+    assert p["total"] == round(sum(round(d["total"], 2) for d in p["avec"]), 2)
+    assert p["meilleur"]["jour"] == datetime.date(2026, 4, 13) and not jours[datetime.date(2026, 4, 15)]["trades"]
+    textes = recap_periode.repliques(p)
+    assert textes[1].startswith("Lundi : plus") and "Mercredi : pas de trade." in textes[1]
+    texte = publication.description_periode(p, {})
+    assert texte.startswith("Semaine ") and "Jours de trade : 2 sur 3, dont 1 gagnant" in texte and "D2" not in texte
