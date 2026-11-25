@@ -12,7 +12,7 @@
     python3 video/outil.py desinstaller              retire ce lancement automatique
 
 La configuration est un fichier privé, hors du dépôt : ~/.config/etrave-video/config.json (modèle : video/config.exemple.json).
---testeur lit les journaux du testeur de stratégie (sous-dossier `testeur`) : le fichier vidéo porte « -exemple » dans son nom.
+--testeur lit les journaux du testeur de stratégie (sous-dossier `testeur`) ; seule la description le dit (« simulation »).
 """
 import argparse
 import datetime
@@ -110,7 +110,7 @@ def main(arguments=None):
     a = argparse.ArgumentParser(description="Étrave vidéo : récap de séance et présentation, en motion design.")
     a.add_argument("commande", choices=["verifier", "jours", "recap", "presentation", "sons", "auto", "installer", "desinstaller"])
     a.add_argument("--jour", help="date de la séance (New York), AAAA-MM-JJ ; par défaut la dernière finie")
-    a.add_argument("--testeur", action="store_true", help="journaux du testeur (fichier nommé « -exemple »)")
+    a.add_argument("--testeur", action="store_true", help="journaux du testeur de stratégie")
     a.add_argument("--sans-voix", action="store_true", help="ne pas appeler ElevenLabs")
     a.add_argument("--config", help=f"fichier de configuration (par défaut {CONFIG})")
     args = a.parse_args(arguments)
@@ -163,7 +163,7 @@ def main(arguments=None):
     except journee.JourneeIncomplete as err:
         print(err)
         return 2
-    sortie = os.path.join(os.path.expanduser(config["sortie"]), f"recap-{j['jour'].isoformat()}{'-exemple' if args.testeur else ''}")
+    sortie = os.path.join(os.path.expanduser(config["sortie"]), f"recap-{j['jour'].isoformat()}{'-testeur' if args.testeur else ''}")
     os.makedirs(sortie, exist_ok=True)
     print(f"Séance du {j['jour']} : {j['trades']} position(s) sur {len(j['marches'])} marché(s).")
     print("Vidéo :", recap.fabriquer(j, config, sortie, print))

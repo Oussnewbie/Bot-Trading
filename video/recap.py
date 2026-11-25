@@ -14,8 +14,8 @@ Tout se cale sur la voix : la durée de chaque scène vient de la durée de sa r
 (heure de chaque mot rendue par ElevenLabs). Sans voix, des durées fixes.
 
 Ce qui reste secret ne sort pas : ni le type d'entrée (seulement « Achat » ou « Vente »), ni les filtres, ni la raison d'un jour
-sans trade. Aucune mention démo, réel ou testeur dans l'image (tu le dis dans la description) ; une journée du testeur garde
-« -exemple » dans le nom de son fichier, pour ne jamais la publier par erreur comme une séance du compte.
+sans trade. Aucune mention démo, réel ou testeur dans la vidéo ni dans le nom de ses fichiers : seule la description de la
+publication le dit (publication.py).
 """
 import datetime
 import html
@@ -1059,7 +1059,6 @@ def fabriquer(j, config, dossier_sortie, journal=print, rendre=True):
     duree = round(debut, 3)
     for s in scenes[1:]:            # le volet entre deux scènes
         reperes.append({"t": round(s["debut"] - VOLET - 0.05, 3), "son": "swoosh-fast-transitions-3115", "gain_db": -11})
-    exemple = j["source"] == "testeur"
     with open(os.path.join(projet, "index.html"), "w", encoding="utf-8") as f:
         f.write(_index(scenes, duree))
     json.dump({"jour": j["jour"].isoformat(), "source": j["source"], "unite": unite, "duree": duree,
@@ -1080,7 +1079,7 @@ def fabriquer(j, config, dossier_sortie, journal=print, rendre=True):
     if manquants:
         journal(f"{len(manquants)} bruitage(s) absent(s) du dossier de sons ({', '.join(manquants[:4])}…) : `outil.py sons` les télécharge.")
     piste_m = mixage.piste_musique(config.get("musique"), j["jour"], duree, os.path.join(travail, "musique.wav"), journal)
-    nom = f"recap-{j['jour'].isoformat()}{'-exemple' if exemple else ''}.mp4"
+    nom = f"recap-{j['jour'].isoformat()}.mp4"
     finale = os.path.join(dossier_sortie, nom)
     mixage.assembler(muette, piste_v, piste_b, finale, travail, piste_m)
     return finale

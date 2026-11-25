@@ -50,8 +50,8 @@ Exemple de texte lu (tout est écrit à partir des journaux de l'EA, les heures 
   - le type d'entrée (seulement « Achat » ou « Vente ») ;
   - les filtres et les réglages ;
   - la raison d'un jour sans trade (« les conditions n'étaient pas réunies »).
-- **Aucune mention démo, réel ou testeur dans l'image** : tu le dis dans la description. Une journée du testeur garde « -exemple »
-  dans le nom de son fichier, pour ne jamais la publier par erreur comme une séance du compte.
+- **Démo, réel ou testeur : seulement dans la description** (`description.txt`, la bio de la publication), d'après le journal de
+  l'EA. Ni la vidéo, ni la couverture, ni le nom des fichiers n'en parlent.
 
 ## Installation (une fois)
 

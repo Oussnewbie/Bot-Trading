@@ -119,7 +119,7 @@ video/     (branche communication/outil-video) vidéos TikTok : récap de séanc
   sur 300 000 $ avec ce journal : 448 trades, +64 931,85 $, identique à la référence.
 - **Vidéos** (`video/`) : rien de personnel ni de fichier sous licence dans le dépôt (prénom, montant, certificat, voix, clé, voix_id,
   sons Mixkit, police DIN) : tout est dans `~/.config/etrave-video/config.json` et des dossiers locaux. Un test le vérifie en lisant
-  les valeurs dans cette configuration. Aucune mention démo, réel ou testeur dans l'image (l'utilisateur le dit en description) ; une journée du testeur garde « -exemple » dans le nom du fichier. Les
+  les valeurs dans cette configuration. Démo, réel ou testeur : seulement dans la description de la publication (choix de l'utilisateur), jamais dans la vidéo, la couverture ni les noms de fichiers. Les
   raisons des filtres et le type d'entrée (A, B, D) ne sont jamais montrés : c'est le secret de la stratégie, à la demande de l'utilisateur.
   Récap : voix en une seule prise par vidéo (`voix.recit`, sinon le timbre change d'une scène à l'autre), chemin du prix en points
   (mfe du journal d'exécution), mode automatique (`outil.py installer` : agent launchd

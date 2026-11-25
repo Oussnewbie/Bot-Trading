@@ -5,8 +5,8 @@ de couverture, plus le mode automatique qui fabrique ces dossiers chaque soir.
                                      description.txt      à coller dans TikTok (accroche, résultats, compte, mentions, hashtags)
                                      couverture.jpg       l'écran titre, pour choisir la couverture
 
-La description dit de quel compte viennent les trades, d'après le journal de l'EA (« reel », « demo », « testeur ») : jamais dans
-l'image, toujours dans le texte. Rien de la méthode n'y figure (ni type d'entrée, ni filtre).
+La description (la bio de la publication) est le seul endroit qui dit de quel compte viennent les trades, d'après le journal de
+l'EA (« reel », « demo », « testeur ») : ni l'image, ni la couverture, ni le nom des fichiers. Rien de la méthode n'y figure.
 """
 import datetime
 import json
@@ -56,7 +56,7 @@ def publier(j, video, config, journal=print):
     """Copie la vidéo dans le dossier du jour, écrit la description et la couverture. Rend le dossier."""
     dossier = os.path.join(os.path.expanduser(config.get("dossier_publication") or BUREAU), j["jour"].isoformat())
     os.makedirs(dossier, exist_ok=True)
-    nom = f"recap-{j['jour'].isoformat()}{'-exemple' if j['source'] == 'testeur' else ''}.mp4"
+    nom = f"recap-{j['jour'].isoformat()}.mp4"
     provisoire = os.path.join(dossier, "." + nom + ".partiel")
     shutil.copyfile(video, provisoire)
     os.replace(provisoire, os.path.join(dossier, nom))          # la vidéo n'apparaît que complète
