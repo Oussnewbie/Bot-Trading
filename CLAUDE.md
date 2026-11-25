@@ -141,6 +141,11 @@ video/     (branche communication/outil-video) vidéos TikTok : récap de séanc
   - Pine : côté bloqué vu à la clôture, ajout au prix de clôture, pas de commission par défaut (limites du backtest TradingView) ;
   - PINE-04 (25/11/2026) : `close_entries_rule = "ANY"` ajouté (en FIFO, le stop d'un D fermait A) : pas encore vérifié sur
     TradingView ;
+  - Écarts EA / Pine / simulateur relevés le 25/11/2026 (décision de l'utilisateur en attente) : stop des D compté depuis le prix
+    obtenu dans l'EA (LegOpen), depuis le déclenchement dans le Pine et le simulateur ; Pine : contrôle du bord opposé pour les D
+    seulement après la bougie de cassure, au bid ; Pine : `legQty` au moins un pas (une jambe peut dépasser 1R dans le backtest) ;
+- Test des stops (25/11/2026, pré-enregistré, historique déjà vu) : fermer B/D au stop de A ≈ neutre ; B/D à l'entrée dès +0,5R,
+  stop à +0,5R au lieu de l'entrée, A à l'entrée quand une jambe part : moins bons. Les stops restent tels quels.
   - R-06 : le prochain jour faux du calendrier est le 31/12/2027.
 
 ## Données et archives (hors dépôt)

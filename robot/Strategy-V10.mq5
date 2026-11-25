@@ -34,7 +34,8 @@
 // STRATEGY V8 = la v7 ci-dessus (trade A, la cassure) + deux entrées de plus, les jours où la cassure est prise :
 // 10. B — REPLI SUR LE VWAP : après la cassure, la première bougie M5 (après celle de la cassure) qui touche le prix
 //                moyen de séance (VWAP depuis 9:30, à 0,1 range près), clôture du bon côté du VWAP et dans le sens du
-//                trade déclenche une entrée au marché. Stop 1 point au-delà de l'extrême des 2 dernières bougies M5.
+//                trade déclenche une entrée au marché. Stop au-delà de l'extrême des 2 dernières bougies M5, avec une marge de
+//                0,5 pb du prix (B_BUF_PB : environ 1,3 point sur le Nasdaq, 0,35 point sur le S&P 500).
 //                Même gestion que la cassure (stop à l'entrée à +1,5R, pyramide à +2R), en multiples du stop de cette
 //                entrée. Jusqu'à 14:00 ; abandonné si une bougie M5 clôture de l'autre côté du range. Une fois par jour.
 // 11. C — ENTRÉE À 10:00 : si à 10:00 le prix est toujours au-delà du niveau de cassure et que le stop du range n'a
