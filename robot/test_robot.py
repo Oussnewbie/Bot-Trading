@@ -535,10 +535,24 @@ def test_en_tete_du_pine_a_jour():
     assert "Nasdaq 100 et S&P 500" in entete and "3 ranges" in entete
 
 
+# Les noms de prop firm à ne jamais écrire dans le dépôt public, par leur empreinte (sha256 du nom en minuscules, sans espace) : le
+# test ne les écrit pas lui-même.
+PROP_FIRMS = {"c86658c1a56457d2"}
+
+
+def noms_de_prop_firm(texte):
+    """Les mots (ou paires de mots collées) du texte dont l'empreinte est celle d'une prop firm."""
+    import hashlib
+    import re
+    mots = re.findall(r"[a-z0-9]+", texte.lower())
+    candidats = set(mots) | {a + b for a, b in zip(mots, mots[1:])}
+    return [m for m in candidats if hashlib.sha256(m.encode()).hexdigest()[:16] in PROP_FIRMS]
+
+
 def test_aucune_prop_firm_nommee_dans_le_depot_public():
     """Le dépôt est public : les infobulles du Pine disent « prop firm » sans nommer d'entreprise (choix de l'utilisateur, 25/11/2026)."""
     racine = os.path.dirname(ICI)
-    for chemin in ("robot/Strategy-V10.pine", "robot/Strategy-V10.mq5", "README.md"):
-        texte = open(os.path.join(racine, chemin), encoding="utf-8-sig").read().lower()
-        assert "fundingpips" not in texte and "funding pips" not in texte, chemin
+    for chemin in ("robot/Strategy-V10.pine", "robot/Strategy-V10.mq5", "README.md", "CLAUDE.md"):
+        assert not noms_de_prop_firm(open(os.path.join(racine, chemin), encoding="utf-8-sig").read()), chemin
+    assert noms_de_prop_firm("un certificat " + "Funding" + "Pips") and not noms_de_prop_firm("une prop firm")
     assert "chez une prop firm" in PINE and "compte de prop firm" in PINE
