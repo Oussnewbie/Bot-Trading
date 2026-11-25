@@ -68,6 +68,9 @@ def _position(e):
         "points": (sortie - entree) * sens if entree is not None and sortie is not None and sens in (1, -1) else None,
         "r": export.nombre(e.get("r")), "net": export.nombre(e.get("resultat_net")), "devise": e.get("devise", ""),
         "raison": e.get("raison", ""),
+        # le chemin du prix pendant la position (ticks et M1 lus par l'EA) : le plus loin en notre faveur (mfe), contre nous (mae),
+        # et la distance du stop ; en points du symbole, vides si l'EA n'a pas pu les mesurer
+        "mfe": export.nombre(e.get("mfe_prix")), "mae": export.nombre(e.get("mae_prix")), "risque": export.nombre(e.get("risque_prix")),
     }
 
 

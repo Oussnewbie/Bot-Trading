@@ -113,8 +113,9 @@ def test_voix_sans_secret_et_r_explique_une_fois(tmp_path):
     for secret in ("RSI", "élan", "D1", " B ", "Range traité", "bloquée", "filtre"):
         assert secret not in tout
     assert tout.count("Un R, c'est le risque pris sur un trade.") == 1
-    assert textes[1].startswith("Nasdaq. Quinze heures trente-six : le prix casse la zone par le bas. Le robot vend : trois positions. "
-                                "Un stop touché… et deux sorties en fin de séance. Résultat : moins ")
+    assert textes[1].startswith("Nasdaq. Quinze heures trente-six : le prix casse la zone par le bas, le robot vend. Trois ventes en tout. "
+                                "La première vente part aussitôt contre nous : stop touché, quinze points plus haut. "
+                                "Les deux autres tiennent jusqu'à la fin de séance. Résultat : moins ")
     assert textes[0] == "Jeudi seize avril. Journée rouge pour le robot… on regarde ça !"
     assert textes[-1].endswith("Chaque séance est sur le Telegram : lien en bio !") and recap.mot_du_jour(j, recap.total(j, "r")) in textes[-1]
 
@@ -125,9 +126,32 @@ def test_meme_scenario_pas_raconte_deux_fois(tmp_path):
     j["marches"].append(dict(m, nom="S&P 500", voix="S et P cinq cents", symbole="SPX500", r=0.42))
     textes = recap.repliques(j, "r")
     assert textes[0].startswith("Jeudi seize avril. Journée verte")
-    assert "Le robot achète : deux positions. Les deux sortent en fin de séance." in textes[1]
-    assert textes[2].startswith("Même scénario sur le S et P cinq cents : les deux sortent en fin de séance. Résultat : plus zéro virgule quarante-deux R.")
+    assert "le robot achète. Deux achats en tout. Les deux positions tiennent jusqu'à la fin de séance. Résultat : plus" in textes[1]
+    assert textes[2] == "Même scénario sur le S et P cinq cents. Les deux positions tiennent jusqu'à la fin de séance. Résultat : plus zéro virgule quarante-deux R."
     assert "Un R, c'est le risque" not in textes[2]
+
+
+def _pos(sens, he, ps, pe, raison, mfe, risque, minute=0):
+    t = datetime.datetime(2026, 4, 16, he, minute, tzinfo=UTC)
+    return {"sens": sens, "entree": t, "sortie": t + datetime.timedelta(hours=1), "prix_entree": pe, "prix_sortie": ps,
+            "points": (ps - pe) * sens, "raison": raison, "mfe": mfe, "risque": risque, "r": None}
+
+
+def test_le_mouvement_du_prix_est_raconte_en_points():
+    """Jusqu'où le prix est allé en notre faveur avant le stop, de combien il s'est retourné, ce que les autres ont tenu."""
+    stop = _pos(-1, 14, 160.0, 100.0, "Stop", 25.0, 60.0, 5)
+    fin = _pos(-1, 13, 70.1, 100.0, "Fin de journée", 276.0, 300.0, 35)
+    f = recap.faits({"positions": [fin, stop]})
+    assert recap.phrase_stops(f) == ("La dernière vente va jusqu'à vingt-cinq points en notre faveur… puis le marché se retourne de "
+                                     "quatre-vingt-cinq points : stop touché.")
+    assert recap.phrase_fins(f) == ("L'autre position tient jusqu'à la fin de séance : jusqu'à environ deux cent quatre-vingts points "
+                                    "en notre faveur, puis le prix remonte.")
+    aussitot = recap.faits({"positions": [_pos(1, 13, 96.5, 100.0, "Stop", 0.4, 3.5)]})
+    assert recap.phrase_stops(aussitot) == "Le prix part aussitôt contre nous : stop touché, trois virgule cinq points plus bas."
+    gagnant = recap.faits({"positions": [_pos(1, 13, 151.0, 100.0, "Stop remonté", 106.1, 36.0)]})
+    assert recap.phrase_stops(gagnant) == ("Le prix va jusqu'à environ cent dix points en notre faveur, puis sort au stop, "
+                                           "avec cinquante et un points de gain.")
+    assert recap.pts_ecran(-297.2) == "−297 pts" and recap.pts_ecran(0.57) == "+0,6 pt" and recap.pts_ecran(14.12) == "+14 pts"
 
 
 def test_jour_sans_trade_ne_dit_pas_pourquoi(tmp_path):
@@ -165,11 +189,15 @@ def test_seance_tradee_jamais_racontee_comme_sans_trade(tmp_path):
     assert m["pct"] == pytest.approx(1.2) and len(m["positions"]) == 1
 
 
-def test_mention_exemple_seulement_pour_le_testeur(tmp_path):
-    scenes = [{"id": "titre", "debut": 0, "duree": 3}]
-    assert "Exemple : journée du testeur" in recap._index(scenes, 3, True)
-    assert "Exemple" not in recap._index(scenes, 3, False)
-    assert _journee(tmp_path, source="testeur")["source"] == "testeur"
+def test_aucune_mention_demo_ou_reel_dans_l_image(tmp_path):
+    """Tu dis démo ou réel dans la description : l'image n'en parle jamais, même pour une journée du testeur."""
+    j = _journee(tmp_path, source="testeur")
+    assert j["source"] == "testeur"
+    images = [recap._index([{"id": "titre", "debut": 0, "duree": 3}], 3), recap.scene_titre(j, None, "r")[1],
+              recap.scene_marche(j, j["marches"][0], 0, None, "r", 7.0)[1], recap.scene_bilan(j, None, "r", recap.repliques(j, "r")[-1])[1]]
+    for texte in images + recap.repliques(j, "r"):
+        for mot in ("Exemple", "testeur", "démo", "réel", "simulation"):
+            assert mot not in texte, mot
 
 
 def test_les_scenes_n_affichent_pas_le_type_d_entree(tmp_path):

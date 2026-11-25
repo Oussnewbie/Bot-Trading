@@ -11,8 +11,10 @@ encre, bleu du logo, chiffres en DIN) :
   - le bilan de la journée ;
 - **la présentation de la chaîne** : 47,6 s, rejouée à l'identique à partir d'un profil local.
 
-La voix off est le clone ElevenLabs de ta voix, réglée pour avoir de l'énergie : plus d'intonation, aucun silence de plus de
-0,3 s entre deux mots, puis 10 % plus rapide sans changer sa hauteur (`voix_tempo`, `voix_pause_max`). Les bruitages
+La voix off est le clone ElevenLabs de ta voix, **en une seule prise par vidéo** (toutes les scènes demandées ensemble, puis
+coupées dans les silences) : des demandes séparées changeaient un peu le timbre d'une scène à l'autre. Mêmes réglages que la vidéo
+de présentation, une graine fixe (`voix_graine`), puis le rythme : aucun silence de plus de 0,3 s entre deux mots et 10 % plus
+rapide sans changer la hauteur (`voix_tempo`, `voix_pause_max`). Les bruitages
 sont de vrais enregistrements (Mixkit). La musique de fond est un morceau à toi, posé sous la voix. L'image est rendue par
 [HyperFrames](https://hyperframes.dev), le son est mixé par ffmpeg.
 
@@ -21,10 +23,13 @@ sont de vrais enregistrements (Mixkit). La musique de fond est un morceau à toi
 Exemple de texte lu (tout est écrit à partir des journaux de l'EA, les heures en heure de Paris) :
 
 > Mercredi dix-huit novembre. Journée rouge pour le robot… on regarde ça !
-> Nasdaq. Quinze heures trente-cinq : le prix casse la zone par le bas. Le robot vend : cinq positions. Un stop touché… et quatre
-> sorties en fin de séance. Résultat : moins un virgule cinq R. Un R, c'est le risque pris sur un trade.
-> Même scénario sur le S et P cinq cents : un stop touché… et quatre sorties en fin de séance. Résultat : moins zéro virgule
-> cinquante-six R.
+> Nasdaq. Quinze heures trente-cinq : le prix casse la zone par le bas, le robot vend. Cinq ventes en tout. Une vente part aussitôt
+> contre nous : stop touché, environ trois cents points plus haut. Les quatre autres tiennent jusqu'à la fin de séance : jusqu'à
+> environ deux cent quatre-vingts points en notre faveur, puis le prix remonte. Résultat : moins un virgule cinq R. Un R, c'est le
+> risque pris sur un trade.
+> Même scénario sur le S et P cinq cents. Une vente part aussitôt contre nous : stop touché, soixante-trois points plus haut. Les
+> quatre autres tiennent jusqu'à la fin de séance : jusqu'à soixante points en notre faveur, puis le prix remonte. Résultat : moins
+> zéro virgule cinquante-six R.
 > Bilan du jour : moins deux virgule zéro six R. Les pertes font partie du jeu. On les montre aussi. Chaque séance est sur le
 > Telegram : lien en bio !
 
@@ -33,7 +38,11 @@ Exemple de texte lu (tout est écrit à partir des journaux de l'EA, les heures 
   - le vert et le rouge disent le résultat (le R, les ronds de sortie, les étiquettes des sorties, le total) ;
   - le jaune surligne la cassure et la bougie où la caméra s'arrête ;
   - le bleu et l'encre disent achat et vente.
-- Chaque arrêt de la caméra tombe sur le mot de la voix qui le dit, et dure au moins 1,5 s : le temps de lire l'étiquette.
+- Chaque arrêt de la caméra tombe sur la phrase qui le raconte, et dure au moins 1,5 s : le temps de lire l'étiquette.
+- **Le chemin du prix est raconté en points** (journal d'exécution de l'EA) : jusqu'où il est allé en notre faveur avant un stop
+  (trait vert sur le graphique, « Jusqu'à +106 pts »), de combien il s'est retourné, ou s'il est parti aussitôt contre nous ; pour
+  les positions gardées jusqu'au soir, le plus loin atteint en notre faveur. Les grands nombres sont arrondis à la voix (« environ
+  trois cents points »), exacts à l'écran.
 - Quand le deuxième marché a vécu la même séance que le premier, la voix dit « Même scénario » au lieu de tout répéter.
 - Un petit mot léger termine le bilan. Il change selon le résultat (perte, gain, pas de trade) et selon la date : refaire la même
   vidéo redonne le même mot.
@@ -41,8 +50,8 @@ Exemple de texte lu (tout est écrit à partir des journaux de l'EA, les heures 
   - le type d'entrée (seulement « Achat » ou « Vente ») ;
   - les filtres et les réglages ;
   - la raison d'un jour sans trade (« les conditions n'étaient pas réunies »).
-- Une journée du **testeur** porte la mention incrustée « Exemple : journée du testeur, pas un trade réel ». Une journée du compte
-  n'a aucune mention.
+- **Aucune mention démo, réel ou testeur dans l'image** : tu le dis dans la description. Une journée du testeur garde « -exemple »
+  dans le nom de son fichier, pour ne jamais la publier par erreur comme une séance du compte.
 
 ## Installation (une fois)
 
