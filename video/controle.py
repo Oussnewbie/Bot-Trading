@@ -2,7 +2,7 @@
 
 Il mesure ce qui a déjà raté une fois, pour qu'un défaut se voie le jour même au lieu d'être entendu sur TikTok :
 - les bruitages et la musique ne doivent jamais être hachés par la voix (le gain ne saute pas de plus de 3 dB en 10 ms) ;
-- la voix ne coupe jamais net (de la parole au silence total, ou l'inverse, en 5 ms) ;
+- la voix ne coupe jamais net (de la parole au silence total en 5 ms : un mot coupé) ;
 - le niveau final (-15 LUFS ± 1,5) et le pic (sous -1 dBTP).
 Il prévient sans bloquer (un faux positif ne doit pas arrêter la vidéo du soir). Python seul et ffmpeg : rien à installer.
 """
@@ -41,9 +41,10 @@ def hachage(avant, apres, actif=-60.0):
 
 
 def bords_durs(voix):
-    """Les instants où la voix passe de la parole (> -30 dBFS) au silence total (< -60) ou l'inverse, en 5 ms."""
+    """Les instants où la voix tombe de la parole (> -30 dBFS) au silence total (< -60) en 5 ms : un mot coupé. Une voix finit
+    toujours en s'éteignant ; un mot peut en revanche commencer d'un coup (« p », « t ») : les débuts ne sont pas comptés."""
     v = niveaux(voix, 0.005)
-    return [round(i * 0.005, 2) for i in range(1, len(v)) if (v[i - 1] > -30 and v[i] < -60) or (v[i - 1] < -60 and v[i] > -30)]
+    return [round(i * 0.005, 2) for i in range(1, len(v)) if v[i - 1] > -30 and v[i] < -60]
 
 
 def niveau_final(video):
