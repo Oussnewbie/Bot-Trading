@@ -1,0 +1,39 @@
+<template>
+  <style>
+    @font-face { font-family: "DIN Etrave"; src: url("assets/fonts/din-alternate-bold.ttf") format("truetype"); font-weight: 700; }
+    #root { position: absolute; inset: 0; font-family: "DIN Etrave", sans-serif; }
+    .pv-champ { position: absolute; inset: 0; }
+    .pv-texte { position: absolute; left: 120px; top: 690px; font-size: 118px; line-height: 1.02; font-weight: 700; transform-origin: 0 50%; }
+    #pv-a { background: #18222e; color: #f6f8fa; }
+    #pv-b { background: #f6f8fa; color: #18222e; }
+    #pv-c-feuille { position: absolute; inset: 0; background: #2f7bd9; color: #f6f8fa; }
+    .pv-ligne { display: block; }
+  </style>
+  <div id="root" data-composition-id="provoc" data-width="1080" data-height="1920">
+    <!-- 1a : déjà là à l'image 0, c'est la vignette de la vidéo -->
+    <div id="pv-a" class="pv-champ clip" data-start="0" data-duration="1.7" data-track-index="1">
+      <div id="pv-a-texte" class="pv-texte"><span class="pv-ligne">On te vend</span><span class="pv-ligne">des robots.</span></div>
+    </div>
+    <!-- 1b : coupe franche -->
+    <div id="pv-b" class="pv-champ clip" data-start="1.7" data-duration="1.48" data-track-index="2">
+      <div id="pv-b-texte" class="pv-texte"><span class="pv-ligne">Sans un seul</span><span class="pv-ligne">trade publié.</span></div>
+    </div>
+    <!-- 1c : la réponse, sur le bleu du logo ; le champ se soulève comme une feuille et découvre la carte -->
+    <div id="pv-c" class="pv-champ clip" data-start="3.18" data-duration="2.12" data-track-index="3">
+      <div id="pv-c-feuille">
+        <div id="pv-c-texte" class="pv-texte"><span id="pv-c-1" class="pv-ligne">Moi, je publie</span><span id="pv-c-2" class="pv-ligne">tout.</span></div>
+      </div>
+    </div>
+  </div>
+  <script>
+    const tl = gsap.timeline({ paused: true });
+    // 1b : le bloc se pose (6 images), puis ne bouge plus pendant la lecture
+    tl.fromTo("#pv-b-texte", { scale: 1.04 }, { scale: 1, duration: 0.2, ease: "power3.out" }, 1.7);
+    // 1c : la première ligne est là à la coupe, « tout. » tombe 4 images après
+    tl.fromTo("#pv-c-2", { y: -40, opacity: 0 }, { y: 0, opacity: 1, duration: 0.2, ease: "power3.out" }, 3.98);
+    // fin : le champ bleu se soulève (rotation légère, comme une feuille) et découvre la carte où tombe le certificat
+    tl.fromTo("#pv-c-texte", { y: 0 }, { y: -260, duration: 0.5, ease: "power2.in" }, 4.7);
+    tl.fromTo("#pv-c-feuille", { yPercent: 0, rotation: 0 }, { yPercent: -104, rotation: -3, duration: 0.55, ease: "power3.in", transformOrigin: "0% 100%" }, 4.7);
+    window.__timelines["provoc"] = tl;
+  </script>
+</template>

@@ -26,8 +26,9 @@ Les règles, l'installation et les chiffres des tests sont dans `README.md`.
 robot/     Strategy-V10.mq5, Strategy-V10.pine, test_robot.py (contrôles du code de l'EA et du Pine),
            mt5/ (demo.ini, demo_1000.set, testeur.ini)
 etrave/    interface web locale de l'EA (Python sans dépendance), export.py (export trimestriel) + test_interface.py, test_export.py
+video/     (branche communication/outil-video) vidéos TikTok : récap de séance et présentation, `python3 video/outil.py` ; README
 ```
-- Tests : `.venv/bin/python -m pytest robot etrave -q` (82 tests). Le `.venv` du dépôt tourne sous Python 3.15.
+- Tests : `.venv/bin/python -m pytest robot etrave video -q` (107 tests). Le `.venv` du dépôt tourne sous Python 3.15.
 - Étrave en essai : `.venv/bin/python etrave/etrave.py --sans-navigateur --port 8799 --dossier <dossier jetable>`, puis
   `http://127.0.0.1:8799`. Pour voir la page avec des données, écrire de faux `etat-<symbole>.txt` (format dans
   `etrave/test_interface.py`, `faux_etat`) et un `trades-<symbole>.csv`, et les réécrire toutes les 2 secondes (au-delà de 15 s sans
@@ -113,6 +114,13 @@ etrave/    interface web locale de l'EA (Python sans dépendance), export.py (ex
 - **Export trimestriel** (`etrave/export.py`) : `exports/<AAAA-Tn>/` dans le dossier d'Étrave, au démarrage puis toutes les 6 heures,
   pour chaque trimestre terminé depuis 3 jours (dates de New York) ; « Exporter le trimestre en cours » à la demande. Construit sous un
   nom provisoire puis renommé. C'est la matière des ajustements futurs : glissement réel, spread, excursions, jours sans trade.
+- **Journal des bougies** (`bougies-<symbole>.csv`, `BougiesRow`) : les bougies M5 de 30 min avant le range jusqu'à la sortie, écrites
+  une fois par jour avec la ligne « fin » (hors séance, une lecture). Sert la vidéo récap (`video/`). Testeur 12 mois NDX100 à 0,25 %
+  sur 300 000 $ avec ce journal : 448 trades, +64 931,85 $, identique à la référence.
+- **Vidéos** (`video/`) : rien de personnel ni de fichier sous licence dans le dépôt (prénom, montant, certificat, voix, clé, voix_id,
+  sons Mixkit, police DIN) : tout est dans `~/.config/etrave-video/config.json` et des dossiers locaux. Un test le vérifie en lisant
+  les valeurs dans cette configuration. Une journée du testeur est marquée « Exemple » dans la vidéo, une journée du compte non. Les
+  raisons des filtres et le type d'entrée (A, B, D) ne sont jamais montrés : c'est le secret de la stratégie, à la demande de l'utilisateur.
 - Jours fériés et demi-séances : aucun trade (`InpSkipShort`), même si `FlatMin` prévoit une sortie à 12:45.
 - **Page d'Étrave (« carte marine », 25/11/2026)** : thème clair par défaut, mode nuit ; chiffres en DIN (Bahnschrift sous Windows,
   DIN Alternate en gras seulement sur Mac), aucune police extérieure (CSP). L'onglet Séance dessine les fenêtres des règles

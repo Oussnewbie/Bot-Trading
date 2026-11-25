@@ -1,0 +1,44 @@
+<template>
+  <style>
+    @font-face { font-family: "DIN Etrave"; src: url("assets/fonts/din-alternate-bold.ttf") format("truetype"); font-weight: 700; }
+    #root { position: absolute; inset: 0; font-family: "DIN Etrave", sans-serif; color: #18222e; }
+    #fi-papier { position: absolute; inset: 0; background: #f6f8fa; }
+    #fi-svg { position: absolute; left: 120px; top: 290px; width: 320px; height: 320px; overflow: visible; }
+    #fi-nom { position: absolute; left: 120px; top: 660px; font-size: 128px; line-height: 1; letter-spacing: 0.2em; }
+    #fi-cta-1 { position: absolute; left: 124px; top: 840px; font-size: 72px; line-height: 1; }
+    #fi-cta-2 { position: absolute; left: 124px; top: 925px; font-size: 72px; line-height: 1; color: #2f7bd9; }
+    #fi-mention { position: absolute; left: 124px; top: 1050px; width: 720px; font-family: "Inter", sans-serif; font-weight: 400; font-size: 30px; line-height: 1.35; color: #46546a; }
+  </style>
+  <div id="root" data-composition-id="fin" data-width="1080" data-height="1920">
+    <div id="fi-papier"></div>
+    <svg id="fi-svg" viewBox="0 0 40 40" data-layout-allow-overflow>
+      <path id="fi-v" d="M8 8c1.8 9.5 5.8 17.5 12 24 6.2-6.5 10.2-14.5 12-24" fill="none" stroke="#2f7bd9" stroke-width="2.4" stroke-linecap="round" />
+      <path id="fi-tige" d="M20 5v27" fill="none" stroke="#2f7bd9" stroke-width="2.4" stroke-linecap="round" />
+      <path id="fi-vagues" d="M3 33c2.8-2.3 5.7-2.3 8.5 0M28.5 33c2.8-2.3 5.7-2.3 8.5 0" fill="none" stroke="#2f7bd9" stroke-width="2.4" stroke-linecap="round" opacity="0.55" />
+    </svg>
+    <div id="fi-nom">ÉTRAVE</div>
+    <div id="fi-cta-1">Rejoins le Telegram :</div>
+    <div id="fi-cta-2">lien en bio</div>
+    <div id="fi-mention">Pas un conseil en investissement. Le trading comporte un risque de perte en capital.</div>
+  </div>
+  <script>
+    const tl = gsap.timeline({ paused: true });
+    const wipe = (cible, t, d = 0.3) => tl.fromTo(cible, { clipPath: "inset(-30% 100% -40% 0)" }, { clipPath: "inset(-30% 0% -40% 0)", duration: d, ease: "power3.out" }, t);
+    const trace = (id, t, d) => {
+      const p = document.getElementById(id), l = p.getTotalLength();
+      const o = p.getAttribute("opacity") || 1;
+      gsap.set(p, { opacity: 0 });   // pas de point (bout arrondi) avant le début du tracé
+      tl.set(p, { opacity: o }, t);
+      tl.fromTo(p, { strokeDasharray: l, strokeDashoffset: l }, { strokeDashoffset: 0, duration: d, ease: "power1.inOut" }, t);
+    };
+    // la carte de fin se pose sur la frise (coupe), l'étrave se trace : la tige d'abord, comme la cassure
+    trace("fi-tige", 0.1, 0.3);
+    trace("fi-v", 0.3, 0.45);
+    trace("fi-vagues", 0.65, 0.3);
+    wipe("#fi-nom", 0.55, 0.4);
+    wipe("#fi-cta-1", 0.95);
+    wipe("#fi-cta-2", 2.43);
+    tl.fromTo("#fi-mention", { opacity: 0 }, { opacity: 1, duration: 0.3, ease: "power3.out" }, 1.0);
+    window.__timelines["fin"] = tl;
+  </script>
+</template>

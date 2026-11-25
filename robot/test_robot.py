@@ -402,6 +402,19 @@ def test_journal_des_seances_et_dossier_du_testeur():
     assert 'FileDelete(JournalName("execution"), FILE_COMMON);' in init and 'FolderCreate("Etrave\\\\testeur", FILE_COMMON);' in init
 
 
+def test_journal_des_bougies_une_fois_par_jour_hors_de_la_seance():
+    """Bougies M5 de la séance pour la vidéo récap : écrites avec la ligne « fin » (après la sortie), une lecture, une écriture."""
+    bougies = fonction("void BougiesRow()")
+    assert "CopyRates(_Symbol, PERIOD_M5, gOrTime - 30 * 60, TimeCurrent(), r)" in bougies
+    assert "if(NYDate(ny) != gDay)" in bougies                       # seulement les bougies du jour de la séance
+    assert bougies.count("JournalWrite(") == 1 and 'JournalWrite("bougies", BOUGIES_COLONNES, lines)' in bougies
+    tick = fonction("void OnTick()")
+    assert tick.index('SeanceRow("fin");') < tick.index("BougiesRow();") < tick.index("gSessFin = gDay;")
+    assert EA.count("BougiesRow();") == 1
+    assert 'FileDelete(JournalName("bougies"), FILE_COMMON);' in fonction("int OnInit()")
+    assert '#define BOUGIES_COLONNES "version;source;jour_ny;symbole;heure_ny;ouverture;haut;bas;cloture;ticks"' in EA
+
+
 def test_journal_ecrit_hors_de_la_seance():
     """Lire les ticks d'une entrée ancienne peut faire attendre l'EA jusqu'à 45 s : jamais pendant la séance, jamais avec une position."""
     flush = fonction("void JournalFlush(bool force)")

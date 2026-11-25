@@ -1,0 +1,95 @@
+<template>
+  <style>
+    @font-face { font-family: "DIN Etrave"; src: url("assets/fonts/din-alternate-bold.ttf") format("truetype"); font-weight: 700; }
+    #root { position: absolute; inset: 0; font-family: "DIN Etrave", sans-serif; color: #18222e; }
+    .se-titre { position: absolute; left: 120px; font-size: 96px; line-height: 1; }
+    #se-t1a { top: 330px; } #se-t1b { top: 430px; }
+    #se-t2a { top: 330px; } #se-t2b { top: 430px; }
+    #se-svg { position: absolute; left: 0; top: 0; width: 1080px; height: 1920px; overflow: visible; }
+    #se-svg text { font-family: "DIN Etrave", sans-serif; }
+  </style>
+  <div id="root" data-composition-id="seance" data-width="1080" data-height="1920">
+    <div id="se-t1a" class="se-titre">Chaque séance</div>
+    <div id="se-t1b" class="se-titre">sera publiée.</div>
+    <div id="se-t2a" class="se-titre">Gains comme</div>
+    <div id="se-t2b" class="se-titre">pertes.</div>
+    <svg id="se-svg" viewBox="0 0 1080 1920" data-layout-allow-overflow>
+      <!-- l'étrave, laissée là par la scène 3 -->
+      <g id="se-logo" transform="translate(466 700) scale(11)">
+        <path id="se-v" d="M8 8c1.8 9.5 5.8 17.5 12 24 6.2-6.5 10.2-14.5 12-24" fill="none" stroke="#2f7bd9" stroke-width="2.4" stroke-linecap="round" />
+        <path id="se-tige" d="M20 5v27" fill="none" stroke="#2f7bd9" stroke-width="2.4" stroke-linecap="round" />
+        <path id="se-vagues" d="M3 33c2.8-2.3 5.7-2.3 8.5 0M28.5 33c2.8-2.3 5.7-2.3 8.5 0" fill="none" stroke="#2f7bd9" stroke-width="2.4" stroke-linecap="round" opacity="0.55" />
+      </g>
+      <!-- la frise de la séance, comme dans Étrave (agrandie avant 16:00), en heure de Paris : 15:00 → 22:00 -->
+      <rect id="se-eau" x="300" y="770" width="0" height="320" fill="#e2edf5" />
+      <g id="se-lignes" font-size="34" fill="#46546a">
+        <text x="120" y="832">Zone 5 min</text><text x="120" y="932">Entrée</text><text x="120" y="1032">En position</text>
+      </g>
+      <g id="se-grille" stroke="#dde4ea" stroke-width="2">
+        <line x1="300" x2="840" y1="820" y2="820" /><line x1="300" x2="840" y1="920" y2="920" /><line x1="300" x2="840" y1="1020" y2="1020" />
+      </g>
+      <g id="se-barres">
+        <rect id="se-b-range" x="413.4" y="811" width="18.9" height="18" rx="4" fill="#2f7bd9" />
+        <rect id="se-b-cassure" x="432.3" y="911" width="37.8" height="18" rx="4" fill="#2f7bd9" />
+        <rect id="se-b-pos" x="432.3" y="1011" width="399.0" height="18" rx="4" fill="#2f7bd9" />
+      </g>
+      <line id="se-axe" x1="300" x2="840" y1="1090" y2="1090" stroke="#94a3b2" stroke-width="3" />
+      <g id="se-heures" font-size="30" fill="#46546a">
+        <text x="413" y="1132" text-anchor="middle">15:30</text><text x="527" y="1132" text-anchor="middle">16:00</text>
+        <text x="631" y="1132" text-anchor="middle">18:00</text><text x="736" y="1132" text-anchor="middle">20:00</text>
+      </g>
+      <line id="se-sortie" x1="831.3" x2="831.3" y1="770" y2="1090" stroke="#18222e" stroke-width="3" stroke-dasharray="8 8" />
+      <!-- l'aiguille « maintenant » : le seul magenta du film -->
+      <g id="se-aiguille">
+        <line id="se-aig-trait" x1="413.4" x2="413.4" y1="760" y2="1090" stroke="#b4307e" stroke-width="4" />
+        <text id="se-aig-heure" x="413.4" y="742" font-size="36" fill="#b4307e" text-anchor="middle">15:30</text>
+      </g>
+    </svg>
+  </div>
+  <script>
+    const tl = gsap.timeline({ paused: true });
+    // échelle de la frise (la même que la page d'Étrave) : minutes depuis minuit à New York → x ; affichage en heure de Paris (+6 h)
+    const X = (m) => (m <= 600 ? 300 + 226.8 * (m - 540) / 60 : 526.8 + 313.2 * (m - 600) / 360);
+    const heure = (m) => `${Math.floor(m / 60)}:${String(Math.round(m) % 60).padStart(2, "0")}`;
+    const wipe = (cible, t, d = 0.3) => tl.fromTo(cible, { clipPath: "inset(-30% 100% -40% 0)" }, { clipPath: "inset(-30% 0% -40% 0)", duration: d, ease: "power3.out" }, t);
+    gsap.set(["#se-t1a", "#se-t1b", "#se-t2a", "#se-t2b"], { clipPath: "inset(-30% 100% -40% 0)" });
+    gsap.set(["#se-lignes", "#se-grille", "#se-heures", "#se-aiguille", "#se-sortie", "#se-eau"], { opacity: 0 });
+    gsap.set("#se-barres rect", { scaleX: 0, transformOrigin: "0% 50%" });
+    gsap.set("#se-axe", { scaleX: 0, transformOrigin: "0% 50%" });
+    // 4a : l'étrave se retire, ses vagues deviennent l'axe des heures
+    tl.to(["#se-v", "#se-tige"], { opacity: 0, duration: 0.3, ease: "power2.in" }, 0.05);
+    tl.to("#se-vagues", { opacity: 0, duration: 0.25, ease: "power2.in" }, 0.3);
+    tl.to("#se-axe", { scaleX: 1, duration: 0.45, ease: "power3.out" }, 0.3);
+    tl.to(["#se-grille", "#se-lignes", "#se-heures"], { opacity: 1, duration: 0.25, ease: "power3.out", stagger: 0.06 }, 0.5);
+    tl.to("#se-barres rect", { scaleX: 1, duration: 0.3, ease: "power3.out", stagger: 0.06 }, 0.6);
+    wipe("#se-t1a", 0.6);
+    wipe("#se-t1b", 0.73);
+    // 4b : l'aiguille file de 9:30 à 15:50 ; l'eau suit le temps écoulé, chaque fenêtre passée grise
+    const debut = 1.2, fin = 3.8, m0 = 570, m1 = 950;
+    tl.to(["#se-aiguille", "#se-eau"], { opacity: 1, duration: 0.15 }, 1.0);
+    tl.fromTo("#se-eau", { attr: { width: X(m0) - 300 } }, { attr: { width: X(m1) - 300 }, duration: fin - debut, ease: "none" }, debut);
+    const proxy = { x: X(m0) };
+    tl.fromTo(proxy, { x: X(m0) }, {
+      x: X(m1), duration: fin - debut, ease: "none",
+      onUpdate: () => {
+        // l'heure affichée suit la position de l'aiguille sur l'échelle de la frise
+        const x = proxy.x, m = x <= 526.8 ? 540 + (x - 300) * 60 / 226.8 : 600 + (x - 526.8) * 360 / 313.2;
+        document.getElementById("se-aig-trait").setAttribute("x1", x);
+        document.getElementById("se-aig-trait").setAttribute("x2", x);
+        const t = document.getElementById("se-aig-heure");
+        t.setAttribute("x", Math.min(x, 790));
+        t.textContent = heure(m + 360);
+      },
+    }, debut);
+    const quand = (m) => debut + (fin - debut) * (X(m) - X(m0)) / (X(m1) - X(m0));
+    [["#se-b-range", 575], ["#se-b-cassure", 585], ["#se-b-pos", 950]].forEach(([id, m]) => {
+      tl.to(id, { fill: "#94a3b2", duration: 0.12 }, quand(m));
+    });
+    tl.to("#se-sortie", { opacity: 1, duration: 0.15 }, fin - 0.05);
+    // 4c : la deuxième phrase, coupe franche
+    tl.set(["#se-t1a", "#se-t1b"], { opacity: 0 }, 2.3);
+    wipe("#se-t2a", 2.3, 0.25);
+    wipe("#se-t2b", 2.4, 0.25);
+    window.__timelines["seance"] = tl;
+  </script>
+</template>

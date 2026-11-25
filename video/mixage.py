@@ -1,0 +1,118 @@
+"""Le son de la vidéo avec ffmpeg seul : la voix, les bruitages posés sur leur image et baissés quand la voix parle, puis le niveau final.
+
+Les bruitages sont de vrais enregistrements (banque Mixkit, gratuite, usage commercial permis, mais pas de redistribution des fichiers
+seuls) : ils ne sont pas dans le dépôt. `sons.json` donne leur nom et la page où les télécharger ; le dossier `sons` de la configuration
+les contient. Un son absent est sauté (la vidéo se fait quand même, et la liste des sons manquants est affichée).
+
+Étapes : chaque son est ramené à un même pic (-6 dBFS) puis réglé par son gain, coupé à sa durée, filtré (passe-haut) et posé à son
+instant ; le groupe des bruitages passe dans un compresseur commandé par la voix (il baisse quand elle parle) ; voix + bruitages sont
+mesurés (LUFS intégrés) et amenés au niveau visé par un simple gain, puis un limiteur garde le pic sous -1,5 dBFS. Sortie en 48 kHz.
+"""
+import json
+import os
+import re
+import subprocess
+
+ICI = os.path.dirname(os.path.abspath(__file__))
+NIVEAU_VISE = -15.0         # LUFS : la voix au premier plan, comme sur TikTok
+NIVEAU_SANS_VOIX = -18.0    # LUFS : les bruitages seuls restent discrets
+
+
+def catalogue():
+    return json.load(open(os.path.join(ICI, "sons.json"), encoding="utf-8"))["sons"]
+
+
+def _pic(fichier, cache={}):
+    if fichier not in cache:
+        sortie = subprocess.run(["ffmpeg", "-hide_banner", "-nostats", "-i", fichier, "-af", "volumedetect", "-f", "null", "-"],
+                                capture_output=True, text=True).stderr
+        m = re.search(r"max_volume: (-?[\d.]+) dB", sortie)
+        cache[fichier] = float(m.group(1)) if m else 0.0
+    return cache[fichier]
+
+
+def _lufs(fichier):
+    sortie = subprocess.run(["ffmpeg", "-hide_banner", "-nostats", "-i", fichier, "-af", "ebur128", "-f", "null", "-"],
+                            capture_output=True, text=True).stderr
+    valeurs = re.findall(r"I:\s+(-?[\d.]+) LUFS", sortie)
+    return float(valeurs[-1]) if valeurs else None
+
+
+def piste_voix(repliques, duree, sortie):
+    """Les répliques posées à leur instant ({"fichier", "t", "coupe"?}) en une piste WAV stéréo 48 kHz de la durée de la vidéo."""
+    if not repliques:
+        return None
+    entrees, filtres, noms = [], [], []
+    for i, r in enumerate(repliques):
+        entrees += ["-i", r["fichier"]]
+        chaine = f"[{i}]"
+        if r.get("coupe"):
+            chaine += f"atrim=0:{r['coupe']:.3f},afade=t=out:st={max(0, r['coupe'] - 0.05):.3f}:d=0.05,"
+        ms = int(round(r["t"] * 1000))
+        filtres.append(f"{chaine}aresample=48000,adelay={ms}:all=1[v{i}]")
+        noms.append(f"[v{i}]")
+    filtres.append("".join(noms) + f"amix=inputs={len(noms)}:normalize=0,apad=whole_dur={duree:.3f},pan=stereo|c0=c0|c1=c0[o]")
+    subprocess.run(["ffmpeg", "-v", "error", "-y", *entrees, "-filter_complex", ";".join(filtres), "-map", "[o]", "-t", f"{duree:.3f}",
+                    "-ar", "48000", "-c:a", "pcm_s24le", sortie], check=True)
+    return sortie
+
+
+def piste_bruitages(reperes, dossier_sons, duree, sortie):
+    """Les bruitages posés : {"t" (départ), "son", "gain_db", "max_dur", "passe_haut", "tranche", "demi_tons", "avance"}.
+    Rend (fichier, sons manquants)."""
+    sons = catalogue()
+    entrees, filtres, noms, manquants = [], [], [], []
+    for r in reperes:
+        nom = sons.get(r["son"], {}).get("fichier", r["son"] + ".wav")
+        fichier = os.path.join(os.path.expanduser(dossier_sons or ""), nom)
+        if not os.path.exists(fichier):
+            manquants.append(nom)
+            continue
+        i = len(noms)
+        entrees += ["-i", fichier]
+        gain = -6.0 - _pic(fichier) + r.get("gain_db", 0.0)
+        chaine = f"[{i}]aresample=48000,aformat=channel_layouts=stereo"
+        if r.get("tranche"):                    # un morceau du fichier : [début, durée] en secondes
+            d0, dl = r["tranche"]
+            chaine += f",atrim=start={d0:.3f}:duration={dl:.3f},asetpts=PTS-STARTPTS"
+        if r.get("demi_tons"):                  # hauteur changée, durée gardée
+            f = 2 ** (r["demi_tons"] / 12)
+            chaine += f",asetrate={48000 * f:.0f},aresample=48000,atempo={1 / f:.5f}"
+        if r.get("max_dur"):
+            d = r["max_dur"]
+            chaine += f",atrim=0:{d:.3f},afade=t=out:st={max(0, d - 0.06):.3f}:d=0.06"
+        if r.get("passe_haut"):
+            chaine += f",highpass=f={int(r['passe_haut'])}"
+        t = max(0.0, r["t"] - r.get("avance", 0.0))
+        chaine += f",volume={gain:.2f}dB,adelay={int(round(t * 1000))}:all=1"
+        filtres.append(chaine + f"[s{i}]")
+        noms.append(f"[s{i}]")
+    if not noms:
+        return None, sorted(set(manquants))
+    filtres.append("".join(noms) + f"amix=inputs={len(noms)}:normalize=0,apad=whole_dur={duree:.3f}[o]")
+    subprocess.run(["ffmpeg", "-v", "error", "-y", *entrees, "-filter_complex", ";".join(filtres), "-map", "[o]", "-t", f"{duree:.3f}",
+                    "-ar", "48000", "-c:a", "pcm_s24le", sortie], check=True)
+    return sortie, sorted(set(manquants))
+
+
+def assembler(video_muette, voix, bruitages, sortie, dossier_travail):
+    """La vidéo finale : l'image muette + la voix + les bruitages baissés sous la voix, au niveau visé, en AAC 48 kHz."""
+    melange = os.path.join(dossier_travail, "melange.wav")
+    if voix and bruitages:
+        filtre = ("[0:a]asplit=2[vx][cle];[1:a][cle]sidechaincompress=threshold=0.03:ratio=8:attack=8:release=280:makeup=1[sfx];"
+                  "[vx][sfx]amix=inputs=2:normalize=0[o]")
+        entrees = ["-i", voix, "-i", bruitages]
+    elif voix or bruitages:
+        filtre, entrees = "[0:a]anull[o]", ["-i", voix or bruitages]
+    else:
+        subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", video_muette, "-c", "copy", sortie], check=True)
+        return sortie
+    subprocess.run(["ffmpeg", "-v", "error", "-y", *entrees, "-filter_complex", filtre, "-map", "[o]", "-ar", "48000",
+                    "-c:a", "pcm_s24le", melange], check=True)
+    mesure = _lufs(melange)
+    vise = NIVEAU_VISE if voix else NIVEAU_SANS_VOIX
+    gain = (vise - mesure) if mesure is not None and mesure > -70 else 0.0
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", video_muette, "-i", melange, "-map", "0:v", "-map", "1:a", "-c:v", "copy",
+                    "-af", f"volume={gain:.2f}dB,alimiter=limit=0.84:level=false", "-ar", "48000", "-c:a", "aac", "-b:a", "192k",
+                    "-shortest", sortie], check=True)
+    return sortie

@@ -1,0 +1,45 @@
+<template>
+  <style>
+    @font-face { font-family: "DIN Etrave"; src: url("assets/fonts/din-alternate-bold.ttf") format("truetype"); font-weight: 700; }
+    #root { position: absolute; inset: 0; font-family: "DIN Etrave", sans-serif; color: #18222e; }
+    #cp-titre { position: absolute; left: 120px; top: 300px; font-size: 130px; line-height: 1; }
+    .cp-sous { position: absolute; left: 124px; font-size: 60px; color: #46546a; }
+    #cp-sous-1 { top: 470px; } #cp-sous-2 { top: 540px; }
+    #cp-svg { position: absolute; left: 0; top: 0; width: 1080px; height: 1920px; overflow: visible; }
+    #cp-svg text { font-family: "DIN Etrave", sans-serif; }
+  </style>
+  <div id="root" data-composition-id="copie" data-width="1080" data-height="1920">
+    <div id="cp-titre">Copy trading</div>
+    <div id="cp-sous-1" class="cp-sous">ouverture après 3 mois</div>
+    <div id="cp-sous-2" class="cp-sous">de résultats vérifiés</div>
+    <svg id="cp-svg" viewBox="0 0 1080 1920" data-layout-allow-overflow>
+      <!-- la ligne « Positions » de la frise, qui devient ton compte, puis se recopie ligne après ligne -->
+      <g id="cp-source">
+        <text x="120" y="1052" font-size="34" fill="#18222e">{{NOM}}</text>
+        <rect x="432.3" y="1031" width="399.0" height="18" rx="4" fill="#2f7bd9" />
+      </g>
+      <g id="cp-copies" font-size="34" fill="#46546a">
+        <g class="cp-copie"><text x="120" y="852">Abonné 1</text><rect x="432.3" y="831" width="399.0" height="18" rx="4" fill="#2f7bd9" opacity="0.75" /></g>
+        <g class="cp-copie"><text x="120" y="922">Abonné 2</text><rect x="432.3" y="901" width="399.0" height="18" rx="4" fill="#2f7bd9" opacity="0.75" /></g>
+        <g class="cp-copie"><text x="120" y="992">Abonné 3</text><rect x="432.3" y="971" width="399.0" height="18" rx="4" fill="#2f7bd9" opacity="0.75" /></g>
+        <g class="cp-copie"><text x="120" y="1062">Abonné 4</text><rect x="432.3" y="1041" width="399.0" height="18" rx="4" fill="#2f7bd9" opacity="0.75" /></g>
+      </g>
+    </svg>
+  </div>
+  <script>
+    const tl = gsap.timeline({ paused: true });
+    const wipe = (cible, t, d = 0.3) => tl.fromTo(cible, { clipPath: "inset(-30% 100% -40% 0)" }, { clipPath: "inset(-30% 0% -40% 0)", duration: d, ease: "power3.out" }, t);
+    gsap.set(["#cp-titre", "#cp-sous-1", "#cp-sous-2"], { clipPath: "inset(-30% 100% -40% 0)" });
+    gsap.set(".cp-copie", { opacity: 0 });
+    gsap.set(".cp-copie rect", { scaleX: 0, transformOrigin: "0% 50%" });
+    // 5a : le titre, et ta ligne monte en tête
+    wipe("#cp-titre", 2.86, 0.35);
+    tl.fromTo("#cp-source", { y: 0 }, { y: -270, duration: 0.45, ease: "power3.inOut" }, 0.2);
+    // 5b « Tu pourras copier mes trades, automatiquement » : le même trade se recopie sur chaque compte, ligne après ligne
+    tl.to(".cp-copie", { opacity: 1, duration: 0.1, stagger: 0.16 }, 4.55);
+    tl.to(".cp-copie rect", { scaleX: 1, duration: 0.28, ease: "power3.out", stagger: 0.16 }, 4.55);
+    wipe("#cp-sous-1", 0.25);
+    wipe("#cp-sous-2", 0.38);
+    window.__timelines["copie"] = tl;
+  </script>
+</template>

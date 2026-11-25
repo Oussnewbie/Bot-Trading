@@ -183,8 +183,9 @@ etrave/
   export.py            export trimestriel des journaux de l'EA
   pont.py, mt5.py, risque.py, telegram.py
   test_interface.py, test_export.py   tests de l'interface, de l'export et de leur accord avec l'EA
+video/                 vidéos TikTok en motion design : récap de chaque séance et présentation (voir video/README.md)
 CLAUDE.md              consignes de travail sur ce dépôt
 ```
 
-Tests, à la racine du dépôt : `python -m pytest robot etrave`. Ils relisent le code de l'EA et du script (ce ne sont pas des tests de
+Tests, à la racine du dépôt : `python -m pytest robot etrave video`. Ils relisent le code de l'EA et du script (ce ne sont pas des tests de
 compilation) et vérifient l'accord entre Étrave et l'EA : fichiers, clés, bornes, heures des règles, calendrier des jours fériés.

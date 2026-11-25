@@ -2797,6 +2797,9 @@ void AppendTrade(datetime tx, double r, double net, string why)
 #define JOURNAL_VERSION "1"
 #define EXEC_COLONNES   "version;source;id_position;jour_ny;symbole;entree;sens;lots;entree_utc_ms;entree_ny;prix_vise;prix_entree;glissement_entree;spread_entree;stop_initial;risque_prix;sortie_utc_ms;sortie_ny;stop_en_place;stop_virtuel;prix_sortie;glissement_sortie;raison;raison_courtier;mfe_prix;mae_prix;mfe_r;mae_r;excursion;frais;swap;resultat_net;r;range_prix;stop_mult;devise;complet"
 #define SEANCE_COLONNES "version;source;jour_ny;symbole;moment;heure_ny;range_bas;range_haut;range_prix;stop_mult;spread;cout_r;filtres;etat"
+// bougies-<symbole>.csv : les bougies M5 de la séance (de 30 min avant le range jusqu'à la sortie), heure de New York, écrites une
+// fois par jour avec la ligne « fin » : de quoi redessiner la journée (vidéo récap, contrôle à l'œil) sans capture d'écran.
+#define BOUGIES_COLONNES "version;source;jour_ny;symbole;heure_ny;ouverture;haut;bas;cloture;ticks"
 
 bool   JournalOn() { return MQLInfoInteger(MQL_TESTER) || InpUseUI; }
 string JournalName(string base) { return UI_DIR + (MQLInfoInteger(MQL_TESTER) ? "testeur\\" : "") + base + "-" + gSymFile + ".csv"; }
@@ -3073,6 +3076,37 @@ void SeanceRow(string moment)
    JournalWrite("seances", SEANCE_COLONNES, line);
   }
 
+// Les bougies M5 du jour gDay, de 30 min avant la bougie du range jusqu'à maintenant (appelée avec la ligne « fin », donc hors de la
+// séance) : une seule lecture de l'historique local, une seule écriture. Rien n'est écrit si la lecture échoue.
+void BougiesRow()
+  {
+   if(!JournalOn() || gDay <= 0 || gOrTime <= 0)
+      return;
+   MqlRates r[];
+   int n = CopyRates(_Symbol, PERIOD_M5, gOrTime - 30 * 60, TimeCurrent(), r);
+   if(n <= 0)
+     {
+      PrintFormat("Journal des bougies : lecture impossible (erreur %d)", GetLastError());
+      return;
+     }
+   string lines = "";
+   int    k     = 0;
+   for(int i = 0; i < n; i++)
+     {
+      datetime ny = ToNY(r[i].time);
+      if(NYDate(ny) != gDay)
+         continue;
+      if(k > 0)
+         lines += "\r\n";
+      lines += JOURNAL_VERSION + ";" + SourceTxt() + ";" + JourTxt(gDay) + ";" + gSymFile + ";" + TimeToString(ny, TIME_MINUTES) + ";" +
+               DoubleToString(r[i].open, _Digits) + ";" + DoubleToString(r[i].high, _Digits) + ";" + DoubleToString(r[i].low, _Digits) + ";" +
+               DoubleToString(r[i].close, _Digits) + ";" + IntegerToString(r[i].tick_volume);
+      k++;
+     }
+   if(k > 0)
+      JournalWrite("bougies", BOUGIES_COLONNES, lines);
+  }
+
 // Type d'une position d'après son numéro magique (positions que l'état de l'EA ne connaissait plus)
 string TypeOfMagic(ulong mg)
   {
@@ -3234,6 +3268,7 @@ int OnInit()
       FolderCreate("Etrave\\testeur", FILE_COMMON);
       FileDelete(JournalName("execution"), FILE_COMMON);
       FileDelete(JournalName("seances"), FILE_COMMON);
+      FileDelete(JournalName("bougies"), FILE_COMMON);
      }
    if(!MQLInfoInteger(MQL_TESTER) && InpUseUI)
      {
@@ -3367,6 +3402,7 @@ void OnTick()
       if(gDay == NYDate(nyS) && NYMin(nyS) >= FlatMin(nyS) + 2 && gSessFin != gDay)
         {
          SeanceRow("fin");
+         BougiesRow();          // les bougies de la séance, pour redessiner la journée (vidéo récap)
          gSessFin = gDay;
          Sv("sessfin", gSessFin);
         }

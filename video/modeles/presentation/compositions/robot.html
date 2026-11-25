@@ -1,0 +1,151 @@
+<template>
+  <style>
+    @font-face { font-family: "DIN Etrave"; src: url("assets/fonts/din-alternate-bold.ttf") format("truetype"); font-weight: 700; }
+    #root { position: absolute; inset: 0; font-family: "DIN Etrave", sans-serif; color: #18222e; }
+    /* l'heure de Paris : le « 6 » de la scène précédente roule jusqu'au « 5 » pendant que le « 1 » s'écrit devant, puis « :30 ».
+       Chiffres à chasse fixe : 105,6 px chacun à 220 px (lu dans la police) */
+    #rb-heure { position: absolute; left: 120px; top: 300px; height: 220px; font-size: 220px; line-height: 220px; display: flex; }
+    #rb-un { display: inline-block; width: 105.6px; }
+    #rb-col { display: inline-block; height: 220px; overflow: hidden; }
+    #rb-bande { display: block; }
+    #rb-bande span { display: block; height: 220px; }
+    #rb-30 { display: inline-block; }
+    .rb-ligne { position: absolute; left: 124px; font-size: 64px; color: #46546a; }
+    .rb-l1 { top: 545px; }
+    .rb-l2 { top: 617px; }
+    .rb-l3 { top: 689px; }
+    /* le secret : chaque réglage s'écrit puis se noircit, comme dans un document classé */
+    .rb-cache { position: absolute; left: 420px; height: 46px; background: #18222e; border-radius: 4px; }
+    #rb-cache-1 { top: 561px; width: 380px; }
+    #rb-cache-2 { top: 633px; width: 330px; }
+    #rb-cache-3 { top: 705px; width: 360px; }
+    .rb-etiquette { position: absolute; left: 516px; font-size: 44px; line-height: 1; }
+    #rb-achat-t { top: 838px; color: #2f7bd9; }
+    #rb-vente-t { top: 1100px; color: #46546a; }
+    #rb-nom { position: absolute; left: 120px; top: 320px; font-size: 128px; line-height: 1; letter-spacing: 0.2em; }
+    #rb-role-1 { top: 480px; color: #18222e; }
+    #rb-role-2 { top: 552px; color: #18222e; }
+    #rb-svg { position: absolute; left: 0; top: 0; width: 1080px; height: 1920px; overflow: visible; }
+  </style>
+  <div id="root" data-composition-id="robot" data-width="1080" data-height="1920">
+    <div id="rb-heure"><span id="rb-un">1</span><span id="rb-col"><span id="rb-bande" data-layout-ignore>{{BANDE}}</span></span><span id="rb-30">:30</span></div>
+    <div id="rb-ouvre" class="rb-ligne rb-l1">New York ouvre.</div>
+    <div id="rb-regarde-1" class="rb-ligne rb-l1">Il regarde les</div>
+    <div id="rb-regarde-2" class="rb-ligne rb-l2">5 premières minutes.</div>
+    <div id="rb-haut-t" class="rb-ligne rb-l1">Vers le haut : il achète.</div>
+    <div id="rb-bas-t" class="rb-ligne rb-l2">Vers le bas : il vend.</div>
+    <div id="rb-filtres" class="rb-ligne rb-l1">Filtres</div>
+    <div id="rb-reglages" class="rb-ligne rb-l2">Réglages</div>
+    <div id="rb-sorties" class="rb-ligne rb-l3">Sorties</div>
+    <div id="rb-cache-1" class="rb-cache"></div>
+    <div id="rb-cache-2" class="rb-cache"></div>
+    <div id="rb-cache-3" class="rb-cache"></div>
+    <div id="rb-achat-t" class="rb-etiquette">achat</div>
+    <div id="rb-vente-t" class="rb-etiquette">vente</div>
+    <div id="rb-nom">ÉTRAVE</div>
+    <div id="rb-role-1" class="rb-ligne">mon robot trade</div>
+    <div id="rb-role-2" class="rb-ligne">l'ouverture de New York</div>
+    <svg id="rb-svg" viewBox="0 0 1080 1920" data-layout-allow-overflow>
+      <!-- la zone des 5 premières minutes : l'eau de la carte, entre le haut et le bas de la bougie de 15:30 -->
+      <rect id="rb-zone" x="469" y="900" width="531" height="180" fill="#e2edf5" />
+      <!-- bougies d'avant 15:30 -->
+      <g id="rb-avant" fill="#46546a" opacity="0.45">
+        <rect x="120" y="985" width="26" height="60" /><rect x="166" y="960" width="26" height="70" /><rect x="212" y="990" width="26" height="45" />
+        <rect x="258" y="970" width="26" height="80" /><rect x="304" y="1000" width="26" height="50" /><rect x="350" y="975" width="26" height="65" />
+        <rect x="396" y="995" width="26" height="55" />
+      </g>
+      <!-- la bougie de 15:30 : elle donne le haut et le bas de la zone -->
+      <g id="rb-930"><rect x="454" y="900" width="4" height="180" fill="#18222e" /><rect x="443" y="930" width="26" height="120" fill="#18222e" /></g>
+      <line id="rb-haut" x1="469" y1="900" x2="1000" y2="900" stroke="#46546a" stroke-width="4" stroke-dasharray="18 12" />
+      <line id="rb-bas" x1="469" y1="1080" x2="1000" y2="1080" stroke="#46546a" stroke-width="4" stroke-dasharray="18 12" />
+      <!-- quatre bougies restent dans la zone -->
+      <g id="rb-dans" fill="#18222e" opacity="0.8">
+        <rect x="489" y="960" width="26" height="70" /><rect x="535" y="935" width="26" height="90" />
+        <rect x="581" y="975" width="26" height="60" /><rect x="627" y="925" width="26" height="85" />
+      </g>
+      <!-- la bougie qui sort par le haut, qui deviendra la tige de l'étrave -->
+      <rect id="rb-cassure" x="673" y="830" width="26" height="170" rx="2" fill="#2f7bd9" />
+      <!-- les deux cas : achat si le prix sort par le haut, vente s'il sort par le bas -->
+      <path id="rb-achat" d="M640 892V844M627 857l13-13 13 13" fill="none" stroke="#2f7bd9" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" />
+      <path id="rb-vente" d="M640 1088V1136M627 1123l13 13 13-13" fill="none" stroke="#46546a" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" />
+      <!-- l'étrave du logo (même dessin que dans Étrave), à l'échelle 11 : la tige tombe sur la bougie de cassure -->
+      <g transform="translate(466 700) scale(11)">
+        <path id="rb-v" d="M8 8c1.8 9.5 5.8 17.5 12 24 6.2-6.5 10.2-14.5 12-24" fill="none" stroke="#2f7bd9" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" />
+        <path id="rb-vagues" d="M3 33c2.8-2.3 5.7-2.3 8.5 0M28.5 33c2.8-2.3 5.7-2.3 8.5 0" fill="none" stroke="#2f7bd9" stroke-width="2.4" stroke-linecap="round" opacity="0.55" />
+      </g>
+    </svg>
+  </div>
+  <script>
+    // minutage calé sur la voix (réplique 3 posée à 0,05 s du début de la scène ; heure de chaque mot dans voix/repliques.json)
+    const tl = gsap.timeline({ paused: true });
+    const v = document.getElementById("rb-v"), vagues = document.getElementById("rb-vagues");
+    const lv = v.getTotalLength(), lw = vagues.getTotalLength();
+    const fleches = ["#rb-achat", "#rb-vente"].map((id) => document.querySelector(id));
+    const wipe = (cible, t, d = 0.3) => tl.fromTo(cible, { clipPath: "inset(-30% 100% -40% 0)" }, { clipPath: "inset(-30% 0% -40% 0)", duration: d, ease: "power3.out" }, t);
+    const textes = ["#rb-un", "#rb-30", "#rb-ouvre", "#rb-regarde-1", "#rb-regarde-2", "#rb-haut-t", "#rb-bas-t", "#rb-achat-t", "#rb-vente-t", "#rb-filtres", "#rb-reglages", "#rb-sorties", "#rb-nom", "#rb-role-1", "#rb-role-2"];
+    // état de départ : seul le « 6 » est là, à l'endroit où la scène 2 l'a laissé (le « 1 » caché occupe la place devant lui)
+    gsap.set(textes, { clipPath: "inset(-30% 100% -40% 0)" });
+    gsap.set("#rb-heure", { x: -105.6 });
+    gsap.set(["#rb-avant rect", "#rb-930", "#rb-dans rect", "#rb-cassure"], { scaleY: 0, transformOrigin: "50% 100%" });
+    gsap.set(["#rb-haut", "#rb-bas", "#rb-zone", ".rb-cache"], { scaleX: 0, transformOrigin: "0% 50%" });
+    gsap.set(v, { strokeDasharray: lv, strokeDashoffset: lv, opacity: 0 });
+    gsap.set(vagues, { strokeDasharray: lw, strokeDashoffset: lw, opacity: 0 });
+    fleches.forEach((f) => { const l = f.getTotalLength(); gsap.set(f, { strokeDasharray: l, strokeDashoffset: l, opacity: 0 }); });
+    // 3a « À quinze heures trente » : le 6 roule jusqu'au 5 en se poussant, le 1 s'écrit devant, puis « :30 »
+    tl.to("#rb-heure", { x: 0, duration: 0.45, ease: "power3.out" }, 0.05);
+    tl.fromTo("#rb-bande", { y: 0 }, { y: {{ROULEMENT}}, duration: 0.55, ease: "power3.out" }, 0.05);
+    wipe("#rb-un", 0.12, 0.3);
+    wipe("#rb-30", 0.35, 0.25);
+    tl.to("#rb-avant rect", { scaleY: 1, duration: 0.22, ease: "power3.out", stagger: 0.03 }, 0.7);
+    // « New York ouvre » : la bougie de 15:30 pousse
+    wipe("#rb-ouvre", 2.13);
+    tl.to("#rb-930", { scaleY: 1, duration: 0.3, ease: "power3.out", transformOrigin: "50% 50%" }, 2.4);
+    // 3b « Mon robot regarde les cinq premières minutes » : la zone se trace, les bougies restent dedans
+    tl.to("#rb-ouvre", { opacity: 0, duration: 0.12 }, 3.4);
+    wipe("#rb-regarde-1", 3.45);
+    wipe("#rb-regarde-2", 3.58);
+    tl.to(["#rb-zone", "#rb-haut", "#rb-bas"], { scaleX: 1, duration: 0.6, ease: "power1.inOut" }, 4.33);
+    tl.to("#rb-dans rect", { scaleY: 1, duration: 0.2, ease: "power3.out", stagger: 0.15 }, 4.95);
+    // 3c « Si le prix casse vers le haut, il achète » : la bougie bleue sort par le haut
+    tl.set(["#rb-regarde-1", "#rb-regarde-2"], { opacity: 0 }, 5.6);
+    wipe("#rb-haut-t", 5.65);
+    tl.to("#rb-cassure", { scaleY: 1, duration: 0.3, ease: "power3.out" }, 6.1);
+    tl.to("#rb-haut", { stroke: "#2f7bd9", strokeWidth: 8, duration: 0.15 }, 6.37);
+    tl.set(fleches[0], { opacity: 1 }, 7.06);
+    tl.to(fleches[0], { strokeDashoffset: 0, duration: 0.25, ease: "power1.inOut" }, 7.06);
+    wipe("#rb-achat-t", 7.12, 0.25);
+    // 3d « S'il casse vers le bas, il vend » : l'autre cas, en encre
+    wipe("#rb-bas-t", 7.95);
+    tl.to("#rb-bas", { stroke: "#18222e", duration: 0.15 }, 8.75);
+    tl.set(fleches[1], { opacity: 1 }, 8.77);
+    tl.to(fleches[1], { strokeDashoffset: 0, duration: 0.25, ease: "power1.inOut" }, 8.77);
+    wipe("#rb-vente-t", 8.83, 0.25);
+    // 3e « Ça, c'est la base. Le reste, ses filtres, ses réglages, ses sorties… je le garde pour moi. » (réplique 3b, posée à 9,80 s) :
+    // le graphique s'efface à moitié, les réglages s'écrivent un par un sur leur mot et se noircissent
+    const graphique = ["#rb-zone", "#rb-avant", "#rb-930", "#rb-dans", "#rb-haut", "#rb-bas", "#rb-cassure", "#rb-achat", "#rb-vente", "#rb-achat-t", "#rb-vente-t"];
+    tl.set(["#rb-haut-t", "#rb-bas-t"], { opacity: 0 }, 11.28);
+    tl.to(graphique, { opacity: 0.22, duration: 0.4, ease: "power2.inOut" }, 11.28);
+    wipe("#rb-filtres", 12.16);
+    tl.to("#rb-cache-1", { scaleX: 1, duration: 0.35, ease: "power2.inOut" }, 12.42);
+    wipe("#rb-reglages", 12.72);
+    tl.to("#rb-cache-2", { scaleX: 1, duration: 0.35, ease: "power2.inOut" }, 13.0);
+    wipe("#rb-sorties", 13.6);
+    tl.to("#rb-cache-3", { scaleX: 1, duration: 0.35, ease: "power2.inOut" }, 13.86);
+    // tout part ; la bougie bleue reprend sa couleur et devient la tige de l'étrave
+    tl.to(["#rb-heure", "#rb-filtres", "#rb-reglages", "#rb-sorties", ".rb-cache", "#rb-zone", "#rb-avant", "#rb-930", "#rb-dans", "#rb-haut", "#rb-bas", "#rb-achat", "#rb-vente", "#rb-achat-t", "#rb-vente-t"], { opacity: 0, duration: 0.3, ease: "power2.in" }, 15.3);
+    tl.to("#rb-cassure", { opacity: 1, duration: 0.2 }, 15.3);
+    tl.to("#rb-cassure", { attr: { x: 673, y: 755, width: 26, height: 297, rx: 13 }, duration: 0.45, ease: "power3.inOut" }, 15.4);
+    // 3f le V se trace autour de la tige, puis les vagues ; « Il s'appelle Étrave »
+    // le bout arrondi d'un trait pas encore tracé ferait un point : le trait n'apparaît qu'au début de son tracé
+    tl.set(v, { opacity: 1 }, 15.8);
+    tl.to(v, { strokeDashoffset: 0, duration: 0.5, ease: "power1.inOut" }, 15.8);
+    tl.set(vagues, { opacity: 0.55 }, 16.1);
+    tl.to(vagues, { strokeDashoffset: 0, duration: 0.35, ease: "power1.inOut" }, 16.1);
+    wipe("#rb-nom", 16.52, 0.4);
+    wipe("#rb-role-1", 16.82);
+    wipe("#rb-role-2", 16.95);
+    // passage à la frise : les mots s'effacent, l'étrave reste
+    tl.to(["#rb-nom", "#rb-role-1", "#rb-role-2"], { opacity: 0, duration: 0.2, ease: "power2.in" }, 18.12);
+    window.__timelines["robot"] = tl;
+  </script>
+</template>

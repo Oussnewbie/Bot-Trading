@@ -1,0 +1,129 @@
+{
+ "licence": "Mixkit Sound Effects Free License (https://mixkit.co/license/#sfxFree) : usage gratuit, commercial compris, dans des vidéos publiées ; aucun crédit exigé ; interdit de redistribuer les sons seuls. C'est pourquoi les fichiers ne sont pas dans ce dépôt : `python3 video/outil.py sons` les télécharge dans ton dossier de sons.",
+ "sons": {
+  "air-zoom-vacuum-2608": {
+   "fichier": "air-zoom-vacuum-2608.wav",
+   "url": "https://assets.mixkit.co/active_storage/sfx/2608/2608.wav"
+  },
+  "bell-notification-933": {
+   "fichier": "bell-notification-933.wav",
+   "url": "https://assets.mixkit.co/active_storage/sfx/933/933.wav"
+  },
+  "click-classic-1117": {
+   "fichier": "click-classic-1117.wav",
+   "url": "https://assets.mixkit.co/active_storage/sfx/1117/1117.wav"
+  },
+  "click-interface-device-2577": {
+   "fichier": "click-interface-device-2577.wav",
+   "url": "https://assets.mixkit.co/active_storage/sfx/2577/2577.wav"
+  },
+  "click-light-switch-2585": {
+   "fichier": "click-light-switch-2585.wav",
+   "url": "https://assets.mixkit.co/active_storage/sfx/2585/2585.wav"
+  },
+  "click-metal-button-1830": {
+   "fichier": "click-metal-button-1830.wav",
+   "url": "https://assets.mixkit.co/active_storage/sfx/1830/1830.wav"
+  },
+  "click-mouse-close-1113": {
+   "fichier": "click-mouse-close-1113.wav",
+   "url": "https://assets.mixkit.co/active_storage/sfx/1113/1113.wav"
+  },
+  "click-select-1109": {
+   "fichier": "click-select-1109.wav",
+   "url": "https://assets.mixkit.co/active_storage/sfx/1109/1109.wav"
+  },
+  "click-typewriter-soft-1125": {
+   "fichier": "click-typewriter-soft-1125.wav",
+   "url": "https://assets.mixkit.co/active_storage/sfx/1125/1125.wav"
+  },
+  "clock-knob-spin-1064": {
+   "fichier": "clock-knob-spin-1064.wav",
+   "url": "https://assets.mixkit.co/active_storage/sfx/1064/1064.wav"
+  },
+  "hit-deep-heartbeat-498": {
+   "fichier": "hit-deep-heartbeat-498.wav",
+   "url": "https://assets.mixkit.co/active_storage/sfx/498/498.wav"
+  },
+  "hit-wood-hard-2182": {
+   "fichier": "hit-wood-hard-2182.wav",
+   "url": "https://assets.mixkit.co/active_storage/sfx/2182/2182.wav"
+  },
+  "impact-intro-presentation-2902": {
+   "fichier": "impact-intro-presentation-2902.wav",
+   "url": "https://assets.mixkit.co/active_storage/sfx/2902/2902.wav"
+  },
+  "paper-page-turn-1104": {
+   "fichier": "paper-page-turn-1104.wav",
+   "url": "https://assets.mixkit.co/active_storage/sfx/1104/1104.wav"
+  },
+  "paper-quick-movement-2380": {
+   "fichier": "paper-quick-movement-2380.wav",
+   "url": "https://assets.mixkit.co/active_storage/sfx/2380/2380.wav"
+  },
+  "paper-slide-1530": {
+   "fichier": "paper-slide-1530.wav",
+   "url": "https://assets.mixkit.co/active_storage/sfx/1530/1530.wav"
+  },
+  "papers-moved-2379": {
+   "fichier": "papers-moved-2379.wav",
+   "url": "https://assets.mixkit.co/active_storage/sfx/2379/2379.wav"
+  },
+  "sweep-small-fast-166": {
+   "fichier": "sweep-small-fast-166.wav",
+   "url": "https://assets.mixkit.co/active_storage/sfx/166/166.wav"
+  },
+  "swoosh-fast-transitions-3115": {
+   "fichier": "swoosh-fast-transitions-3115.wav",
+   "url": "https://assets.mixkit.co/active_storage/sfx/3115/3115.wav"
+  },
+  "swoosh-wind-cinematic-1471": {
+   "fichier": "swoosh-wind-cinematic-1471.wav",
+   "url": "https://assets.mixkit.co/active_storage/sfx/1471/1471.wav"
+  },
+  "swoosh-wind-short-1461": {
+   "fichier": "swoosh-wind-short-1461.wav",
+   "url": "https://assets.mixkit.co/active_storage/sfx/1461/1461.wav"
+  },
+  "tick-clock-single-1061": {
+   "fichier": "tick-clock-single-1061.wav",
+   "url": "https://assets.mixkit.co/active_storage/sfx/1061/1061.wav"
+  },
+  "tick-wall-clock-fast-1063": {
+   "fichier": "tick-wall-clock-fast-1063.wav",
+   "url": "https://assets.mixkit.co/active_storage/sfx/1063/1063.wav"
+  },
+  "ticking-timer-1056": {
+   "fichier": "ticking-timer-1056.wav",
+   "url": "https://assets.mixkit.co/active_storage/sfx/1056/1056.wav"
+  },
+  "typewriter-mechanical-hit-1365": {
+   "fichier": "typewriter-mechanical-hit-1365.wav",
+   "url": "https://assets.mixkit.co/active_storage/sfx/1365/1365.wav"
+  },
+  "water-bubble-1317": {
+   "fichier": "water-bubble-1317.wav",
+   "url": "https://assets.mixkit.co/active_storage/sfx/1317/1317.wav"
+  },
+  "water-sea-splash-1198": {
+   "fichier": "water-sea-splash-1198.wav",
+   "url": "https://assets.mixkit.co/active_storage/sfx/1198/1198.wav"
+  },
+  "water-splash-1311": {
+   "fichier": "water-splash-1311.wav",
+   "url": "https://assets.mixkit.co/active_storage/sfx/1311/1311.wav"
+  },
+  "whoosh-air-1489": {
+   "fichier": "whoosh-air-1489.wav",
+   "url": "https://assets.mixkit.co/active_storage/sfx/1489/1489.wav"
+  },
+  "whoosh-cinematic-fast-1492": {
+   "fichier": "whoosh-cinematic-fast-1492.wav",
+   "url": "https://assets.mixkit.co/active_storage/sfx/1492/1492.wav"
+  },
+  "whoosh-fast-transition-1490": {
+   "fichier": "whoosh-fast-transition-1490.wav",
+   "url": "https://assets.mixkit.co/active_storage/sfx/1490/1490.wav"
+  }
+ }
+}

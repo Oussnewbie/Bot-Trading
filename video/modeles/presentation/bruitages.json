@@ -1,0 +1,304 @@
+{
+ "doc": "Bruitages de la présentation (v6, 47,62 s) : instant de départ, son du catalogue, gain (pic visé = -6 dB + gain), durée gardée, tranche [début, durée] du fichier, passe-haut, demi-tons.",
+ "duree": 47.62,
+ "bruitages": [
+  {
+   "t": 0.0,
+   "son": "hit-deep-heartbeat-498",
+   "gain_db": -2.0,
+   "max_dur": 1.1,
+   "note": "accroche, On te vend des robots",
+   "passe_haut": 140
+  },
+  {
+   "t": 1.59,
+   "son": "swoosh-fast-transitions-3115",
+   "gain_db": -2.4,
+   "max_dur": 0.32,
+   "note": "coupe, Sans un seul trade (Personne)"
+  },
+  {
+   "t": 3.11,
+   "son": "hit-wood-hard-2182",
+   "gain_db": 0.0,
+   "max_dur": 0.417,
+   "note": "coupe bleue, Moi je publie (Moi)"
+  },
+  {
+   "t": 3.876,
+   "son": "click-metal-button-1830",
+   "gain_db": -10.0,
+   "max_dur": 0.609,
+   "note": "tout."
+  },
+  {
+   "t": 4.528,
+   "son": "paper-quick-movement-2380",
+   "gain_db": -6.0,
+   "max_dur": 0.902,
+   "note": "la feuille bleue se souleve"
+  },
+  {
+   "t": 5.35,
+   "son": "swoosh-wind-short-1461",
+   "gain_db": -9.7,
+   "max_dur": 0.39,
+   "note": "le certificat tombe"
+  },
+  {
+   "t": 5.39,
+   "son": "paper-slide-1530",
+   "gain_db": -9.7,
+   "max_dur": 0.5,
+   "note": "le certificat se pose"
+  },
+  {
+   "t": 6.195,
+   "son": "tick-wall-clock-fast-1063",
+   "gain_db": -10.0,
+   "max_dur": 0.95,
+   "note": "le montant roule (le certificat)"
+  },
+  {
+   "t": 6.87,
+   "son": "whoosh-fast-transition-1490",
+   "gain_db": -4.0,
+   "max_dur": 0.8,
+   "note": "le certificat sort"
+  },
+  {
+   "t": 7.77,
+   "son": "typewriter-mechanical-hit-1365",
+   "gain_db": -12.0,
+   "max_dur": 0.54,
+   "note": "le prénom (Je m'appelle…)"
+  },
+  {
+   "t": 9.8,
+   "son": "click-mouse-close-1113",
+   "gain_db": -10.0,
+   "max_dur": 0.12,
+   "note": "6 ans (six ans)",
+   "tranche": [
+    0.004,
+    0.12
+   ]
+  },
+  {
+   "t": 10.59,
+   "son": "sweep-small-fast-166",
+   "gain_db": -11.0,
+   "max_dur": 0.66,
+   "note": "le 6 monte"
+  },
+  {
+   "t": 11.036,
+   "son": "clock-knob-spin-1064",
+   "gain_db": -12.0,
+   "max_dur": 0.6,
+   "note": "6 devient 15 (quinze heures trente)"
+  },
+  {
+   "t": 13.55,
+   "son": "click-light-switch-2585",
+   "gain_db": -9.6,
+   "max_dur": 0.13,
+   "note": "bougie de 15:30 (New York ouvre)"
+  },
+  {
+   "t": 15.13,
+   "son": "whoosh-cinematic-fast-1492",
+   "gain_db": -10.2,
+   "max_dur": 0.7,
+   "note": "la zone des 5 minutes se trace (cinq premieres minutes)"
+  },
+  {
+   "t": 15.997,
+   "son": "click-typewriter-soft-1125",
+   "gain_db": -14.0,
+   "max_dur": 0.219,
+   "note": "bougie dans la zone"
+  },
+  {
+   "t": 16.4,
+   "son": "click-interface-device-2577",
+   "gain_db": -15.0,
+   "max_dur": 0.17,
+   "note": "bougie dans la zone",
+   "demi_tons": 2
+  },
+  {
+   "t": 17.525,
+   "son": "impact-intro-presentation-2902",
+   "gain_db": -9.0,
+   "max_dur": 1.1,
+   "note": "la bougie sort par le haut (casse vers le haut)",
+   "tranche": [
+    0.55,
+    1.1
+   ],
+   "passe_haut": 180
+  },
+  {
+   "t": 18.21,
+   "son": "click-select-1109",
+   "gain_db": -16.0,
+   "max_dur": 0.3,
+   "note": "achat (il achete)",
+   "demi_tons": 3
+  },
+  {
+   "t": 19.92,
+   "son": "click-select-1109",
+   "gain_db": -12.0,
+   "max_dur": 0.3,
+   "note": "vente (il vend)",
+   "demi_tons": -3
+  },
+  {
+   "t": 22.19,
+   "son": "swoosh-wind-cinematic-1471",
+   "gain_db": -13.0,
+   "max_dur": 1.0,
+   "note": "le graphique s'efface (Le reste)"
+  },
+  {
+   "t": 23.378,
+   "son": "paper-quick-movement-2380",
+   "gain_db": -14.0,
+   "max_dur": 0.5,
+   "note": "Filtres noirci"
+  },
+  {
+   "t": 24.054,
+   "son": "papers-moved-2379",
+   "gain_db": -10.7,
+   "max_dur": 0.5,
+   "note": "Reglages noirci"
+  },
+  {
+   "t": 24.708,
+   "son": "paper-slide-1530",
+   "gain_db": -17.7,
+   "max_dur": 0.5,
+   "note": "Sorties noirci",
+   "demi_tons": -2
+  },
+  {
+   "t": 25.84,
+   "son": "whoosh-air-1489",
+   "gain_db": -13.0,
+   "max_dur": 0.7,
+   "note": "la bougie devient la tige",
+   "passe_haut": 400
+  },
+  {
+   "t": 26.9,
+   "son": "water-splash-1311",
+   "gain_db": -10.0,
+   "max_dur": 1.33,
+   "note": "les vagues du logo"
+  },
+  {
+   "t": 27.58,
+   "son": "hit-deep-heartbeat-498",
+   "gain_db": -5.0,
+   "max_dur": 1.5,
+   "note": "ETRAVE (Il s'appelle Etrave)",
+   "passe_haut": 200
+  },
+  {
+   "t": 29.65,
+   "son": "swoosh-wind-cinematic-1471",
+   "gain_db": -13.0,
+   "max_dur": 0.9,
+   "note": "l'axe des heures"
+  },
+  {
+   "t": 30.22,
+   "son": "click-interface-device-2577",
+   "gain_db": -14.0,
+   "max_dur": 0.17,
+   "note": "les barres de la frise"
+  },
+  {
+   "t": 30.82,
+   "son": "ticking-timer-1056",
+   "gain_db": -14.0,
+   "max_dur": 2.6,
+   "note": "l'aiguille file de 15:30 a 15:50"
+  },
+  {
+   "t": 31.85,
+   "son": "hit-wood-hard-2182",
+   "gain_db": -3.0,
+   "max_dur": 0.417,
+   "note": "Gains comme pertes (les jours qui gagnent)"
+  },
+  {
+   "t": 34.67,
+   "son": "air-zoom-vacuum-2608",
+   "gain_db": -8.8,
+   "max_dur": 0.6,
+   "note": "ta ligne monte"
+  },
+  {
+   "t": 37.47,
+   "son": "sweep-small-fast-166",
+   "gain_db": -11.0,
+   "max_dur": 0.66,
+   "note": "Copy trading (copy trading)"
+  },
+  {
+   "t": 39.267,
+   "son": "click-typewriter-soft-1125",
+   "gain_db": -14.0,
+   "max_dur": 0.219,
+   "note": "copie 1"
+  },
+  {
+   "t": 39.434,
+   "son": "click-classic-1117",
+   "gain_db": -14.0,
+   "max_dur": 0.288,
+   "note": "copie 2",
+   "demi_tons": 2
+  },
+  {
+   "t": 39.507,
+   "son": "tick-clock-single-1061",
+   "gain_db": -14.0,
+   "max_dur": 0.849,
+   "note": "copie 3"
+  },
+  {
+   "t": 39.754,
+   "son": "click-classic-1117",
+   "gain_db": -14.0,
+   "max_dur": 0.288,
+   "note": "copie 4",
+   "demi_tons": 5
+  },
+  {
+   "t": 42.09,
+   "son": "paper-page-turn-1104",
+   "gain_db": -8.4,
+   "max_dur": 0.452,
+   "note": "carte de fin, la page tourne"
+  },
+  {
+   "t": 42.16,
+   "son": "water-sea-splash-1198",
+   "gain_db": -8.0,
+   "max_dur": 1.44,
+   "note": "ETRAVE, carte de fin : la vague"
+  },
+  {
+   "t": 44.566,
+   "son": "bell-notification-933",
+   "gain_db": -10.0,
+   "max_dur": 2.0,
+   "note": "lien en bio (le lien est dans ma bio)"
+  }
+ ]
+}

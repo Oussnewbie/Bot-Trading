@@ -1,0 +1,19 @@
+{
+ "dossier_journaux": "",
+ "voix_id": "l'identifiant de ton clone ElevenLabs",
+ "modele_voix": "eleven_v4",
+ "cle_elevenlabs": "~/.config/elevenlabs/cle",
+ "sons": "~/Documents/Etrave-video/sons",
+ "police": "/System/Library/Fonts/Supplemental/DIN Alternate Bold.ttf",
+ "unite": "r",
+ "sortie": "~/Documents/Etrave-video",
+ "presentation": {
+  "nom": "Prénom",
+  "annees": 6,
+  "montant": "12 345,67 $",
+  "libelle_montant": "de récompenses <prop firm>",
+  "certificat": "~/chemin/vers/certificat.png",
+  "alt_certificat": "Certificat de <prop firm>",
+  "voix": "~/chemin/vers/le/dossier/des/repliques"
+ }
+}
