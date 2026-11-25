@@ -64,9 +64,9 @@ qtyStepIn = input.float(0, "Pas de taille (0 = auto)", minval = 0, step = 0.01, 
 
 GL = "Lots chez le courtier"
 showLots  = input.bool(true, "Calculer le lot à passer chez le courtier", tooltip = "Affiché dans le tableau, sur les ordres et dans les alertes : le lot à saisir dans MetaTrader pour risquer le pourcentage choisi. Il ne change rien aux trades du script.", group = GL, display = display.none)
-lotSize   = input.float(20, "Taille de contrat (unités par lot)", minval = 0.0001, tooltip = "FundingPips NAS100 : 20 (1 lot = 20 $ par point). Chez un autre courtier : MetaTrader, clic droit sur le symbole > Spécification > Taille du contrat.", group = GL, display = display.none)
+lotSize   = input.float(20, "Taille de contrat (unités par lot)", minval = 0.0001, tooltip = "Exemple, NAS100 chez une prop firm : 20 (1 lot = 20 $ par point). Chez un autre courtier : MetaTrader, clic droit sur le symbole > Spécification > Taille du contrat.", group = GL, display = display.none)
 lotStep   = input.float(0.01, "Pas de lot", minval = 0.0001, step = 0.01, tooltip = "Le plus petit écart de lot accepté (Spécification > Pas du volume). Le lot est arrondi vers le bas : le risque réel ne dépasse jamais le risque choisi.", group = GL, display = display.none)
-lotBal    = input.float(0, "Solde du compte (USD, 0 = capital de la stratégie)", minval = 0, step = 1000, tooltip = "Le solde de ton compte chez le courtier, par exemple 100000 pour un compte FundingPips de 100K. 0 : le capital de la stratégie TradingView (capital de départ + gains), qui n'est pas celui de ton compte. À mettre à jour quand le solde change.", group = GL, display = display.none)
+lotBal    = input.float(0, "Solde du compte (USD, 0 = capital de la stratégie)", minval = 0, step = 1000, tooltip = "Le solde de ton compte chez le courtier, par exemple 100000 pour un compte de prop firm de 100K. 0 : le capital de la stratégie TradingView (capital de départ + gains), qui n'est pas celui de ton compte. À mettre à jour quand le solde change.", group = GL, display = display.none)
 
 // ── Règles VERROUILLÉES le 25/11/2026 à la demande de l'utilisateur (« sans possibilité de changer manuellement »), comme l'EA :
 // profil « toutes les entrées, sans plancher de bruit », Nasdaq 100 et S&P 500 seulement. Restent réglables : risque, lots chez le

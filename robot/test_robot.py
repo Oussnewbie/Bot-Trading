@@ -533,3 +533,12 @@ def test_en_tete_du_pine_a_jour():
     for ancien in ("NASDAQ UNIQUEMENT", "(NAS100) uniquement", "Version non passée", "+0,05R", "Stop     : de l'autre côté du range"):
         assert ancien not in entete, ancien
     assert "Nasdaq 100 et S&P 500" in entete and "3 ranges" in entete
+
+
+def test_aucune_prop_firm_nommee_dans_le_depot_public():
+    """Le dépôt est public : les infobulles du Pine disent « prop firm » sans nommer d'entreprise (choix de l'utilisateur, 25/11/2026)."""
+    racine = os.path.dirname(ICI)
+    for chemin in ("robot/Strategy-V10.pine", "robot/Strategy-V10.mq5", "README.md"):
+        texte = open(os.path.join(racine, chemin), encoding="utf-8-sig").read().lower()
+        assert "fundingpips" not in texte and "funding pips" not in texte, chemin
+    assert "chez une prop firm" in PINE and "compte de prop firm" in PINE
