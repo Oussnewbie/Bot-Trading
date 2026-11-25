@@ -68,7 +68,8 @@ video/     (branche communication/outil-video) vidéos TikTok : récap de séanc
 2. **Testeur, 12 mois, 0,1 lot fixe sur 1 000 $** (`InpFixedLots = 0.1`), code du 25/11/2026 au soir (après X-13 et l'audit) :
    +1 885,09 $, 379 trades, 123 jours de trade, 53 % de jours gagnants, pire jour −91 $, pire baisse −321 $ (jour par jour ; −330 $
    sur le solde). Avant le verrouillage des règles : +1 886,96 $. Une bonne année (+76 R contre environ +51 R pour une année
-   médiane). Audit : à 0,25 % sur 300 000 $, mêmes 449 trades et +65 324,88 $ qu'après X-13, transaction par transaction.
+   médiane). Les correctifs de l'audit ne changent aucun trade dans le testeur : mêmes transactions que `main` d'avant l'audit à
+   0,1 lot sur 1 000 $, et mêmes 449 trades et +65 324,88 $ qu'après X-13 à 0,25 % sur 300 000 $.
 3. **Démo préparée, jamais lancée en séance.** Relance : MetaTrader fermé, copier `robot/mt5/demo.ini` dans le dossier de la
    plateforme et `robot/mt5/demo_1000.set` en UTF-16 dans `MQL5/Presets/StrategyV10_demo_1000.set`, puis
    `terminal64.exe /config:"C:\Program Files\MetaTrader 5\demo.ini"` et `caffeinate -i -w <pid>`, avant 9:30 New York. But : mesurer
