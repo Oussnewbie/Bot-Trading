@@ -125,6 +125,34 @@ def test_jour_sans_trade_ne_dit_pas_pourquoi(tmp_path):
     assert "RSI" not in " ".join(textes) and recap.mot_du_jour(j, None) in recap.MOTS_DU_JOUR["rien"]
 
 
+def test_total_egal_a_la_somme_des_valeurs_affichees():
+    j = {"marches": [{"positions": [1], "r": -1.4972}, {"positions": [1], "r": -0.5551}], "trades": 2}
+    assert recap.total(j, "r") == -2.06          # −1,50 et −0,56 à l'écran : le total affiché doit être −2,06, pas −2,05
+
+
+def test_seance_tradee_jamais_racontee_comme_sans_trade(tmp_path):
+    jour = datetime.date(2026, 4, 16)
+    ecrire_journee(str(tmp_path), jour, positions=())
+    # l'état de fin dit qu'un trade a eu lieu, mais le journal d'exécution est vide (MetaTrader arrêté avant de l'écrire)
+    chemin = os.path.join(str(tmp_path), "seances-NDX100.csv")
+    texte = open(chemin, encoding="utf-8").read().replace("Pas de trade : vente bloquée (RSI)", "Achat terminé (Fin de journée)")
+    open(chemin, "w", encoding="utf-8").write(texte)
+    with pytest.raises(journee.JourneeIncomplete, match="aucune position"):
+        journee.charger(str(tmp_path), jour)
+    # le journal des trades du compte (écrit à chaque clôture) ne retrouve pas le journal d'exécution
+    ecrire_journee(str(tmp_path), jour)
+    sortie = int(datetime.datetime(2026, 4, 16, 19, 50, tzinfo=UTC).timestamp())
+    with open(os.path.join(str(tmp_path), "trades-NDX100.csv"), "w", encoding="utf-8") as f:
+        f.write(f"{sortie};2026.04.16;15:50;NDX100;1;1.00;0.67;120.00;10000;Fin de journée;0;USD\r\n"
+                f"{sortie};2026.04.16;15:50;NDX100;1;1.00;-1.00;-180.00;10000;Stop;0;USD\r\n")
+    with pytest.raises(journee.JourneeIncomplete, match="ne retrouve pas"):
+        journee.charger(str(tmp_path), jour)
+    with open(os.path.join(str(tmp_path), "trades-NDX100.csv"), "w", encoding="utf-8") as f:
+        f.write(f"{sortie};2026.04.16;15:50;NDX100;1;1.00;0.67;120.00;10000;Fin de journée;0;USD\r\n")
+    m = journee.charger(str(tmp_path), jour)["marches"][0]
+    assert m["pct"] == pytest.approx(1.2) and len(m["positions"]) == 1
+
+
 def test_mention_exemple_seulement_pour_le_testeur(tmp_path):
     scenes = [{"id": "titre", "debut": 0, "duree": 3}]
     assert "Exemple : journée du testeur" in recap._index(scenes, 3, True)

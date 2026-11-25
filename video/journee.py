@@ -105,7 +105,17 @@ def charger(dossier, jour=None):
         bas, haut = export.nombre(fin.get("range_bas")), export.nombre(fin.get("range_haut"))
         positions = sorted((_position(e) for e in executions if e.get("jour_ny") == cle and e.get("symbole") == s),
                            key=lambda p: p["entree"] or datetime.datetime.max.replace(tzinfo=PARIS))
-        pct = [t["pct"] for t in trades if t["date"].replace(".", "-") == cle and t["symbole"] == s and t["pct"] is not None]
+        du_jour = [t for t in trades if t["date"].replace(".", "-") == cle and t["symbole"] == s]
+        net_trades, net_exec = sum(t["net"] for t in du_jour), sum(p["net"] or 0.0 for p in positions)
+        # la règle de l'export trimestriel : le journal d'exécution doit retrouver le journal des trades (à 0,05 près)
+        if du_jour and abs(net_trades - net_exec) > 0.05:
+            raise JourneeIncomplete(f"{s} le {cle} : le journal d'exécution ne retrouve pas le journal des trades "
+                                    f"({len(positions)} position(s) pour {net_exec:.2f}, contre {len(du_jour)} trade(s) pour {net_trades:.2f}). "
+                                    "MetaTrader s'est peut-être arrêté avant d'écrire l'exécution : la vidéo raconterait une autre séance.")
+        if not positions and "terminé" in fin.get("etat", ""):
+            raise JourneeIncomplete(f"{s} le {cle} : la séance dit qu'un trade a eu lieu, mais le journal d'exécution n'a aucune position "
+                                    "(MetaTrader arrêté avant de l'écrire ?). Pas de vidéo « pas de trade » pour une séance tradée.")
+        pct = [t["pct"] for t in du_jour if t["pct"] is not None]
         sommes = {k: sum(p[k] for p in positions) if positions and all(p[k] is not None for p in positions) else None
                   for k in ("points", "r", "net")}
         nature = instrument(s)

@@ -16,6 +16,7 @@ import subprocess
 ICI = os.path.dirname(os.path.abspath(__file__))
 NIVEAU_VISE = -15.0         # LUFS : la voix au premier plan, comme sur TikTok
 NIVEAU_SANS_VOIX = -18.0    # LUFS : les bruitages seuls restent discrets
+NIVEAU_VOIX = -15.0         # LUFS de la piste de voix avant le mélange : les gains des bruitages sont réglés pour elle
 
 
 def catalogue():
@@ -52,8 +53,15 @@ def piste_voix(repliques, duree, sortie):
         filtres.append(f"{chaine}aresample=48000,adelay={ms}:all=1[v{i}]")
         noms.append(f"[v{i}]")
     filtres.append("".join(noms) + f"amix=inputs={len(noms)}:normalize=0,apad=whole_dur={duree:.3f},pan=stereo|c0=c0|c1=c0[o]")
+    brute = sortie[:-4] + "-brute.wav"
     subprocess.run(["ffmpeg", "-v", "error", "-y", *entrees, "-filter_complex", ";".join(filtres), "-map", "[o]", "-t", f"{duree:.3f}",
+                    "-ar", "48000", "-c:a", "pcm_s24le", brute], check=True)
+    # un gain simple mesuré (pas de normalisation dynamique), puis un limiteur à -1 dBFS pour les pics
+    mesure = _lufs(brute)
+    gain = (NIVEAU_VOIX - mesure) if mesure is not None and mesure > -70 else 0.0
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", brute, "-af", f"volume={gain:.2f}dB,alimiter=limit=0.89:level=false",
                     "-ar", "48000", "-c:a", "pcm_s24le", sortie], check=True)
+    os.remove(brute)
     return sortie
 
 
@@ -99,16 +107,18 @@ def assembler(video_muette, voix, bruitages, sortie, dossier_travail):
     """La vidéo finale : l'image muette + la voix + les bruitages baissés sous la voix, au niveau visé, en AAC 48 kHz."""
     melange = os.path.join(dossier_travail, "melange.wav")
     if voix and bruitages:
-        filtre = ("[0:a]asplit=2[vx][cle];[1:a][cle]sidechaincompress=threshold=0.03:ratio=8:attack=8:release=280:makeup=1[sfx];"
-                  "[vx][sfx]amix=inputs=2:normalize=0[o]")
+        filtre = ("[0:a]asplit=2[vx][cle];[1:a][cle]sidechaincompress=threshold=0.03:ratio=8:attack=8:release=280:makeup=1,"
+                  "asplit=2[sfx][sfx_seuls];[vx][sfx]amix=inputs=2:normalize=0[o]")
         entrees = ["-i", voix, "-i", bruitages]
     elif voix or bruitages:
         filtre, entrees = "[0:a]anull[o]", ["-i", voix or bruitages]
     else:
         subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", video_muette, "-c", "copy", sortie], check=True)
         return sortie
+    sous_voix = ["-map", "[sfx_seuls]", "-ar", "48000", "-c:a", "pcm_s24le", os.path.join(dossier_travail, "bruitages-sous-voix.wav")] \
+        if voix and bruitages else []
     subprocess.run(["ffmpeg", "-v", "error", "-y", *entrees, "-filter_complex", filtre, "-map", "[o]", "-ar", "48000",
-                    "-c:a", "pcm_s24le", melange], check=True)
+                    "-c:a", "pcm_s24le", melange, *sous_voix], check=True)
     mesure = _lufs(melange)
     vise = NIVEAU_VISE if voix else NIVEAU_SANS_VOIX
     gain = (vise - mesure) if mesure is not None and mesure > -70 else 0.0

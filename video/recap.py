@@ -123,7 +123,10 @@ def total(j, unite):
     if unite == "points":
         return None
     vals = [valeur(m, unite) for m in j["marches"] if m["positions"]]
-    return sum(vals) if vals and all(v is not None for v in vals) else None
+    if not vals or any(v is None for v in vals):
+        return None
+    # la somme des valeurs telles qu'elles sont affichées : −1,50 R et −0,56 R font −2,06 R à l'écran comme à la voix
+    return round(sum(round(v, 2) for v in vals), 2)
 
 
 def sens_mot(p):

@@ -73,8 +73,13 @@ Compte 1 à 3 minutes par vidéo. Une réplique déjà dite n'est pas redemandé
 `crontab -e` puis :
 
 ```
-10 22 * * 1-5 cd ~/Documents/GitHub/Bot-Trading && /usr/bin/python3 video/outil.py recap >> ~/Documents/Etrave-video/recap.log 2>&1
+10 22 * * 1-5 cd ~/Documents/GitHub/Bot-Trading && python3 video/outil.py recap >> ~/Documents/Etrave-video/recap.log 2>&1
 ```
+
+Avec cron, utilise le même Python que dans le Terminal (`which python3` donne son chemin, par exemple `/usr/local/bin/python3`,
+à écrire à la place de `python3`). L'outil retrouve seul Node et ffmpeg dans `/usr/local/bin` et `/opt/homebrew/bin`. Sur Mac, la
+première fois, macOS peut demander d'autoriser cron à lire le dossier Documents (Réglages Système, Confidentialité, Accès complet
+au disque, ajouter `/usr/sbin/cron`).
 
 Le Mac doit être allumé à cette heure-là. Si l'EA tourne sur un autre ordinateur (un serveur Windows), copie ses journaux ou
 indique leur dossier dans `dossier_journaux`.

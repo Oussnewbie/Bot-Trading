@@ -22,6 +22,10 @@ ICI = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, ICI)
 sys.path.insert(0, os.path.join(ICI, "..", "etrave"))      # pont.py et export.py d'Étrave : la même lecture des journaux
 CONFIG = os.path.expanduser("~/.config/etrave-video/config.json")
+# Lancé par cron, le PATH est réduit à /usr/bin:/bin : on y ajoute les dossiers habituels de Node et de ffmpeg (Homebrew, installateurs)
+for _d in ("/usr/local/bin", "/opt/homebrew/bin"):
+    if os.path.isdir(_d) and _d not in os.environ.get("PATH", "").split(os.pathsep):
+        os.environ["PATH"] = os.environ.get("PATH", "") + os.pathsep + _d
 POLICE_MAC = "/System/Library/Fonts/Supplemental/DIN Alternate Bold.ttf"
 
 
