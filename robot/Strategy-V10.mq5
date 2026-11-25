@@ -193,6 +193,9 @@ input group "Exécution"
 input ulong        InpMagic     = 50930;        // Numéro magique
 input int          InpDeviation = 30;           // Glissement maximal (points)
 input string       InpComment   = "Strategy V10";     // Commentaire des ordres
+// Correctif X-14 (25/11/2026) : le même commentaire pour tous les ordres. Il disait « B », « D1 »… et « pyramide », visibles dans
+// l'onglet Historique de MetaTrader, donc sur la photo de l'historique en fin de vidéo récap : le type d'entrée reste secret.
+// Le commentaire ne sert à rien d'autre : chaque jambe se reconnaît à son numéro magique.
 
 input group "Notifications"
 input bool         InpPush      = true;         // Notifications push MT5 (appli mobile MetaTrader 5)
@@ -1653,7 +1656,7 @@ void DoPyramid(double curR)
       return;
      }
    double tp = InpTgtR > 0 ? NormalizeDouble(gEntry + gDir * InpTgtR * gRisk, _Digits) : 0;
-   bool ok = gDir == 1 ? trade.Buy(lots, _Symbol, 0, lock, tp, InpComment + " pyramide") : trade.Sell(lots, _Symbol, 0, lock, tp, InpComment + " pyramide");
+   bool ok = gDir == 1 ? trade.Buy(lots, _Symbol, 0, lock, tp, InpComment) : trade.Sell(lots, _Symbol, 0, lock, tp, InpComment);
    uint rc = trade.ResultRetcode();
    if(!(ok && (rc == TRADE_RETCODE_DONE || rc == TRADE_RETCODE_DONE_PARTIAL || rc == TRADE_RETCODE_PLACED)))
      {
@@ -1827,19 +1830,24 @@ void LegRaiseStop(SLeg &g, double lvlPx, string why)
 // Ouvre la jambe au marché avec son stop. Taille plafonnée : pas plus de lots que le trade de cassure, pas plus de 1R de
 // risque, et la marge nécessaire (pyramide comprise). La jambe est marquée « jouée » quoi qu'il arrive : une seule
 // tentative par jour.
-bool LegOpen(SLeg &g, int dir, double stop, string quoi)
+bool LegOpen(SLeg &g, int dir, double stop, string quoi, double ref = 0)
   {
    g.done = true;
    double ask  = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
    double bid  = SymbolInfoDouble(_Symbol, SYMBOL_BID);
    double px   = dir == 1 ? ask : bid;
-   double dist = (px - stop) * dir;
+   // Correctif X-13 (25/11/2026) : le stop d'une continuation D se compte depuis son niveau de déclenchement (ref), comme dans le
+   // Pine et le simulateur des tests ; il se comptait depuis le prix obtenu, donc un peu plus loin à chaque glissement. B et C
+   // (entrées au marché) gardent le prix obtenu. La taille se calcule ensuite sur la distance réelle depuis ce prix.
+   double base = ref > 0 ? ref : px;
+   double dist = (base - stop) * dir;
    // V10 : stop élargi, du même multiple que la cassure ; la taille calculée plus bas est réduite d'autant (risque plafonné à 1R)
    if(gStopMult != 1.0 && dist > 0)
      {
       dist *= gStopMult;
-      stop  = px - dir * dist;
+      stop  = base - dir * dist;
      }
+   dist = (px - stop) * dir;
    double lvl  = SymbolInfoInteger(_Symbol, SYMBOL_TRADE_STOPS_LEVEL) * _Point;
    double tv   = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_VALUE_LOSS);
    if(tv <= 0)
@@ -1874,7 +1882,7 @@ bool LegOpen(SLeg &g, int dir, double stop, string quoi)
      }
    double sl = NormalizeDouble(stop, _Digits);
    trade.SetExpertMagicNumber(g.magic);
-   bool   ok   = dir == 1 ? trade.Buy(lots, _Symbol, 0, sl, 0, InpComment + " " + g.nom) : trade.Sell(lots, _Symbol, 0, sl, 0, InpComment + " " + g.nom);
+   bool   ok   = dir == 1 ? trade.Buy(lots, _Symbol, 0, sl, 0, InpComment) : trade.Sell(lots, _Symbol, 0, sl, 0, InpComment);
    uint   rc   = trade.ResultRetcode();
    double fill = trade.ResultPrice();
    ulong  deal = trade.ResultDeal();
@@ -1967,7 +1975,7 @@ void LegPyramid(SLeg &g, double curR)
       return;
      }
    trade.SetExpertMagicNumber(g.magic);
-   bool   ok   = g.dir == 1 ? trade.Buy(lots, _Symbol, 0, lock, 0, InpComment + " " + g.nom + " pyramide") : trade.Sell(lots, _Symbol, 0, lock, 0, InpComment + " " + g.nom + " pyramide");
+   bool   ok   = g.dir == 1 ? trade.Buy(lots, _Symbol, 0, lock, 0, InpComment) : trade.Sell(lots, _Symbol, 0, lock, 0, InpComment);
    uint   rc   = trade.ResultRetcode();
    double apx  = trade.ResultPrice();
    string rcTx = trade.ResultRetcodeDescription();
@@ -2265,7 +2273,7 @@ void V9TrigD()
       if(trg)
         {
          gD[k].arm = false;
-         LegOpen(gD[k], gV8Dir, gD[k].stp, "continuation, cassure de la bougie M5 à " + Px(gD[k].trig));
+         LegOpen(gD[k], gV8Dir, gD[k].stp, "continuation, cassure de la bougie M5 à " + Px(gD[k].trig), gD[k].trig);
         }
      }
   }

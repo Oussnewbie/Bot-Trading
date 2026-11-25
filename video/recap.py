@@ -297,6 +297,8 @@ def repliques(j, unite):
         textes.append(texte_marche(m, precedent, unite, expliquer))
         r_explique = r_explique or expliquer
         precedent = m
+    if preuve_du_jour(j, unite):
+        textes.append("Les trades du jour, dans l'historique de MetaTrader.")
     t = total(j, unite)
     mot = mot_du_jour(j, t)
     fin = "Chaque séance est sur le Telegram : lien en bio !"
@@ -945,6 +947,82 @@ def scene_bilan(j, rep, unite, texte):
     return style, corps, script_tete + "\n" + "\n".join(script), reperes, max(t_bio + 2.4, t_tel + 3.9)
 
 
+# ───────────────────────── la preuve : la photo de l'historique de MetaTrader, épinglée avec le R ─────────────────────────
+def preuve_du_jour(j, unite):
+    """La photo de l'onglet Historique du jour et les résultats en R à épingler dessous, ou None sans photo."""
+    if not j.get("historique") or not j["trades"]:
+        return None
+    notes = []
+    for m in j["marches"]:
+        v = valeur(m, unite)
+        if m["positions"] and v is not None:
+            vr = round(v, DECIMALES[unite])
+            notes.append((f"{m['nom']}  {ecran(vr, unite)}", couleur(vr)))
+    t = total(j, unite)
+    if t is not None and len(notes) > 1:
+        notes.append((f"Total  {ecran(t, unite)}", couleur(t)))
+    return {"photos": [(j["historique"], f"Historique MetaTrader, {nombres.date_courte(j['jour'])}")], "notes": notes}
+
+
+def scene_preuve(ident, preuve, rep, date_txt, titre="Dans MetaTrader"):
+    """La photo de l'historique (une, ou deux pour une semaine ou un mois) épinglée comme une photo sur la carte, puis les
+    résultats en R épinglés dessous. Rend aussi les images à copier dans le projet : (chemin, nom dans assets/captures)."""
+    import historique
+    corps, script, reperes, images = [], [], [], []
+    t0 = max(voix.instant(rep, "metatrader", "trades", "historique", defaut=0.6) - 0.2, 0.45)
+    photos = preuve["photos"][:2]
+    # les photos tiennent entre y = 460 et y = 1040 ; dessous, la place des résultats épinglés (jusqu'à y = 1260)
+    hauteur_max = (1040 - 460 - 40 * (len(photos) - 1)) / max(1, len(photos))
+    y, t = 460.0, t0
+    for i, (image, legende) in enumerate(photos):
+        iw, ih = historique.taille_png(image)
+        largeur = 840.0
+        if y + (largeur - 28) * ih / iw + 66 > 840:      # sous y = 840, rien à droite de x = 780 (les boutons de TikTok)
+            largeur = 670.0
+        if (largeur - 28) * ih / iw + 66 > hauteur_max:  # trop haute : plus étroite, même proportion
+            largeur = max(300.0, (hauteur_max - 66) * iw / ih + 28)
+        hauteur = (largeur - 28) * ih / iw + 14 + 52
+        rot = -1.5 if i % 2 == 0 else 1.2
+        nom = f"{ident}-{i}.png"
+        images.append((image, nom))
+        corps.append(f'''<div id="{ident}-c{i}" class="{ident}-carte" style="left:110px; top:{y:.0f}px; width:{largeur:.0f}px">
+      <img src="assets/captures/{nom}" alt="{e(legende)}" />
+      <div class="{ident}-legende">{e(legende)}</div>
+      <div id="{ident}-e{i}" class="{ident}-epingle"></div>
+    </div>''')
+        script.append(f'''    gsap.set("#{ident}-c{i}", {{ rotation: {rot} }});
+    tl.fromTo("#{ident}-c{i}", {{ opacity: 0, y: -70, scale: 1.05, rotation: {rot - 6} }}, {{ opacity: 1, y: 0, scale: 1, rotation: {rot}, duration: 0.45, ease: "back.out(1.5)" }}, {t:.2f});
+    pop("#{ident}-e{i}", {t + 0.38:.2f}, 0.25);''')
+        reperes += [{"t": t, "son": "paper-slide-1530", "gain_db": -9, "max_dur": 0.5},
+                    {"t": t + 0.38, "son": "click-metal-button-1830", "gain_db": -8}]
+        y += hauteur + 40
+        t += 0.8
+    # les résultats en R, épinglés sous la photo comme des notes
+    pastilles, bas = _rangee([(f"{ident}-n{k}", texte, fond, COUL["blanc"]) for k, (texte, fond) in enumerate(preuve["notes"])],
+                             40, y + 6, ecart=22)
+    for k in range(len(preuve["notes"])):
+        script.append(f'''    gsap.set("#{ident}-n{k}", {{ rotation: {(-2, 1.5, -1)[k % 3]} }});
+    pop("#{ident}-n{k}", {t + 0.35 * k:.2f}, 0.34, "0% 50%");''')
+        reperes.append({"t": t + 0.35 * k, "son": "click-select-1109", "gain_db": -8, "max_dur": 0.3})
+    style = f"""    #{ident}-nom {{ position: absolute; left: 120px; top: 340px; font-size: 92px; line-height: 1; }}
+    .{ident}-carte {{ position: absolute; background: #ffffff; padding: 14px 14px 0; border-radius: 6px;
+      box-shadow: 0 18px 40px rgba(24,34,46,0.28), 0 2px 6px rgba(24,34,46,0.18); }}
+    .{ident}-carte img {{ display: block; width: 100%; border: 1px solid {COUL['grille']}; }}
+    .{ident}-legende {{ font-size: 28px; line-height: 52px; color: {COUL['encre2']}; white-space: nowrap; }}
+    .{ident}-epingle {{ position: absolute; left: 50%; top: -16px; width: 32px; height: 32px; margin-left: -16px; border-radius: 50%;
+      background: radial-gradient(circle at 35% 35%, #ff8a8d 0, {COUL['rouge']} 45%, #9e1f24 100%); box-shadow: 0 6px 10px rgba(0,0,0,0.35); }}"""
+    html_ = f"""    <div class="date" id="{ident}-date">{e(date_txt)}</div>
+    <div id="{ident}-nom">{e(titre)}</div>
+    {chr(10).join(corps)}
+    {pastilles}"""
+    js = f"""    gsap.set(["#{ident}-date", "#{ident}-nom"], {{ clipPath: "inset(-30% 100% -40% 0)" }});
+    gsap.set("[id^='{ident}-n']", {{ opacity: 0 }});
+    wipe("#{ident}-date", 0.05);
+    wipe("#{ident}-nom", 0.1, 0.32);
+""" + "\n".join(script)
+    return style, html_, js, reperes, t + 0.35 * len(preuve["notes"]) + 2.4, images
+
+
 def nombres_tz():
     import journee
     return journee.NEW_YORK
@@ -1028,16 +1106,24 @@ def fabriquer(j, config, dossier_sortie, journal=print, rendre=True):
     # durées : la réplique posée peu après le début de la scène, puis un temps pour lire ; une scène dure au moins jusqu'à la fin
     # de ses mouvements (fin_min rendue par la scène)
     offset = [0.15] + [0.25] * (len(textes) - 1)
-    minimum = [2.6] + [5.0] * len(j["marches"]) + [5.5 if not sans_voix else 7.5]
-    queue = [0.35] + [0.6] * len(j["marches"]) + [2.0]
+    preuve = len(textes) - len(j["marches"]) - 2         # 1 si la scène des captures est là
+    minimum = [2.6] + [5.0] * len(j["marches"]) + [4.0] * preuve + [5.5 if not sans_voix else 7.5]
+    queue = [0.35] + [0.6] * len(j["marches"]) + [0.6] * preuve + [2.0]
     scenes, reperes, debut, r_explique = [], [], 0.0, False
     for i, t in enumerate(textes):
         r = reps[i]
         d = max(minimum[i], offset[i] + (r["duree"] if r else 0) + queue[i])
-        ident = "titre" if i == 0 else ("bilan" if i == len(textes) - 1 else f"m{i - 1}")
+        preuve = bool(preuve_du_jour(j, unite))
+        ident = ("titre" if i == 0 else "bilan" if i == len(textes) - 1 else "preuve" if preuve and i == len(textes) - 2
+                 else f"m{i - 1}")
         # les mots sont décalés de l'offset de la réplique : une scène lit les instants dans son propre temps
         rep = dict(r, mots=[dict(m, debut=m["debut"] + offset[i]) for m in r["mots"]]) if r else None
-        if ident == "titre":
+        if ident == "preuve":
+            style, corps, script, rs, fin_min, images = scene_preuve("pv", preuve_du_jour(j, unite), rep, nombres.date_courte(j["jour"]))
+            os.makedirs(os.path.join(projet, "assets", "captures"), exist_ok=True)
+            for source, nom in images:
+                shutil.copy(source, os.path.join(projet, "assets", "captures", nom))
+        elif ident == "titre":
             style, corps, script, rs, fin_min = scene_titre(j, rep, unite)
         elif ident == "bilan":
             style, corps, script, rs, fin_min = scene_bilan(j, rep, unite, t)

@@ -1043,7 +1043,11 @@ for kD = 0 to 6
 
 if v8On
     // 2. le stop du range a-t-il été touché depuis la cassure ? (l'entrée C en dépend)
-    if not v8.stopHit and bar_index > v8.breakBar and (v8.dir == 1 ? low <= orL : high >= orH)
+    // Correctif PINE-05 (25/11/2026) : la bougie de la cassure compte aussi, comme dans l'EA (qui surveille chaque cotation dès
+    // l'entrée). Un bord opposé touché dans cette bougie l'a forcément été après l'entrée (sinon l'autre ordre serait parti, ou la
+    // journée annulée) : sans elle, le script armait des D que l'EA n'arme pas. Reste une différence : l'EA lit l'ask pour la
+    // vente, TradingView n'a que les prix bid.
+    if not v8.stopHit and bar_index >= v8.breakBar and (v8.dir == 1 ? low <= orL : high >= orH)
         v8.stopHit := true
 
     // 3. entrée B : repli sur le VWAP

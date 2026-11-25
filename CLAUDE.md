@@ -28,7 +28,7 @@ robot/     Strategy-V10.mq5, Strategy-V10.pine, test_robot.py (contrôles du cod
 etrave/    interface web locale de l'EA (Python sans dépendance), export.py (export trimestriel) + test_interface.py, test_export.py
 video/     (branche communication/outil-video) vidéos TikTok : récap de séance et présentation, `python3 video/outil.py` ; README
 ```
-- Tests : `.venv/bin/python -m pytest robot etrave video -q` (122 tests). Le `.venv` du dépôt tourne sous Python 3.15.
+- Tests : `.venv/bin/python -m pytest robot etrave video -q` (130 tests). Le `.venv` du dépôt tourne sous Python 3.15.
 - Étrave en essai : `.venv/bin/python etrave/etrave.py --sans-navigateur --port 8799 --dossier <dossier jetable>`, puis
   `http://127.0.0.1:8799`. Pour voir la page avec des données, écrire de faux `etat-<symbole>.txt` (format dans
   `etrave/test_interface.py`, `faux_etat`) et un `trades-<symbole>.csv`, et les réécrire toutes les 2 secondes (au-delà de 15 s sans
@@ -121,7 +121,8 @@ video/     (branche communication/outil-video) vidéos TikTok : récap de séanc
   sons Mixkit, police DIN) : tout est dans `~/.config/etrave-video/config.json` et des dossiers locaux. Un test le vérifie en lisant
   les valeurs dans cette configuration. Démo, réel ou testeur : seulement dans la description de la publication (choix de l'utilisateur), jamais dans la vidéo, la couverture ni les noms de fichiers. Les
   raisons des filtres et le type d'entrée (A, B, D) ne sont jamais montrés : c'est le secret de la stratégie, à la demande de l'utilisateur.
-  Récap : voix en une seule prise par vidéo (`voix.recit`, sinon le timbre change d'une scène à l'autre), chemin du prix en points
+  Preuve : photo de l'onglet Historique de MetaTrader prise par l'outil le soir même (`video/historique.py`, à régler une fois),
+  épinglée avec le R en fin de vidéo ; jamais d'image fabriquée à la place. Récap : voix en une seule prise par vidéo (`voix.recit`, sinon le timbre change d'une scène à l'autre), chemin du prix en points
   (mfe du journal d'exécution), mode automatique (`outil.py installer` : agent launchd
   `com.etrave.recap-auto`, outil copié dans `~/Library/Application Support/Etrave/outil-video`, dossiers du jour sur le Bureau), vert et rouge réservés au résultat, caméra calée sur les mots de la voix (`voix.instant`), arrêts d'au moins 1,5 s,
   étiquettes posées dans les zones sûres de TikTok (`police.py` mesure les textes ; un test le vérifie). Musique facultative
@@ -141,9 +142,11 @@ video/     (branche communication/outil-video) vidéos TikTok : récap de séanc
   - Pine : côté bloqué vu à la clôture, ajout au prix de clôture, pas de commission par défaut (limites du backtest TradingView) ;
   - PINE-04 (25/11/2026) : `close_entries_rule = "ANY"` ajouté (en FIFO, le stop d'un D fermait A) : pas encore vérifié sur
     TradingView ;
-  - Écarts EA / Pine / simulateur relevés le 25/11/2026 (décision de l'utilisateur en attente) : stop des D compté depuis le prix
-    obtenu dans l'EA (LegOpen), depuis le déclenchement dans le Pine et le simulateur ; Pine : contrôle du bord opposé pour les D
-    seulement après la bougie de cassure, au bid ; Pine : `legQty` au moins un pas (une jambe peut dépasser 1R dans le backtest) ;
+  - X-13 (25/11/2026) : le stop des D se compte depuis le déclenchement, comme le Pine et le simulateur (il partait du prix
+    obtenu). Testeur 12 mois NDX100 à 0,25 % sur 300 000 $ : 449 trades, +65 324,88 $ (avant : 448, +64 931,85 $ ; 188 stops de D
+    changés). PINE-05 : la bougie de cassure compte pour le bord opposé (l'EA lit l'ask à la vente, le Pine n'a que le bid).
+    X-14 : même commentaire pour tous les ordres (il disait B, D1…, visible dans l'onglet Historique photographié pour la vidéo).
+    Reste voulu : `legQty` du Pine au moins un pas (une jambe peut dépasser 1R dans le backtest TradingView) ;
 - Test des stops (25/11/2026, pré-enregistré, historique déjà vu) : fermer B/D au stop de A ≈ neutre ; B/D à l'entrée dès +0,5R,
   stop à +0,5R au lieu de l'entrée, A à l'entrée quand une jambe part : moins bons. Les stops restent tels quels.
   - R-06 : le prochain jour faux du calendrier est le 31/12/2027.

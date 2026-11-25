@@ -148,6 +148,19 @@
    "demi_tons": 3
   },
   {
+   "t": 19.25,
+   "son": "impact-intro-presentation-2902",
+   "gain_db": -10.0,
+   "max_dur": 1.1,
+   "note": "la bougie sort par le bas (casse vers le bas)",
+   "tranche": [
+    0.55,
+    1.1
+   ],
+   "passe_haut": 180,
+   "demi_tons": -2
+  },
+  {
    "t": 19.92,
    "son": "click-select-1109",
    "gain_db": -12.0,

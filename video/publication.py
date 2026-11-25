@@ -73,10 +73,10 @@ def description_periode(p, config):
     import recap_periode
     accroche = recap_periode.accroche(p)[1]
     if p["genre"] == "semaine":
-        quoi = f"récap de la semaine du {p['debut'].day} au {p['fin'].day} {nombres.MOIS[p['fin'].month - 1]} {p['fin'].year}"
+        quoi = f"récap de la semaine du {p['debut'].day} au {p['fin'].day} {nombres.mois_ecran(p['fin'].month)} {p['fin'].year}"
     else:
-        mois = nombres.MOIS[p["debut"].month - 1]
-        quoi = f"récap du mois {'d' + chr(39) if mois[0] in 'aeiouéè' else 'de '}{mois} {p['debut'].year}"
+        mois = nombres.mois_ecran(p["debut"].month)
+        quoi = f"récap du mois {'d' + chr(39) if mois[0].lower() in 'aeiouéè' else 'de '}{mois} {p['debut'].year}"
     lignes = [f"{accroche} : {quoi}.", recap_periode.mot_periode(p), "", f"Total : {recap.ecran(p['total'], 'r')}"]
     lignes += [f"{nom} : {recap.ecran(v, 'r')}" for nom, v in p["par_marche"].items()]
     lignes.append(f"Jours de trade : {len(p['avec'])} sur {len(p['jours'])}, dont {len(p['gagnants'])} gagnant{recap._s(len(p['gagnants']))}")
@@ -158,6 +158,10 @@ def auto(config, dossier_journaux, journal=print, aujourd_hui=None):
             continue
         if not j["trades"] and not config.get("auto_sans_trade"):
             continue
+        # la photo de l'onglet Historique : seulement le soir même (l'onglet montre « Aujourd'hui »), avant de monter la vidéo
+        if j["trades"] and not j.get("historique") and jour == aujourd_hui and config.get("historique"):
+            import historique
+            j["historique"] = historique.photographier_jour(config, dossier_journaux, jour, j["trades"], journal)
         sortie = os.path.join(os.path.expanduser(config["sortie"]), f"recap-{jour.isoformat()}")
         os.makedirs(sortie, exist_ok=True)
         journal(f"{jour} : {j['trades']} position(s), fabrication de la vidéo…")

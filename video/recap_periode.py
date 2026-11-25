@@ -59,7 +59,7 @@ def charger(dossier, debut, fin, genre):
             marches[m["nom"]] = {"voix": m["voix"], "trades": len(m["positions"]),
                                  "r": (round(v, 2) if v is not None else None) if m["positions"] else 0.0}
         t = recap.total(j, "r")
-        jours.append({"jour": jour, "trades": j["trades"], "marches": marches, "source": j["source"],
+        jours.append({"jour": jour, "trades": j["trades"], "marches": marches, "source": j["source"], "historique": j.get("historique"),
                       "total": t if t is not None else (0.0 if not j["trades"] else None)})
     avec = [d for d in jours if d["trades"] and d["total"] is not None]
     noms = []
@@ -75,6 +75,19 @@ def charger(dossier, debut, fin, genre):
             "meilleur": max(avec, key=lambda d: d["total"]) if avec else None,
             "pire": min(avec, key=lambda d: d["total"]) if avec else None,
             "source": "testeur" if "testeur" in sources else ("reel" if "reel" in sources else (sorted(sources) or [""])[0])}
+
+
+def preuve_periode(p):
+    """Les photos de l'historique du meilleur et du pire jour (s'il y en a), et les totaux en R à épingler dessous ; None sans photo."""
+    photos = []
+    for d in (p["meilleur"], p["pire"]):
+        if d and d.get("historique") and all(d["historique"] != x for x, _ in photos):
+            photos.append((d["historique"], f"Historique MetaTrader, {_jour_court(d['jour'])} {nombres.mois_ecran(d['jour'].month, True)}  {ecran(d['total'], 'r')}"))
+    if not photos:
+        return None
+    notes = [(f"{nom}  {ecran(v, 'r')}", couleur(v)) for nom, v in p["par_marche"].items()]
+    notes.append((f"Total  {ecran(p['total'], 'r')}", couleur(p["total"])))
+    return {"photos": photos, "notes": notes}
 
 
 def semaine_de(jour):
@@ -138,19 +151,21 @@ def repliques(p):
     for nom, v in p["par_marche"].items():
         courbe += f" {p['voix_marche'][nom]} : {dit(v, 'r')}."
     courbe += " Un R, c'est le risque pris sur un trade."
+    preuve = ([f"Le meilleur et le pire jour {'de la semaine' if semaine else 'du mois'}, dans l'historique de MetaTrader."]
+              if preuve_periode(p) else [])
     bilan = ""
     if p["meilleur"] and p["meilleur"]["total"] > 0:
         bilan += f"Meilleur jour : {_jour_voix(p['meilleur']['jour'], p['genre'])}, {dit(p['meilleur']['total'], 'r')}. "
     if p["pire"] and p["pire"]["total"] < 0:
         bilan += f"Pire jour : {_jour_voix(p['pire']['jour'], p['genre'])}, {dit(p['pire']['total'], 'r')}. "
     bilan += f"{mot_periode(p)} Chaque séance est sur le Telegram : lien en bio !"
-    return [titre, barres, courbe, bilan]
+    return [titre, barres, courbe] + preuve + [bilan]
 
 
 # ───────────────────────── les scènes ─────────────────────────
 def _entete(ident, p, titre):
-    date = (f"semaine du {_jour_court(p['debut'])} au {_jour_court(p['fin'])} {nombres.MOIS_COURTS[p['fin'].month - 1]} {p['fin'].year}"
-            if p["genre"] == "semaine" else f"{nombres.MOIS[p['debut'].month - 1]} {p['debut'].year}")
+    date = (f"semaine du {_jour_court(p['debut'])} au {_jour_court(p['fin'])} {nombres.mois_ecran(p['fin'].month, True)} {p['fin'].year}"
+            if p["genre"] == "semaine" else f"{nombres.mois_ecran(p['debut'].month)} {p['debut'].year}")
     return (f'    <div class="date" id="{ident}-date">{e(date)}</div>\n    <div id="{ident}-nom" class="nom">{e(titre)}</div>',
             f'    wipe("#{ident}-date", 0.05);\n    wipe("#{ident}-nom", 0.1, 0.32);')
 
@@ -165,9 +180,9 @@ def scene_titre(p, rep):
     if p["genre"] == "semaine":
         haut = "Récap de la semaine"
         gros = f"{d0.day} – {d1.day}" if d0.month == d1.month else f"{d0.day}/{d0.month} – {d1.day}/{d1.month}"
-        bas = f"{nombres.MOIS[d1.month - 1]} {d1.year}"
+        bas = f"{nombres.mois_ecran(d1.month)} {d1.year}"
     else:
-        haut, gros, bas = "Récap du mois", nombres.MOIS[d0.month - 1], str(d0.year)
+        haut, gros, bas = "Récap du mois", nombres.mois_ecran(d0.month), str(d0.year)
     t_date = voix.instant(rep, "semaine", "mois", defaut=0.6)
     t_badge = max(voix.instant(rep, cle.split()[0] if cle != "sans" else "sans", defaut=t_date + 1.6) - 0.05, t_date + 0.9)
     style = f"""    #pt-logo {{ position: absolute; left: 100px; top: 290px; width: 180px; height: 180px; overflow: visible; }}
@@ -443,17 +458,26 @@ def fabriquer(p, config, dossier_sortie, journal=print, rendre=True):
     os.makedirs(os.path.join(projet, "compositions"))
     os.makedirs(os.path.join(projet, "assets", "fonts"))
     shutil.copy(police_fichier, os.path.join(projet, "assets", "fonts", "din-alternate-bold.ttf"))
-    offset = [0.15, 0.25, 0.25, 0.25]
-    minimum = [2.6, 5.0, 5.0, 5.5 if not sans_voix else 7.5]
-    queue = [0.35, 0.6, 0.6, 2.0]
-    idents = ["titre", "barres", "courbe", "bilan"]
+    preuve = len(textes) == 5
+    offset = [0.15, 0.25, 0.25] + [0.25] * preuve + [0.25]
+    minimum = [2.6, 5.0, 5.0] + [4.0] * preuve + [5.5 if not sans_voix else 7.5]
+    queue = [0.35, 0.6, 0.6] + [0.6] * preuve + [2.0]
+    idents = ["titre", "barres", "courbe"] + ["preuve"] * preuve + ["bilan"]
+    date_txt = (f"semaine du {_jour_court(p['debut'])} au {_jour_court(p['fin'])} {nombres.mois_ecran(p['fin'].month, True)} {p['fin'].year}"
+                if p["genre"] == "semaine" else f"{nombres.mois_ecran(p['debut'].month)} {p['debut'].year}")
     scenes, reperes, debut = [], [], 0.0
     for i, t in enumerate(textes):
         r = reps[i]
         d = max(minimum[i], offset[i] + (r["duree"] if r else 0) + queue[i])
         rep = dict(r, mots=[dict(m, debut=m["debut"] + offset[i]) for m in r["mots"]]) if r else None
-        style, corps, script, rs, fin_min = (scene_titre(p, rep) if i == 0 else scene_barres(p, rep) if i == 1
-                                             else scene_courbe(p, rep) if i == 2 else scene_bilan(p, rep, t))
+        if idents[i] == "preuve":
+            style, corps, script, rs, fin_min, images = recap.scene_preuve("pv", preuve_periode(p), rep, date_txt)
+            os.makedirs(os.path.join(projet, "assets", "captures"), exist_ok=True)
+            for source, nom in images:
+                shutil.copy(source, os.path.join(projet, "assets", "captures", nom))
+        else:
+            style, corps, script, rs, fin_min = (scene_titre(p, rep) if i == 0 else scene_barres(p, rep) if i == 1
+                                                 else scene_courbe(p, rep) if i == 2 else scene_bilan(p, rep, t))
         d = round(max(d, fin_min), 3)
         with open(os.path.join(projet, "compositions", idents[i] + ".html"), "w", encoding="utf-8") as f:
             f.write(_composition(idents[i], style, corps, script))

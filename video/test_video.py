@@ -304,7 +304,7 @@ import publication  # noqa: E402
 def test_description_tiktok_dit_le_compte_sans_rien_de_secret(tmp_path):
     j = _journee(tmp_path, positions=((1, "D2", 9, 40, 100, 15, 50, 110, "Fin de journée"),))
     texte = publication.description(j, {})
-    assert texte.startswith("Journée verte : récap de la séance du jeudi 16 avril 2026.")
+    assert texte.startswith("Journée verte : récap de la séance du jeudi 16 Avril 2026.")
     assert "Trades réels, sur mon compte." in texte and "Nasdaq 100 : +" in texte and "Pas un conseil en investissement." in texte
     assert "D2" not in texte and "RSI" not in texte and "élan" not in texte
     j["source"] = "demo"
@@ -371,3 +371,43 @@ def test_recap_de_la_semaine_egal_a_la_somme_des_jours(tmp_path):
     assert textes[1].startswith("Lundi : plus") and "Mercredi : pas de trade." in textes[1]
     texte = publication.description_periode(p, {})
     assert texte.startswith("Semaine ") and "Jours de trade : 2 sur 3, dont 1 gagnant" in texte and "D2" not in texte
+
+
+def _png(chemin, largeur, hauteur):
+    """Un en-tête PNG suffit : la vidéo ne lit que la taille de l'image avant de la copier."""
+    chemin.write_bytes(b"\x89PNG\r\n\x1a\n" + b"\x00\x00\x00\rIHDR" + largeur.to_bytes(4, "big") + hauteur.to_bytes(4, "big") + b"\x08\x06\x00\x00\x00")
+
+
+def test_preuve_seulement_avec_une_vraie_photo_de_l_historique(tmp_path):
+    j = _journee(tmp_path, positions=((1, "A", 9, 36, 100.0, 15, 50, 112.0, "Fin de journée"),))
+    assert recap.preuve_du_jour(j, "r") is None and "MetaTrader" not in " ".join(recap.repliques(j, "r"))
+    (tmp_path / "captures").mkdir()
+    _png(tmp_path / "captures" / "historique-2026-04-16.png", 760, 142)
+    j = journee.charger(str(tmp_path), datetime.date(2026, 4, 16))
+    preuve = recap.preuve_du_jour(j, "r")
+    assert len(preuve["photos"]) == 1 and preuve["notes"][0][0].startswith("Nasdaq 100  +")
+    assert recap.repliques(j, "r")[-2] == "Les trades du jour, dans l'historique de MetaTrader."
+
+
+@pytest.mark.parametrize("hauteurs", [[142], [400], [142, 300]])
+def test_photo_et_notes_dans_la_zone_sure(tmp_path, hauteurs):
+    """La photo (ou les deux photos d'une période) et les résultats épinglés tiennent dans la zone sûre de TikTok."""
+    photos = []
+    for i, h in enumerate(hauteurs):
+        _png(tmp_path / f"h{i}.png", 760, h)
+        photos.append((str(tmp_path / f"h{i}.png"), "Historique MetaTrader"))
+    notes = [("Nasdaq 100  −1,50 R", recap.COUL["rouge"]), ("S&P 500  −0,56 R", recap.COUL["rouge"]), ("Total  −2,06 R", recap.COUL["rouge"])]
+    style, corps, script, reperes, fin, images = recap.scene_preuve("pv", {"photos": photos, "notes": notes}, None, "mer. 18 Nov. 2026")
+    cartes = re.findall(r'class="pv-carte" style="left:(\d+)px; top:(\d+)px; width:(\d+)px"', corps)
+    for (gauche, haut, largeur), h in zip(cartes, hauteurs):
+        bas = int(haut) + (int(largeur) - 28) * h / 760 + 66
+        assert int(gauche) + int(largeur) <= (780 if bas > 840 else 960) and bas <= 1260
+    for gauche, haut, taille, texte in PASTILLE.findall(corps):
+        bas = int(haut) + int(taille) * 1.34
+        assert int(haut) >= 240 and bas <= 1260 and int(gauche) + recap._l(texte, int(taille)) <= 781, texte
+    assert len(images) == len(hauteurs)
+
+
+def test_photo_de_l_historique_pas_reglee():
+    import historique
+    assert historique.photographier_jour({}, "/nulle/part", datetime.date(2026, 4, 16), 3, lambda t: None) is None

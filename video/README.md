@@ -50,6 +50,13 @@ Exemple de texte lu (tout est écrit à partir des journaux de l'EA, les heures 
   - le type d'entrée (seulement « Achat » ou « Vente ») ;
   - les filtres et les réglages ;
   - la raison d'un jour sans trade (« les conditions n'étaient pas réunies »).
+- **La preuve, en fin de vidéo** : la photo de l'onglet Historique de MetaTrader du jour (les positions clôturées et leur profit),
+  épinglée comme une photo, avec les résultats en R épinglés dessous (« Dans MetaTrader »), juste avant le bilan. La semaine et le
+  mois montrent celles du meilleur et du pire jour. La photo est prise par l'outil le soir même (`historique.py`) : régler une
+  fois MetaTrader (Historique, « Aujourd'hui », colonnes utiles) et le cadre du tableau (`outil.py historique --essai`). Elle
+  s'arrête avant la ligne de total (le solde) ; l'EA ne met plus le type d'entrée dans le commentaire des ordres (X-14). Sur un
+  VPS, quitter le Bureau à distance avec `video/windows/Deconnecter-sans-fermer.cmd`, sinon la photo est noire. Sans photo, la
+  scène n'apparaît pas : jamais d'image à la place d'une vraie photo.
 - **Démo, réel ou testeur : seulement dans la description** (`description.txt`, la bio de la publication), d'après le journal de
   l'EA. Ni la vidéo, ni la couverture, ni le nom des fichiers n'en parlent.
 
@@ -147,6 +154,7 @@ que lui :
 | `sortie` | où écrire les vidéos (les rendus de travail) |
 | `dossier_publication` | le dossier des vidéos prêtes à publier, un sous-dossier par jour (`~/Desktop/Étrave TikTok`) |
 | `auto_depuis`, `auto_sans_trade` | mode automatique : première séance à faire (AAAA-MM-JJ) ; aussi les jours sans trade |
+| `historique` | le cadre du tableau de l'onglet Historique dans la photo de la fenêtre : `x`, `y`, `largeur`, `entete`, `ligne` (pixels) |
 | `mention_compte`, `hashtags` | la ligne sur le compte dans la description (sinon d'après le journal) ; les hashtags |
 | `presentation` | ton profil pour la vidéo de présentation (voir `presentation.py`) |
 
@@ -159,6 +167,8 @@ recap.py         écrit les scènes du récap et le minutage calé sur la voix, 
 presentation.py  remplit le modèle de la présentation avec le profil, rend et mixe
 voix.py          ElevenLabs (clone de ta voix) : une prise par vidéo coupée par scène, heure de chaque mot, rythme, cache
 publication.py   le dossier du jour (vidéo, description TikTok, couverture) et le mode automatique
+historique.py    la photo de l'onglet Historique de MetaTrader (Windows : PrintWindow ; Mac : screencapture), le cadre du tableau
+windows/         Deconnecter-sans-fermer.cmd : quitter le Bureau à distance du VPS sans éteindre l'écran
 recap_periode.py les récaps de la semaine et du mois (barres, courbe, bilan)
 installation.py  la copie de l'outil et le lancement chaque soir (launchd sur Mac, tâches planifiées sous Windows)
 mixage.py        ffmpeg : voix, bruitages et musique baissés sous la voix, niveau final

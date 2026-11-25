@@ -86,14 +86,20 @@ def date_longue(jour):
     return f"{JOURS[jour.weekday()]} {quantieme} {MOIS[jour.month - 1]}"
 
 
+def mois_ecran(mois, court=False):
+    """Le mois tel qu'il s'écrit à l'écran et dans les descriptions : avec une majuscule (« Novembre », « Nov. »), à ta demande.
+    La voix garde MOIS, en minuscules."""
+    return (MOIS_COURTS if court else MOIS)[mois - 1].capitalize()
+
+
 def date_ecran(jour):
-    """2026-11-18 → (« mercredi », « 18 novembre », « 2026 ») pour l'écran titre ; « 1er » pour le premier du mois."""
-    return JOURS[jour.weekday()], f"{'1er' if jour.day == 1 else jour.day} {MOIS[jour.month - 1]}", str(jour.year)
+    """2026-11-18 → (« mercredi », « 18 Novembre », « 2026 ») pour l'écran titre ; « 1er » pour le premier du mois."""
+    return JOURS[jour.weekday()], f"{'1er' if jour.day == 1 else jour.day} {mois_ecran(jour.month)}", str(jour.year)
 
 
 def date_courte(jour):
-    """2026-11-18 → « mer. 18 nov. 2026 », la date qui reste en haut des scènes."""
-    return f"{JOURS[jour.weekday()][:3]}. {'1er' if jour.day == 1 else jour.day} {MOIS_COURTS[jour.month - 1]} {jour.year}"
+    """2026-11-18 → « mer. 18 Nov. 2026 », la date qui reste en haut des scènes."""
+    return f"{JOURS[jour.weekday()][:3]}. {'1er' if jour.day == 1 else jour.day} {mois_ecran(jour.month, True)} {jour.year}"
 
 
 def nombre_ecran(x, decimales=2, signe=True):

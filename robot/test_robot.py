@@ -166,7 +166,7 @@ def test_pas_d_entree_doublee_apres_une_reponse_perdue():
 
 
 def test_jambe_reprise_quand_la_reponse_est_perdue():
-    ouverture = fonction("bool LegOpen(SLeg &g, int dir, double stop, string quoi)")
+    ouverture = fonction("bool LegOpen(SLeg &g, int dir, double stop, string quoi, double ref = 0)")
     assert "LegFindOpen(g.magic, volPos)" in ouverture
     assert ouverture.index("LegFindOpen(g.magic, volPos)") < ouverture.index("g.enPos = true;")
 
@@ -203,6 +203,25 @@ def test_le_script_affiche_les_ordres_meme_si_la_taille_tradingview_s_arrondit_a
     assert "float qty    = qtyMin ? qtyStep : qtyRaw" in PINE
     assert PINE.index("bool  qtyMin = not na(qtyRaw) and qtyRaw <= 0") < PINE.index("bool  go  = pDir != 2 and not na(qty) and qty > 0")
 
+
+
+def test_commentaire_des_ordres_sans_type_d_entree():
+    """X-14 : le commentaire des ordres (visible dans l'onglet Historique, photographié pour la vidéo) ne dit ni B, ni D, ni
+    « pyramide » : le type d'entrée reste secret."""
+    assert 'InpComment + " "' not in EA and 'InpComment + " pyramide"' not in EA
+    assert "CaptureJour" not in EA and "InpCapture" not in EA
+
+
+def test_stop_des_continuations_depuis_le_declenchement():
+    """X-13 : le stop d'un D se compte depuis son niveau de déclenchement (Pine, simulateur), plus depuis le prix obtenu."""
+    corps = fonction("bool LegOpen(SLeg &g, int dir, double stop, string quoi, double ref = 0)")
+    assert "double base = ref > 0 ? ref : px;" in corps and "stop  = base - dir * dist;" in corps and "dist = (px - stop) * dir;" in corps
+    assert "Px(gD[k].trig), gD[k].trig);" in EA
+
+
+def test_le_script_compte_la_bougie_de_cassure_pour_le_bord_oppose():
+    """PINE-05 : comme l'EA, le bord opposé touché dès la bougie de la cassure empêche d'armer les D."""
+    assert "if not v8.stopHit and bar_index >= v8.breakBar and (v8.dir == 1 ? low <= orL : high >= orH)" in PINE
 
 
 def test_chaque_sortie_du_script_ferme_sa_propre_position():
@@ -399,7 +418,7 @@ def test_journal_valeurs_inconnues_vides_et_divisions_gardees():
 def test_journal_prix_vises_gardes_au_redemarrage():
     assert 'Sv(k + "plan", g.plan); Sv(k + "pplan", g.pplan);' in EA and 'g.plan = Ld(k + "plan", 0); g.pplan = Ld(k + "pplan", 0);' in EA
     assert 'Sv("pyrplan", gPyrPlan);' in EA and 'gPyrPlan = Ld("pyrplan", 0);' in EA
-    assert 'g.plan = StringSubstr(g.nom, 0, 1) == "D" ? g.trig : px;' in fonction("bool LegOpen(SLeg &g, int dir, double stop, string quoi)")
+    assert 'g.plan = StringSubstr(g.nom, 0, 1) == "D" ? g.trig : px;' in fonction("bool LegOpen(SLeg &g, int dir, double stop, string quoi, double ref = 0)")
     assert "gPyrPlan = mkt;" in fonction("void DoPyramid(double curR)") and "g.pplan = mkt;" in fonction("void LegPyramid(SLeg &g, double curR)")
 
 

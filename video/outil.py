@@ -8,6 +8,8 @@
     python3 video/outil.py sons                      télécharge les bruitages Mixkit manquants dans ton dossier de sons
     python3 video/outil.py auto                      les séances finies avec un trade ou plus, pas encore publiées : vidéo,
                                                      description et couverture dans un dossier par jour (Bureau)
+    python3 video/outil.py historique --essai        photographie la fenêtre de MetaTrader (Bureau) pour régler le cadre
+                                                     du tableau de l'onglet Historique (voir historique.py)
     python3 video/outil.py installer                 lance `auto` tout seul chaque soir de semaine (copie l'outil hors du dépôt)
     python3 video/outil.py desinstaller              retire ce lancement automatique
 
@@ -108,7 +110,9 @@ def telecharger_sons(config):
 
 def main(arguments=None):
     a = argparse.ArgumentParser(description="Étrave vidéo : récap de séance et présentation, en motion design.")
-    a.add_argument("commande", choices=["verifier", "jours", "recap", "presentation", "sons", "auto", "installer", "desinstaller"])
+    a.add_argument("commande", choices=["verifier", "jours", "recap", "presentation", "sons", "auto", "installer", "desinstaller",
+                                        "historique"])
+    a.add_argument("--essai", action="store_true", help="historique : toute la fenêtre de MetaTrader, pour régler le cadre")
     a.add_argument("--jour", help="date de la séance (New York), AAAA-MM-JJ ; par défaut la dernière finie")
     a.add_argument("--testeur", action="store_true", help="journaux du testeur de stratégie")
     a.add_argument("--sans-voix", action="store_true", help="ne pas appeler ElevenLabs")
@@ -121,6 +125,20 @@ def main(arguments=None):
         return 0 if verifier(config) else 1
     if args.commande == "sons":
         telecharger_sons(config)
+        return 0
+    if args.commande == "historique":
+        import historique
+        import journee
+        if args.essai:
+            chemin, w, h = historique.essai()
+            print(f"Fenêtre de MetaTrader photographiée : {chemin} ({w} x {h} pixels). Lis-y le cadre du tableau de l'onglet "
+                  "Historique (x, y du haut de l'en-tête, largeur, hauteur de l'en-tête et d'une ligne) pour « historique » de "
+                  "la configuration.")
+            return 0
+        dossier = dossier_journaux(config, False)
+        jour = datetime.date.fromisoformat(args.jour) if args.jour else datetime.date.today()
+        j = journee.charger(dossier, jour, bougies_requises=False)
+        print(historique.photographier_jour(config, dossier, jour, j["trades"], print) or "Pas de photo.")
         return 0
     if args.commande == "installer":
         import installation

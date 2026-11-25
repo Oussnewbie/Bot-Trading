@@ -137,6 +137,8 @@ def charger(dossier, jour=None, bougies_requises=True):
     return {
         "jour": jour, "source": "testeur" if "testeur" in sources else ("reel" if "reel" in sources else (sorted(sources - {""}) or [""])[0]),
         "marches": marches, "net": net,
+        # la photo de l'onglet Historique de MetaTrader prise le soir même (historique.py), s'il y en a une
+        "historique": next((c for c in [os.path.join(dossier, "captures", f"historique-{cle}.png")] if os.path.exists(c)), None),
         "verdict": None if net is None else ("positive" if net > 0 else "négative" if net < 0 else "neutre"),
         "trades": sum(len(m["positions"]) for m in marches),
     }
