@@ -11,7 +11,8 @@ encre, bleu du logo, chiffres en DIN) :
   - le bilan de la journée ;
 - **la présentation de la chaîne** : 47,6 s, rejouée à l'identique à partir d'un profil local.
 
-La voix off est le clone ElevenLabs de ta voix, réglée pour avoir de l'énergie (débit 1,08, plus d'intonation). Les bruitages
+La voix off est le clone ElevenLabs de ta voix, réglée pour avoir de l'énergie : plus d'intonation, aucun silence de plus de
+0,3 s entre deux mots, puis 10 % plus rapide sans changer sa hauteur (`voix_tempo`, `voix_pause_max`). Les bruitages
 sont de vrais enregistrements (Mixkit). La musique de fond est un morceau à toi, posé sous la voix. L'image est rendue par
 [HyperFrames](https://hyperframes.dev), le son est mixé par ffmpeg.
 
@@ -58,7 +59,8 @@ Exemple de texte lu (tout est écrit à partir des journaux de l'EA, les heures 
 4. **Bruitages** : `python3 video/outil.py sons` télécharge les 31 sons Mixkit dans le dossier `sons` de ta configuration. Leur
    licence permet l'usage commercial dans des vidéos, mais pas de les redistribuer seuls : c'est pourquoi ils ne sont pas dans le dépôt.
 5. **Musique de fond** (facultative) : un morceau, ou un dossier de morceaux (un par jour, choisi par la date), dans `musique`.
-   Elle est coupée à la durée de la vidéo, en fondu, 16 dB sous la voix, et baisse encore quand la voix parle. Elle n'est jamais
+   Elle est coupée à la durée de la vidéo, en fondu, sa basse allégée, réglée sur ce qu'un téléphone en fait entendre (18 dB sous
+   la voix au-dessus de 250 Hz, jamais plus de 11 dB sous la voix en tout), et elle baisse encore quand la voix parle. Elle n'est jamais
    dans le dépôt. Un morceau fait avec ElevenLabs Music sur un plan payant peut servir sur les réseaux sociaux (pas au cinéma, à
    la télévision ni à la radio : conditions d'ElevenLabs). Sans morceau, la vidéo est faite sans musique ; tu peux aussi ajouter un
    son de TikTok à la publication.
@@ -109,6 +111,7 @@ indique leur dossier dans `dossier_journaux`.
 |---|---|
 | `dossier_journaux` | le dossier `…\Common\Files\Etrave` de MetaTrader (trouvé tout seul sous Windows et avec MetaTrader pour Mac) |
 | `voix_id`, `modele_voix`, `cle_elevenlabs` | la voix (sans `voix_id`, la vidéo est faite sans voix) |
+| `voix_tempo`, `voix_pause_max` | le rythme de la voix : 1,1 (10 % plus rapide) et 0,3 s de silence au plus entre deux mots |
 | `sons` | le dossier des bruitages Mixkit |
 | `musique` | un morceau ou un dossier de morceaux pour la musique de fond (facultatif) |
 | `police` | le fichier DIN Alternate Bold |

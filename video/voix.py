@@ -9,11 +9,14 @@ import base64
 import hashlib
 import json
 import os
+import re
 import subprocess
 import tempfile
 
-# Une voix qui a de l'énergie : moins stable (plus d'intonation), plus de style, un débit un peu plus rapide (1 = normal, 1,2 au plus)
-REGLAGES = {"stability": 0.32, "similarity_boost": 0.85, "style": 0.45, "use_speaker_boost": True, "speed": 1.08}
+# Une voix qui a de l'énergie : moins stable (plus d'intonation), plus de style. Le réglage « speed » d'ElevenLabs n'a aucun effet
+# sur eleven_v4 (même durée à 1,0 et 1,2, mesuré le 25/11/2026) : le rythme se règle après coup (rythmer).
+REGLAGES = {"stability": 0.32, "similarity_boost": 0.85, "style": 0.45, "use_speaker_boost": True}
+TEMPO, PAUSE_MAX = 1.1, 0.3      # la voix 10 % plus rapide (même hauteur), aucun silence de plus de 0,3 s entre deux mots
 
 
 class VoixIndisponible(Exception):
@@ -86,6 +89,58 @@ def replique(texte, config, avant="", apres=""):
     resultat = {"fichier": mp3, "duree": round(duree(mp3), 3), "mots": mots_horodates(donnees.get("alignment") or {}), "texte": texte}
     json.dump(resultat, open(meta, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
     return resultat
+
+
+def silences(fichier, seuil_db=-40, duree_min=0.18):
+    """Les silences d'un fichier [(début, fin)], lus par ffmpeg (silencedetect). Les heures des mots d'ElevenLabs comptent le silence
+    qui suit un point dans le mot lui-même : on ne peut pas s'en servir pour trouver les pauses."""
+    sortie = subprocess.run(["ffmpeg", "-hide_banner", "-nostats", "-i", fichier, "-af", f"silencedetect=noise={seuil_db}dB:d={duree_min}",
+                             "-f", "null", "-"], capture_output=True, text=True).stderr
+    debuts = [float(x) for x in re.findall(r"silence_start: (-?[\d.]+)", sortie)]
+    fins = [float(x) for x in re.findall(r"silence_end: (-?[\d.]+)", sortie)]
+    return [(max(0.0, d), f) for d, f in zip(debuts, fins + [None] * (len(debuts) - len(fins)))]
+
+
+def rythmer(rep, tempo=TEMPO, pause_max=PAUSE_MAX):
+    """La réplique plus vive : chaque silence ramené à pause_max (on coupe son milieu : la fin du mot et la prise d'air avant le
+    suivant restent), le silence du début et de la fin retiré, puis la voix accélérée par `tempo` sans changer sa hauteur (atempo).
+    Les heures des mots suivent. Le fichier est gardé à côté de la réplique : rien n'est redemandé à ElevenLabs."""
+    if not rep or (tempo == 1 and not pause_max):
+        return rep
+    total = rep["duree"]
+    coupes = []                 # (début, fin) des morceaux de silence retirés
+    for d, f in silences(rep["fichier"]):
+        if d <= 0.02:                                   # silence du début
+            coupes.append((0.0, max(0.0, (f or total) - 0.05)))
+        elif f is None or f >= total - 0.02:            # silence de la fin
+            coupes.append((d + 0.12, total))
+        elif pause_max and f - d > pause_max:
+            coupes.append((d + pause_max / 2, f - pause_max / 2))
+    coupes = [(d, f) for d, f in coupes if f - d > 0.01]
+
+    def apres(t):
+        retire = sum(min(f, t) - d for d, f in coupes if d < t)
+        return max(0.0, t - retire) / tempo
+    base, _ = os.path.splitext(rep["fichier"])
+    sortie = f"{base}-t{tempo:g}-p{pause_max:g}.wav"
+    if not os.path.exists(sortie):
+        gardes, t = [], 0.0
+        for d, f in coupes:
+            if d > t:
+                gardes.append((t, d))
+            t = f
+        if t < total - 0.01:
+            gardes.append((t, None))
+        filtres = []
+        for i, (d, f) in enumerate(gardes):
+            fin = f":end={f:.3f}" if f is not None else ""
+            filtres.append(f"[0:a]atrim=start={d:.3f}{fin},asetpts=PTS-STARTPTS,afade=t=in:d=0.006,"
+                           f"areverse,afade=t=in:d=0.006,areverse[g{i}]")
+        filtres.append("".join(f"[g{i}]" for i in range(len(gardes))) + f"concat=n={len(gardes)}:v=0:a=1,atempo={tempo:.4f}[o]")
+        subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", rep["fichier"], "-filter_complex", ";".join(filtres), "-map", "[o]",
+                        "-ar", "44100", "-c:a", "pcm_s16le", sortie], check=True)
+    return dict(rep, fichier=sortie, duree=round(duree(sortie), 3),
+                mots=[dict(m, debut=round(apres(m["debut"]), 3), fin=round(apres(m["fin"]), 3)) for m in rep["mots"]])
 
 
 def instant(rep, *cherches, defaut=None):

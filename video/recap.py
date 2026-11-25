@@ -302,7 +302,7 @@ def scene_titre(j, rep, unite):
     wipe("#ti-date", {t_date + 0.2:.2f}, 0.35);
     wipe("#ti-annee", {t_date + 0.4:.2f});
     // la couleur de la journée tombe sur « rouge » / « verte » : un tampon posé de travers
-    tl.fromTo("#ti-badge", {{ opacity: 0, scale: 1.3, rotation: -8, transformOrigin: "8% 50%" }}, {{ opacity: 1, scale: 1, rotation: -3, duration: 0.3, ease: "back.out(1.8)" }}, {t_badge:.2f});
+    tl.fromTo("#ti-badge", {{ opacity: 0, scale: 1.12, rotation: -7, transformOrigin: "0% 50%" }}, {{ opacity: 1, scale: 1, rotation: -3, duration: 0.3, ease: "back.out(1.8)" }}, {t_badge:.2f});
     tl.to("#ti-date", {{ y: 6, duration: 0.06, yoyo: true, repeat: 1, ease: "power1.inOut" }}, {t_badge + 0.22:.2f});"""
     reperes = [{"t": 0.05, "son": "swoosh-fast-transitions-3115", "gain_db": -6},
                {"t": 0.4, "son": "water-splash-1311", "gain_db": -12, "max_dur": 1.0},
@@ -459,7 +459,7 @@ def scene_marche(j, m, k, rep, unite, duree, expliquer_r=False):
         if t_entree <= t_casse:            # « Même scénario » : un seul mot pour la cassure et l'entrée
             t_entree = t_casse + 0.45
         arrets.append({"nom": "entree", "t": max(t_casse, t_zone + 0.5), "point": d0["entree"], "groupe": dessinees,
-                       "t2": None, "pastilles": [("cassure", f"Cassure par le {cote}", COUL["jaune"], COUL["encre"]),
+                       "t2": None, "pastilles": [("cassure", f"Le prix casse par le {cote}", COUL["jaune"], COUL["encre"]),
                                                   ("sens", f"{sens_txt} {d0['p']['entree']:%H:%M}",
                                                    COUL["bleu"] if d0["p"]["sens"] == 1 else COUL["encre"], COUL["blanc"])]})
         arrets[0]["t2"] = max(t_entree, arrets[0]["t"] + 0.45)
@@ -484,9 +484,12 @@ def scene_marche(j, m, k, rep, unite, duree, expliquer_r=False):
         arrets = arrets[:1] + suite
         for a, avant in zip(arrets[1:], arrets[:-1]):
             mini = (avant.get("t2") or avant["t"]) + ARRET
+            if avant is arrets[0]:      # « Le prix casse par le … » : 6 mots, au moins 2,3 s à l'écran
+                mini = max(mini, avant["t"] + 2.3)
             a["t"] = max(a["t"] if a["t"] is not None else mini + 0.3, mini)
     t_res_mot = voix.instant(rep, "résultat", defaut=(arrets[-1]["t"] + 1.6) if arrets else duree - 2.0)
-    t_recul = max(t_res_mot - 0.2, ((arrets[-1].get("t2") or arrets[-1]["t"]) + ARRET) if arrets else 0)
+    t_recul = max(t_res_mot - 0.2, ((arrets[-1].get("t2") or arrets[-1]["t"]) + ARRET) if arrets else 0,
+                  (arrets[0]["t"] + 2.3) if arrets else 0)
     t_res = t_recul + 0.4
 
     # ── ce qui est écrit sous le graphique : la légende, les pastilles qui comptent, le résultat ──
@@ -855,7 +858,8 @@ def fabriquer(j, config, dossier_sortie, journal=print, rendre=True):
     reps, sans_voix = [], None
     for i, t in enumerate(textes):
         try:
-            reps.append(voix.replique(t, config, textes[i - 1] if i else "", textes[i + 1] if i + 1 < len(textes) else ""))
+            r = voix.replique(t, config, textes[i - 1] if i else "", textes[i + 1] if i + 1 < len(textes) else "")
+            reps.append(voix.rythmer(r, config.get("voix_tempo", voix.TEMPO), config.get("voix_pause_max", voix.PAUSE_MAX)))
         except voix.VoixIndisponible as err:
             sans_voix, reps = str(err), [None] * len(textes)
             break

@@ -5,7 +5,8 @@ seuls) : ils ne sont pas dans le dépôt. `sons.json` donne leur nom et la page 
 les contient. Un son absent est sauté (la vidéo se fait quand même, et la liste des sons manquants est affichée).
 
 La musique de fond (facultative, réglage `musique` : un fichier ou un dossier de morceaux, jamais dans le dépôt) est coupée à la durée
-de la vidéo, avec une entrée et une fin en fondu, et posée 16 dB sous la voix ; elle baisse encore quand la voix parle.
+de la vidéo, avec une entrée et une fin en fondu, sa basse est allégée, et elle est posée sous la voix (réglée sur ce qu'un
+téléphone en fait entendre) ; elle baisse encore quand la voix parle.
 
 Étapes : chaque son est ramené à un même pic (-6 dBFS) puis réglé par son gain, coupé à sa durée, filtré (passe-haut) et posé à son
 instant ; le groupe des bruitages passe dans un compresseur commandé par la voix (il baisse quand elle parle), la musique aussi (plus
@@ -21,7 +22,10 @@ ICI = os.path.dirname(os.path.abspath(__file__))
 NIVEAU_VISE = -15.0         # LUFS : la voix au premier plan, comme sur TikTok
 NIVEAU_SANS_VOIX = -18.0    # LUFS : les bruitages seuls restent discrets
 NIVEAU_VOIX = -15.0         # LUFS de la piste de voix avant le mélange : les gains des bruitages sont réglés pour elle
-NIVEAU_MUSIQUE = -31.0      # LUFS de la musique avant d'être baissée sous la voix : 16 dB sous la voix
+# La musique se règle sur ce qu'un téléphone en fait entendre (au-dessus de 250 Hz) : 18 dB sous la voix dans cette bande, et
+# jamais plus de -26 LUFS en tout (11 dB sous la voix), pour qu'une basse forte ne couvre pas la voix au casque.
+NIVEAU_MUSIQUE_AIGUS, NIVEAU_MUSIQUE_MAX = -33.0, -26.0
+EQ_MUSIQUE = "highpass=f=50,bass=g=-5:f=150:w=0.7"     # moins de basse : elle ne s'entend pas sur un téléphone et brouille la voix
 FORMATS_MUSIQUE = (".mp3", ".wav", ".m4a", ".aac", ".flac", ".ogg")
 
 
@@ -121,7 +125,8 @@ def choisir_musique(reglage, jour):
 
 
 def piste_musique(reglage, jour, duree, sortie, journal=print):
-    """La musique de fond coupée à la durée de la vidéo (fondu d'entrée 0,4 s, de sortie 1,8 s), à NIVEAU_MUSIQUE. None sans musique."""
+    """La musique de fond coupée à la durée de la vidéo (fondu d'entrée 0,4 s, de sortie 1,8 s), basse allégée, au niveau des
+    NIVEAU_MUSIQUE_*. None sans musique."""
     morceau = choisir_musique(reglage, jour)
     if not morceau:
         if reglage:
@@ -130,13 +135,18 @@ def piste_musique(reglage, jour, duree, sortie, journal=print):
     fin = max(0.0, duree - 1.8)
     brute = sortie[:-4] + "-brute.wav"
     subprocess.run(["ffmpeg", "-v", "error", "-y", "-stream_loop", "-1", "-i", morceau, "-t", f"{duree:.3f}", "-af",
-                    f"aresample=48000,aformat=channel_layouts=stereo,highpass=f=45,afade=t=in:d=0.4,afade=t=out:st={fin:.3f}:d=1.8",
+                    f"aresample=48000,aformat=channel_layouts=stereo,{EQ_MUSIQUE},afade=t=in:d=0.4,afade=t=out:st={fin:.3f}:d=1.8",
                     "-ar", "48000", "-c:a", "pcm_s24le", brute], check=True)
-    mesure = _lufs(brute)
-    gain = (NIVEAU_MUSIQUE - mesure) if mesure is not None and mesure > -70 else 0.0
+    aigus = sortie[:-4] + "-aigus.wav"
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", brute, "-af", "highpass=f=250,highpass=f=250", "-c:a", "pcm_s24le", aigus], check=True)
+    tout, haut = _lufs(brute), _lufs(aigus)
+    gains = [NIVEAU_MUSIQUE_AIGUS - haut if haut is not None and haut > -70 else None,
+             NIVEAU_MUSIQUE_MAX - tout if tout is not None and tout > -70 else None]
+    gain = min([g for g in gains if g is not None], default=0.0)
     subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", brute, "-af", f"volume={gain:.2f}dB", "-ar", "48000", "-c:a", "pcm_s24le", sortie],
                    check=True)
     os.remove(brute)
+    os.remove(aigus)
     return sortie
 
 

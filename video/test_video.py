@@ -175,7 +175,7 @@ def test_mention_exemple_seulement_pour_le_testeur(tmp_path):
 def test_les_scenes_n_affichent_pas_le_type_d_entree(tmp_path):
     j = _journee(tmp_path, positions=((1, "D2", 9, 40, 100, 15, 50, 110, "Fin de journée"),))
     style, corps, script, reperes, fin = recap.scene_marche(j, j["marches"][0], 0, None, "r", 7.0)
-    assert "D2" not in corps and "Cassure par le haut" in corps and "Achat 15:40" in corps
+    assert "D2" not in corps and "Le prix casse par le haut" in corps and "Achat 15:40" in corps
     assert all(r["son"] in mixage.catalogue() for r in reperes)
 
 
