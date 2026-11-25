@@ -24,8 +24,8 @@ Exemple de texte lu (tout est écrit à partir des journaux de l'EA, les heures 
 
 > Mercredi dix-huit novembre. Journée rouge pour le robot… on regarde ça !
 > Nasdaq. Quinze heures trente-cinq : le prix casse la zone par le bas, le robot vend. Cinq ventes en tout. Une vente part aussitôt
-> contre nous : stop touché, environ trois cents points plus haut. Les quatre autres tiennent jusqu'à la fin de séance : jusqu'à
-> environ deux cent quatre-vingts points en notre faveur, puis le prix remonte. Résultat : moins un virgule cinq R. Un R, c'est le
+> contre nous : stop touché, deux cent quatre-vingt-dix-sept points plus haut. Les quatre autres tiennent jusqu'à la fin de séance :
+> jusqu'à deux cent soixante-seize points en notre faveur, puis le prix remonte. Résultat : moins un virgule cinq R. Un R, c'est le
 > risque pris sur un trade.
 > Même scénario sur le S et P cinq cents. Une vente part aussitôt contre nous : stop touché, soixante-trois points plus haut. Les
 > quatre autres tiennent jusqu'à la fin de séance : jusqu'à soixante points en notre faveur, puis le prix remonte. Résultat : moins
@@ -41,8 +41,8 @@ Exemple de texte lu (tout est écrit à partir des journaux de l'EA, les heures 
 - Chaque arrêt de la caméra tombe sur la phrase qui le raconte, et dure au moins 1,5 s : le temps de lire l'étiquette.
 - **Le chemin du prix est raconté en points** (journal d'exécution de l'EA) : jusqu'où il est allé en notre faveur avant un stop
   (trait vert sur le graphique, « Jusqu'à +106 pts »), de combien il s'est retourné, ou s'il est parti aussitôt contre nous ; pour
-  les positions gardées jusqu'au soir, le plus loin atteint en notre faveur. Les grands nombres sont arrondis à la voix (« environ
-  trois cents points »), exacts à l'écran.
+  les positions gardées jusqu'au soir, le plus loin atteint en notre faveur. La voix dit les points comme l'écran les montre :
+  entiers à partir de 10 (« deux cent quatre-vingt-dix-sept points »), avec une décimale en dessous.
 - Quand le deuxième marché a vécu la même séance que le premier, la voix dit « Même scénario » au lieu de tout répéter.
 - Un petit mot léger termine le bilan. Il change selon le résultat (perte, gain, pas de trade) et selon la date : refaire la même
   vidéo redonne le même mot.
@@ -63,7 +63,7 @@ Exemple de texte lu (tout est écrit à partir des journaux de l'EA, les heures 
 ## Installation (une fois)
 
 1. **Logiciels** :
-   - Python 3.11 ou plus ;
+   - Python 3.11 ou plus (sous Windows, plus les fuseaux horaires : `py -m pip install tzdata`) ;
    - [Node.js](https://nodejs.org) 20 ou plus (HyperFrames se télécharge tout seul au premier rendu) ;
    - ffmpeg (`brew install ffmpeg` sur Mac).
 2. **Configuration privée** : copie `video/config.exemple.json` dans `~/.config/etrave-video/config.json` et remplis-la. Ce fichier
@@ -75,8 +75,8 @@ Exemple de texte lu (tout est écrit à partir des journaux de l'EA, les heures 
 4. **Bruitages** : `python3 video/outil.py sons` télécharge les 31 sons Mixkit dans le dossier `sons` de ta configuration. Leur
    licence permet l'usage commercial dans des vidéos, mais pas de les redistribuer seuls : c'est pourquoi ils ne sont pas dans le dépôt.
 5. **Musique de fond** (facultative) : un morceau, ou un dossier de morceaux (un par jour, choisi par la date), dans `musique`.
-   Elle est coupée à la durée de la vidéo, en fondu, sa basse allégée, réglée sur ce qu'un téléphone en fait entendre (18 dB sous
-   la voix au-dessus de 250 Hz, jamais plus de 11 dB sous la voix en tout), et elle baisse encore quand la voix parle. Elle n'est jamais
+   Elle est coupée à la durée de la vidéo, en fondu, sa basse allégée, réglée sur ce qu'un téléphone en fait entendre (14 dB sous
+   la voix au-dessus de 250 Hz, et jamais à moins de 7 dB sous la voix en tout), et elle baisse encore quand la voix parle. Elle n'est jamais
    dans le dépôt. Un morceau fait avec ElevenLabs Music sur un plan payant peut servir sur les réseaux sociaux (pas au cinéma, à
    la télévision ni à la radio : conditions d'ElevenLabs). Sans morceau, la vidéo est faite sans musique ; tu peux aussi ajouter un
    son de TikTok à la publication.
@@ -92,7 +92,7 @@ Exemple de texte lu (tout est écrit à partir des journaux de l'EA, les heures 
 python3 video/outil.py jours                       # les séances finies trouvées dans les journaux
 python3 video/outil.py recap                       # le récap de la dernière séance finie
 python3 video/outil.py recap --jour 2026-11-26     # une séance précise (date de New York)
-python3 video/outil.py recap --testeur --jour 2026-11-18   # une journée du testeur (marquée « Exemple »)
+python3 video/outil.py recap --testeur --jour 2026-11-18   # une journée du testeur (dossier de travail « recap-…-essai »)
 python3 video/outil.py presentation                # la vidéo de présentation (profil « presentation » de la configuration)
 ```
 
@@ -129,7 +129,13 @@ python3 video/outil.py installer
 - Une notification prévient quand c'est prêt.
 - Seules les séances à partir du jour de l'installation sont faites (`auto_depuis` pour remonter plus loin).
 - Le journal du mode automatique est `recap-auto.log`, dans le dossier de l'outil copié
-  (`~/Library/Application Support/Etrave/outil-video`).
+  (`~/Library/Application Support/Etrave/outil-video`). Sous Windows, c'est l'historique des tâches « Etrave recap auto » du
+  Planificateur de tâches.
+- Une séance dont la voix n'a pas pu être faite (réseau, quota ElevenLabs) n'est pas publiée muette : elle est refaite au lancement
+  suivant. Une semaine ou un mois attend que toutes ses séances soient lisibles.
+- La photo de l'historique n'est prise qu'avant 17:00 à New York (minuit du serveur du courtier) : après, l'onglet « Aujourd'hui »
+  montrerait le jour suivant et la ligne du solde. Le lancement de 22:20 la prend, sauf les semaines où l'heure d'été américaine et
+  européenne diffèrent (mi-mars, fin octobre) : la vidéo se fait alors sans photo.
 - `python3 video/outil.py auto` fait la même chose à la main. `desinstaller` retire la programmation.
 - Sur Mac, la première fois, macOS peut demander d'autoriser python3 à écrire sur le Bureau.
 

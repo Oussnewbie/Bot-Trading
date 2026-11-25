@@ -23,7 +23,7 @@ import mixage
 
 ICI = os.path.dirname(os.path.abspath(__file__))
 MODELE = os.path.join(ICI, "modeles", "presentation")
-HYPERFRAMES = ["npx", "-y", "hyperframes@0.9.94"]
+HYPERFRAMES = [shutil.which("npx") or "npx", "-y", "hyperframes@0.9.94"]   # VID-01 : npx.cmd sous Windows
 DUREE = 47.62
 # (fichier de la réplique, départ dans la vidéo en s, coupe en s) : la prise 3 s'arrête dans le silence après « il vend. »
 REPLIQUES = [("1-accroche", 0.10, None), ("2-preuve", 5.35, None), ("3-robot", 11.20, 9.45), ("3b-secret", 20.95, None),

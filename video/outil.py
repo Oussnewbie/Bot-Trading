@@ -14,7 +14,8 @@
     python3 video/outil.py desinstaller              retire ce lancement automatique
 
 La configuration est un fichier privé, hors du dépôt : ~/.config/etrave-video/config.json (modèle : video/config.exemple.json).
---testeur lit les journaux du testeur de stratégie (sous-dossier `testeur`) ; seule la description le dit (« simulation »).
+--testeur lit les journaux du testeur de stratégie (sous-dossier `testeur`). Démo, réel ou testeur n'apparaissent que dans la
+description d'une publication (« simulation ») ; jamais dans la vidéo, la couverture ni un nom de fichier ou de dossier.
 """
 import argparse
 import datetime
@@ -75,6 +76,13 @@ def verifier(config):
           "installe Node.js 20 ou plus : https://nodejs.org")
     point(shutil.which("ffmpeg") is not None and shutil.which("ffprobe") is not None, "ffmpeg et ffprobe", "brew install ffmpeg")
     point(shutil.which("curl") is not None, "curl (voix ElevenLabs, téléchargement des sons)")
+    try:                                   # VID-02 : le Python de Windows n'a pas de fuseaux horaires sans le paquet tzdata
+        import zoneinfo
+        zoneinfo.ZoneInfo("America/New_York")
+        tz = True
+    except Exception:
+        tz = False
+    point(tz, "fuseaux horaires (New York, Paris)", "py -m pip install tzdata")
     point(os.path.exists(os.path.expanduser(config["police"])), f"police DIN Alternate Bold ({config['police']})",
           "réglage « police » : le chemin d'un fichier DIN Alternate Bold (fourni avec macOS)")
     import mixage
@@ -181,7 +189,8 @@ def main(arguments=None):
     except journee.JourneeIncomplete as err:
         print(err)
         return 2
-    sortie = os.path.join(os.path.expanduser(config["sortie"]), f"recap-{j['jour'].isoformat()}{'-testeur' if args.testeur else ''}")
+    # VID-12 (audit du 25/11/2026) : « testeur » apparaissait dans le nom du dossier ; « essai » ne dit rien du compte
+    sortie = os.path.join(os.path.expanduser(config["sortie"]), f"recap-{j['jour'].isoformat()}{'-essai' if args.testeur else ''}")
     os.makedirs(sortie, exist_ok=True)
     print(f"Séance du {j['jour']} : {j['trades']} position(s) sur {len(j['marches'])} marché(s).")
     print("Vidéo :", recap.fabriquer(j, config, sortie, print))

@@ -1,5 +1,5 @@
 """Contrôles de l'outil vidéo : nombres en lettres, lecture d'une journée (heure de Paris, séance finie, bougies), textes de la voix
-(rien de secret, R expliqué), mention « Exemple » des journées du testeur, modèle de la présentation, et rien de personnel dans le dépôt."""
+(rien de secret, R expliqué), aucune mention du testeur à l'image, modèle de la présentation, et rien de personnel dans le dépôt."""
 import datetime
 import glob
 import json
@@ -319,7 +319,7 @@ def test_mode_automatique(tmp_path, monkeypatch):
     ecrire_journee(str(journaux), datetime.date(2026, 4, 16))
     faites = []
 
-    def fausse_video(j, config, sortie, journal=print, rendre=True):
+    def fausse_video(j, config, sortie, journal=print, rendre=True, exiger_voix=False):
         faites.append(j["jour"])
         chemin = os.path.join(sortie, "video.mp4")
         open(chemin, "wb").write(b"\0")
@@ -411,3 +411,92 @@ def test_photo_et_notes_dans_la_zone_sure(tmp_path, hauteurs):
 def test_photo_de_l_historique_pas_reglee():
     import historique
     assert historique.photographier_jour({}, "/nulle/part", datetime.date(2026, 4, 16), 3, lambda t: None) is None
+
+
+# ───────────────────────── audit du 25/11/2026 (VID-01 à VID-17) ─────────────────────────
+def source_de(nom):
+    return open(os.path.join(ICI, nom), encoding="utf-8").read()
+
+
+def test_npx_et_fuseaux_horaires_sous_windows():
+    """VID-01 : npx est un npx.cmd sous Windows, introuvable par subprocess sous le nom « npx ». VID-02 : tzdata sous Windows."""
+    for nom in ("recap.py", "presentation.py"):
+        assert 'HYPERFRAMES = [shutil.which("npx") or "npx", "-y", "hyperframes@' in source_de(nom), nom
+    assert "except ZoneInfoNotFoundError:" in source_de("journee.py") and "pip install tzdata" in source_de("journee.py")
+    assert "pip install tzdata" in source_de("outil.py") and "tzdata" in source_de("README.md")
+
+
+def test_pas_de_video_muette_en_mode_automatique(tmp_path, monkeypatch):
+    """VID-03 : sans voix (réseau, quota), la séance n'est pas publiée muette ; elle est refaite au lancement suivant."""
+    import voix
+    journaux = tmp_path / "journaux"
+    journaux.mkdir()
+    ecrire_journee(str(journaux), datetime.date(2026, 4, 16))
+    demandes = []
+
+    def sans_voix(j, config, sortie, journal=print, rendre=True, exiger_voix=False):
+        demandes.append(exiger_voix)
+        raise voix.VoixIndisponible("réseau coupé")
+    monkeypatch.setattr(publication.recap, "fabriquer", sans_voix)
+    monkeypatch.setattr(publication.subprocess, "run", lambda *a, **k: None)
+    config = {"sortie": str(tmp_path / "rendus"), "dossier_publication": str(tmp_path / "bureau"), "auto_depuis": "2026-04-01",
+              "voix_id": "x"}
+    lignes = []
+    assert publication.auto(config, str(journaux), lignes.append, datetime.date(2026, 4, 16)) == []
+    assert demandes == [True] and any("voix indisponible" in l for l in lignes)
+    assert not os.path.exists(tmp_path / "bureau" / "2026-04-16")
+
+
+def test_photo_de_l_historique_jamais_apres_le_changement_de_jour_du_serveur(tmp_path, monkeypatch):
+    """VID-05 : après 17:00 New York, « Aujourd'hui » montre le jour suivant et la ligne du solde. VID-04 : fenêtre trop petite,
+    pas de photo tronquée. La photo de toute la fenêtre est effacée."""
+    import historique
+    utc = lambda *a: datetime.datetime(*a, tzinfo=datetime.timezone.utc)
+    jour = datetime.date(2026, 11, 18)
+    assert not historique.trop_tard(jour, utc(2026, 11, 18, 21, 20))     # 22:20 à Paris = 16:20 à New York
+    assert historique.trop_tard(jour, utc(2026, 11, 18, 22, 50))         # 23:50 à Paris = 17:50 à New York
+    assert historique.trop_tard(datetime.date(2026, 3, 18), utc(2026, 3, 18, 21, 20))   # 22:20 à Paris = 17:20 NY (mi-mars)
+    cadre = {"historique": {"x": 0, "y": 10, "largeur": 100, "entete": 20, "ligne": 20}}
+    lignes = []
+    assert historique.photographier_jour(cadre, str(tmp_path), jour, 2, lignes.append, utc(2026, 11, 18, 22, 50)) is None
+    assert "trop tard" in lignes[-1]
+    temporaires = []
+
+    def fausse_photo(png):
+        temporaires.append(os.path.dirname(png))
+        with open(png, "wb") as f:                                       # un PNG de 120 x 40 : plus petit que le cadre
+            f.write(b"\x89PNG\r\n\x1a\n" + b"\0\0\0\rIHDR" + (120).to_bytes(4, "big") + (40).to_bytes(4, "big"))
+    monkeypatch.setattr(historique, "photographier_fenetre", fausse_photo)
+    assert historique.photographier_jour(cadre, str(tmp_path), jour, 2, lignes.append, utc(2026, 11, 18, 21, 20)) is None
+    assert "plus petite que le cadre" in lignes[-1] and not os.path.exists(temporaires[0])
+    pub = source_de("publication.py")
+    assert pub.index("try:\n                j[\"historique\"] = historique.photographier_jour(") > 0
+
+
+def test_semaine_avec_une_seance_illisible_remise_a_plus_tard(tmp_path):
+    """VID-07 : une séance illisible disparaissait de la semaine (« Semaine verte » avec un jour perdant en moins)."""
+    import recap_periode
+    ecrire_journee(str(tmp_path), datetime.date(2026, 4, 14))
+    with open(os.path.join(str(tmp_path), "trades-NDX100.csv"), "w", encoding="utf-8") as f:   # un trade que l'exécution ne retrouve pas
+        f.write("1776196200;2026-04-14;15:50;NDX100;1;0.10;-1.0000;-999.00;1000.00;Stop;0;USD\r\n")
+    with pytest.raises(journee.JourneeIncomplete):
+        recap_periode.charger(str(tmp_path), datetime.date(2026, 4, 13), datetime.date(2026, 4, 17), "semaine")
+
+
+def test_noms_de_dossiers_et_python_de_windows():
+    """VID-12 : jamais « testeur » dans un nom de dossier. VID-08 : sous Windows, pas le raccourci python3 du Microsoft Store."""
+    outil = source_de("outil.py")
+    assert "'-testeur'" not in outil and "'-essai' if args.testeur" in outil
+    inst = source_de("installation.py")
+    assert inst.index('if os.name == "nt":\n        base = os.path.join(sys.base_prefix, "python.exe")') < inst.index('shutil.which("python3")')
+
+
+def test_semaine_a_cheval_sur_deux_mois_et_minutes_au_feminin():
+    """VID-14 : « du 30 Novembre au 4 Décembre ». VID-17 : « quinze heures quarante et une »."""
+    import recap_periode
+    p = {"genre": "semaine", "debut": datetime.date(2026, 11, 30), "fin": datetime.date(2026, 12, 4), "jours": [], "avec": [],
+         "total": 0.0, "par_marche": {}, "gagnants": [], "perdants": [], "meilleur": None, "pire": None, "source": "reel"}
+    assert "Nov" in recap_periode._entete("s", p, "x")[0]
+    assert nombres.heure(15, 41) == "quinze heures quarante et une" and nombres.heure(9, 31) == "neuf heures trente et une"
+    assert nombres.heure(15, 11) == "quinze heures onze" and nombres.heure(1, 1) == "une heure une"
+    assert "du {debut} au {p['fin'].day}" in source_de("publication.py")

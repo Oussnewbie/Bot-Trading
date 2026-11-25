@@ -12,13 +12,18 @@ pas toujours 6 h). Les raisons des filtres écrites par l'EA ne sortent jamais d
 import datetime
 import os
 import sys
-from zoneinfo import ZoneInfo
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "etrave"))
 import export  # noqa: E402  (lecture des journaux, la même que l'export trimestriel)
 import pont    # noqa: E402
 
-NEW_YORK, PARIS = ZoneInfo("America/New_York"), ZoneInfo("Europe/Paris")
+# Correctif VID-02 (audit du 25/11/2026) : le Python de Windows n'a pas de base de fuseaux horaires ; sans le paquet tzdata, l'outil
+# s'arrêtait dès son import sur une erreur incompréhensible.
+try:
+    NEW_YORK, PARIS = ZoneInfo("America/New_York"), ZoneInfo("Europe/Paris")
+except ZoneInfoNotFoundError:
+    raise SystemExit("Fuseaux horaires introuvables. Sous Windows, installe-les une fois : py -m pip install tzdata")
 # Les deux marchés tradés, dans l'ordre du récap, et les mots de la voix (« S et P » se lit mieux que « S&P »)
 MARCHES = {
     "nasdaq": {"nom": "Nasdaq 100", "voix": "Nasdaq", "ordre": 0},

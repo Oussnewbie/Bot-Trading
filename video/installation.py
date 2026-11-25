@@ -34,6 +34,11 @@ def dossier_installation():
 
 def python_hors_depot():
     """Un Python installé sur la machine (pas celui d'un environnement du dépôt, qui disparaîtrait avec lui)."""
+    # VID-08 (audit du 25/11/2026) : sous Windows, « python3 » du PATH est en général le raccourci du Microsoft Store, qui ne lance
+    # rien. Le Python d'installation (celui d'un environnement virtuel, sinon celui-ci) est pris à la place.
+    if os.name == "nt":
+        base = os.path.join(sys.base_prefix, "python.exe")
+        return base if os.path.exists(base) else sys.executable
     for p in ("/usr/local/bin/python3", "/opt/homebrew/bin/python3"):
         if os.path.exists(p):
             return p
@@ -131,7 +136,9 @@ def installer(config, chemin_config, journal=print):
         journal(f"Programmé : tâches planifiées « Etrave recap auto » du lundi au vendredi à {', '.join(f'{h}:{m:02d}' for h, m in HEURES)}.")
     else:
         journal("Programmation automatique non prise en charge sur ce système : lance `outil.py auto` chaque soir.")
-    journal(f"Outil copié dans {cible} ; journal du mode automatique : {journal_auto}")
+    # VID-13 : sous Windows, les tâches planifiées n'écrivent pas recap-auto.log (leur historique est dans le Planificateur de tâches)
+    journal(f"Outil copié dans {cible} ; journal du mode automatique : "
+            + ("historique des tâches « Etrave recap auto » dans le Planificateur de tâches" if os.name == "nt" else journal_auto))
     journal(f"Vidéos prêtes à publier : {os.path.expanduser(c['dossier_publication'])}")
     return cible
 

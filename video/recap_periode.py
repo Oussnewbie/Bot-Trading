@@ -49,16 +49,21 @@ def charger(dossier, debut, fin, genre):
     for jour in journee.jours_finis(dossier):
         if not debut <= jour <= fin:
             continue
+        # Correctif VID-07 (audit du 25/11/2026) : une séance illisible disparaissait en silence de la période, et une séance tradée au
+        # R inconnu était dite « pas de trade » : « Semaine verte » avec un jour perdant en moins. La période attend d'être complète.
         try:
             j = journee.charger(dossier, jour, bougies_requises=False)
-        except journee.JourneeIncomplete:
-            continue
+        except journee.JourneeIncomplete as err:
+            raise journee.JourneeIncomplete(f"séance du {jour.isoformat()} incomplète ({err}) : récap de la période remis à plus tard")
         marches = {}
         for m in j["marches"]:
             v = m.get("r")
             marches[m["nom"]] = {"voix": m["voix"], "trades": len(m["positions"]),
                                  "r": (round(v, 2) if v is not None else None) if m["positions"] else 0.0}
         t = recap.total(j, "r")
+        if j["trades"] and t is None:
+            raise journee.JourneeIncomplete(f"résultat en R inconnu pour la séance du {jour.isoformat()} : récap de la période remis à "
+                                            "plus tard")
         jours.append({"jour": jour, "trades": j["trades"], "marches": marches, "source": j["source"], "historique": j.get("historique"),
                       "total": t if t is not None else (0.0 if not j["trades"] else None)})
     avec = [d for d in jours if d["trades"] and d["total"] is not None]
@@ -164,7 +169,9 @@ def repliques(p):
 
 # ───────────────────────── les scènes ─────────────────────────
 def _entete(ident, p, titre):
-    date = (f"semaine du {_jour_court(p['debut'])} au {_jour_court(p['fin'])} {nombres.mois_ecran(p['fin'].month, True)} {p['fin'].year}"
+    # VID-14 : le mois du lundi aussi quand la semaine est à cheval sur deux mois
+    lundi = _jour_court(p["debut"]) + ("" if p["debut"].month == p["fin"].month else f" {nombres.mois_ecran(p['debut'].month, True)}")
+    date = (f"semaine du {lundi} au {_jour_court(p['fin'])} {nombres.mois_ecran(p['fin'].month, True)} {p['fin'].year}"
             if p["genre"] == "semaine" else f"{nombres.mois_ecran(p['debut'].month)} {p['debut'].year}")
     return (f'    <div class="date" id="{ident}-date">{e(date)}</div>\n    <div id="{ident}-nom" class="nom">{e(titre)}</div>',
             f'    wipe("#{ident}-date", 0.05);\n    wipe("#{ident}-nom", 0.1, 0.32);')
@@ -440,14 +447,17 @@ def nom_dossier(p):
     return f"Semaine du {p['debut'].isoformat()}" if p["genre"] == "semaine" else f"Mois {p['debut']:%Y-%m}"
 
 
-def fabriquer(p, config, dossier_sortie, journal=print, rendre=True):
-    """Le projet HyperFrames, le rendu, la voix (une prise), les bruitages et la musique. Rend le chemin de la vidéo."""
+def fabriquer(p, config, dossier_sortie, journal=print, rendre=True, exiger_voix=False):
+    """Le projet HyperFrames, le rendu, la voix (une prise), les bruitages et la musique. Rend le chemin de la vidéo.
+    exiger_voix : comme recap.fabriquer (VID-03)."""
     textes = repliques(p)
     try:
         reps = [voix.rythmer(r, config.get("voix_tempo", voix.TEMPO), config.get("voix_pause_max", voix.PAUSE_MAX))
                 for r in voix.recit(textes, config)]
         sans_voix = False
     except voix.VoixIndisponible as err:
+        if exiger_voix:
+            raise
         journal(str(err))
         reps, sans_voix = [None] * len(textes), True
     police_fichier = os.path.expanduser(config.get("police", police.DEFAUT))

@@ -17,6 +17,7 @@ import sys
 
 import nombres
 import recap
+import voix
 
 BUREAU = "~/Desktop/Étrave TikTok"
 HASHTAGS = ["#trading", "#nasdaq", "#sp500", "#daytrading", "#tradingautomatique"]
@@ -73,7 +74,10 @@ def description_periode(p, config):
     import recap_periode
     accroche = recap_periode.accroche(p)[1]
     if p["genre"] == "semaine":
-        quoi = f"récap de la semaine du {p['debut'].day} au {p['fin'].day} {nombres.mois_ecran(p['fin'].month)} {p['fin'].year}"
+        # VID-14 (audit du 25/11/2026) : une semaine à cheval sur deux mois disait « du 30 au 4 Décembre »
+        debut = f"{p['debut'].day}" + ("" if p["debut"].month == p["fin"].month else f" {nombres.mois_ecran(p['debut'].month)}"
+                                       + ("" if p["debut"].year == p["fin"].year else f" {p['debut'].year}"))
+        quoi = f"récap de la semaine du {debut} au {p['fin'].day} {nombres.mois_ecran(p['fin'].month)} {p['fin'].year}"
     else:
         mois = nombres.mois_ecran(p["debut"].month)
         quoi = f"récap du mois {'d' + chr(39) if mois[0].lower() in 'aeiouéè' else 'de '}{mois} {p['debut'].year}"
@@ -161,13 +165,24 @@ def auto(config, dossier_journaux, journal=print, aujourd_hui=None):
         # la photo de l'onglet Historique : seulement le soir même (l'onglet montre « Aujourd'hui »), avant de monter la vidéo
         if j["trades"] and not j.get("historique") and jour == aujourd_hui and config.get("historique"):
             import historique
-            j["historique"] = historique.photographier_jour(config, dossier_journaux, jour, j["trades"], journal)
+            # Correctif VID-04 (audit du 25/11/2026) : une photo ratée (fenêtre plus petite que le cadre…) arrêtait tout le mode
+            # automatique, récaps de la semaine et du mois compris. La vidéo se fait alors sans la photo.
+            try:
+                j["historique"] = historique.photographier_jour(config, dossier_journaux, jour, j["trades"], journal)
+            except Exception as err:
+                journal(f"Photo de l'historique impossible ({type(err).__name__} : {err}) : la vidéo se fait sans.")
         sortie = os.path.join(os.path.expanduser(config["sortie"]), f"recap-{jour.isoformat()}")
         os.makedirs(sortie, exist_ok=True)
         journal(f"{jour} : {j['trades']} position(s), fabrication de la vidéo…")
+        # Correctif VID-03 (audit du 25/11/2026) : sans voix (réseau coupé, quota ElevenLabs), la vidéo était faite muette et jamais
+        # refaite. Avec une voix réglée, la séance attend le lancement suivant, et la notification le dit.
         try:
-            video = recap.fabriquer(j, config, sortie, journal)
+            video = recap.fabriquer(j, config, sortie, journal, exiger_voix=bool(config.get("voix_id")))
             dossier = publier(j, video, config, journal)
+        except voix.VoixIndisponible as err:
+            journal(f"{jour} : voix indisponible ({err}). Pas de vidéo muette : nouvel essai au prochain lancement.")
+            prevenir("Étrave", f"Récap du {nombres.date_courte(jour)} : voix indisponible, nouvel essai au prochain lancement.")
+            continue
         except Exception as err:       # une séance ratée ne doit pas bloquer les suivantes ; elle sera retentée au prochain lancement
             journal(f"{jour} : échec ({type(err).__name__} : {err}). Nouvel essai au prochain lancement.")
             continue
@@ -179,7 +194,11 @@ def auto(config, dossier_journaux, journal=print, aujourd_hui=None):
     for genre, debut, fin in periodes_finies(journee.jours_finis(dossier_journaux), aujourd_hui, depuis):
         if not config.get("auto_hebdo" if genre == "semaine" else "auto_mensuel", True):
             continue
-        p = recap_periode.charger(dossier_journaux, debut, fin, genre)
+        try:
+            p = recap_periode.charger(dossier_journaux, debut, fin, genre)
+        except journee.JourneeIncomplete as err:      # VID-07 : jamais de période avec une séance en moins
+            journal(f"{genre} du {debut.isoformat()} : pas de vidéo. {err}")
+            continue
         cible = os.path.join(racine, recap_periode.nom_dossier(p))
         if (os.path.isdir(cible) and any(n.endswith(".mp4") for n in os.listdir(cible))) or not p["jours"]:
             continue
@@ -189,8 +208,12 @@ def auto(config, dossier_journaux, journal=print, aujourd_hui=None):
         os.makedirs(sortie, exist_ok=True)
         journal(f"{recap_periode.nom_dossier(p)} : {len(p['avec'])} jour(s) de trade, fabrication de la vidéo…")
         try:
-            video = recap_periode.fabriquer(p, config, sortie, journal)
+            video = recap_periode.fabriquer(p, config, sortie, journal, exiger_voix=bool(config.get("voix_id")))
             dossier = publier_periode(p, video, config)
+        except voix.VoixIndisponible as err:
+            journal(f"{recap_periode.nom_dossier(p)} : voix indisponible ({err}). Nouvel essai au prochain lancement.")
+            prevenir("Étrave", f"{recap_periode.nom_dossier(p)} : voix indisponible, nouvel essai au prochain lancement.")
+            continue
         except Exception as err:
             journal(f"{recap_periode.nom_dossier(p)} : échec ({type(err).__name__} : {err}). Nouvel essai au prochain lancement.")
             continue

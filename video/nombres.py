@@ -77,7 +77,11 @@ def heure(h, m):
     """15:37 → « quinze heures trente-sept » ; 21:00 → « vingt et une heures » ; 1:05 → « une heure cinq »."""
     heures = "une" if h == 1 else ("vingt et une" if h == 21 else entier(h))
     texte = heures + (" heure" if h in (0, 1) else " heures")
-    return texte + (" " + entier(m) if m else "")
+    # VID-17 (audit du 25/11/2026) : la minute est féminine (« quinze heures quarante et une », pas « quarante et un »)
+    minutes = entier(m)
+    if minutes.endswith("un"):
+        minutes = minutes[:-2] + "une"
+    return texte + (" " + minutes if m else "")
 
 
 def date_longue(jour):

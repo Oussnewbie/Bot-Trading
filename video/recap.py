@@ -30,7 +30,9 @@ import police
 import voix
 
 ICI = os.path.dirname(os.path.abspath(__file__))
-HYPERFRAMES = ["npx", "-y", "hyperframes@0.9.94"]
+# Correctif VID-01 (audit du 25/11/2026) : le chemin complet de npx. Sous Windows, npx est un « npx.cmd » que subprocess ne trouve
+# pas sous le nom « npx » (seuls les .exe le sont) : chaque rendu échouait sur le VPS.
+HYPERFRAMES = [shutil.which("npx") or "npx", "-y", "hyperframes@0.9.94"]
 # Zones sûres de TikTok en 1080 x 1920 (celles du contrôle HyperFrames) : le texte entre y = 240 et y = 1260 ; jusqu'à x = 960 au-dessus
 # de y = 840 ; sous y = 840, rien à droite de x = 780 (les boutons j'aime, commentaires, partage). Le graphique tient au-dessus de 840.
 X0, X1, Y_HAUT, Y_BAS = 100, 950, 480, 820          # le graphique
@@ -1078,9 +1080,10 @@ def _index(scenes, duree):
 """
 
 
-def fabriquer(j, config, dossier_sortie, journal=print, rendre=True):
+def fabriquer(j, config, dossier_sortie, journal=print, rendre=True, exiger_voix=False):
     """Écrit le projet HyperFrames, le rend, pose la voix, les bruitages et la musique. Rend le chemin de la vidéo finale (avec
-    rendre=False : s'arrête au projet écrit, pour le regarder dans HyperFrames, et rend son dossier)."""
+    rendre=False : s'arrête au projet écrit, pour le regarder dans HyperFrames, et rend son dossier). exiger_voix : une voix
+    indisponible lève VoixIndisponible au lieu de faire une vidéo muette (mode automatique, VID-03)."""
     global POLICE
     unite = unite_du_jour(j, config.get("unite", "auto"))
     textes = repliques(j, unite)
@@ -1090,6 +1093,8 @@ def fabriquer(j, config, dossier_sortie, journal=print, rendre=True):
         reps = [voix.rythmer(r, config.get("voix_tempo", voix.TEMPO), config.get("voix_pause_max", voix.PAUSE_MAX))
                 for r in voix.recit(textes, config)]
     except voix.VoixIndisponible as err:
+        if exiger_voix:
+            raise
         sans_voix, reps = str(err), [None] * len(textes)
     if sans_voix:
         journal(sans_voix)

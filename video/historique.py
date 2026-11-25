@@ -17,7 +17,9 @@ ligne, à écrire dans `historique` de la configuration :
     "historique": {"x": 12, "y": 640, "largeur": 760, "entete": 22, "ligne": 20}
 La photo du soir s'arrête après la dernière position du jour : la ligne de total, qui montre le solde, n'y est jamais.
 """
+import datetime
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -149,28 +151,59 @@ def chemin(dossier_journaux, jour):
     return os.path.join(dossier_journaux, "captures", f"historique-{jour.isoformat()}.png")
 
 
-def photographier_jour(config, dossier_journaux, jour, n_positions, journal=print):
+# Heure de New York à laquelle le serveur du courtier change de jour (GMT+2 / GMT+3 avec l'heure d'été américaine : minuit du
+# serveur = 17:00 à New York, toute l'année). « Aujourd'hui » de l'onglet Historique suit le jour du serveur.
+CHANGEMENT_DE_JOUR_NY = 17
+
+
+def trop_tard(jour, maintenant=None):
+    """Correctif VID-05 (audit du 25/11/2026) : après le changement de jour du serveur, l'onglet Historique « Aujourd'hui » montre
+    le jour suivant, vide, et la ligne de total (le SOLDE du compte) tombait dans le cadre de la photo, publiée comme preuve. Cela
+    arrivait au lancement de 23:50 et, les semaines où l'heure d'été américaine et européenne diffèrent, à celui de 22:20."""
+    import journee
+    ny = (maintenant or datetime.datetime.now(datetime.timezone.utc)).astimezone(journee.NEW_YORK)
+    return ny.date() != jour or ny.hour >= CHANGEMENT_DE_JOUR_NY
+
+
+def photographier_jour(config, dossier_journaux, jour, n_positions, journal=print, maintenant=None):
     """La photo du tableau de l'historique du jour : l'en-tête et les n_positions lignes, sans la ligne de total (le solde).
-    Rend son chemin, ou None (pas réglée, MetaTrader absent : la vidéo se fait sans)."""
+    Rend son chemin, ou None (pas réglée, trop tard, MetaTrader absent, fenêtre trop petite : la vidéo se fait sans)."""
     cadre = config.get("historique") or {}
     if not all(cadre.get(k) for k in ("y", "largeur", "entete", "ligne")):
         journal("Photo de l'historique pas encore réglée (python video/outil.py historique --essai, puis « historique » de la "
                 "configuration) : la vidéo se fait sans.")
         return None
+    if trop_tard(jour, maintenant):
+        journal(f"Photo de l'historique : trop tard, le serveur du courtier est passé au jour suivant à {CHANGEMENT_DE_JOUR_NY}:00 "
+                "New York (l'onglet montrerait le solde) : la vidéo se fait sans.")
+        return None
     sortie = chemin(dossier_journaux, jour)
     os.makedirs(os.path.dirname(sortie), exist_ok=True)
-    plein = os.path.join(tempfile.mkdtemp(prefix="historique-"), "fenetre.png")
+    # la photo de toute la fenêtre (sur Mac, avec la barre de titre et le numéro de compte) est effacée dans tous les cas
+    temporaire = tempfile.mkdtemp(prefix="historique-")
+    plein = os.path.join(temporaire, "fenetre.png")
     try:
-        photographier_fenetre(plein)
-    except (PhotoImpossible, subprocess.CalledProcessError, OSError) as err:
-        journal(f"Photo de l'historique impossible : {err}")
-        return None
-    w, h = taille_png(plein)
-    x, y, l = int(cadre.get("x", 0)), int(cadre["y"]), int(cadre["largeur"])
-    haut = int(cadre["entete"]) + int(n_positions) * int(cadre["ligne"])
-    l, haut = min(l, w - x), min(haut, h - y)
-    subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", plein, "-vf", f"crop={l}:{haut}:{x}:{y}", "-frames:v", "1", sortie], check=True)
-    return sortie
+        try:
+            photographier_fenetre(plein)
+            w, h = taille_png(plein)
+        except (PhotoImpossible, subprocess.CalledProcessError, OSError, ValueError) as err:
+            journal(f"Photo de l'historique impossible : {err}")
+            return None
+        x, y, l = int(cadre.get("x", 0)), int(cadre["y"]), int(cadre["largeur"])
+        haut = int(cadre["entete"]) + int(n_positions) * int(cadre["ligne"])
+        # une fenêtre plus petite que le cadre couperait le tableau : jamais de preuve tronquée
+        if x < 0 or y < 0 or x + l > w or y + haut > h:
+            journal(f"Photo de l'historique : la fenêtre ({w} x {h}) est plus petite que le cadre réglé : la vidéo se fait sans.")
+            return None
+        try:
+            subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", plein, "-vf", f"crop={l}:{haut}:{x}:{y}", "-frames:v", "1", sortie],
+                           check=True)
+        except (subprocess.CalledProcessError, OSError) as err:
+            journal(f"Photo de l'historique impossible (recadrage) : {err}")
+            return None
+        return sortie
+    finally:
+        shutil.rmtree(temporaire, ignore_errors=True)
 
 
 def essai(sortie_bureau="~/Desktop/metatrader-fenetre-essai.png"):
