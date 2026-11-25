@@ -99,20 +99,35 @@ La vidéo arrive dans le dossier `sortie` de la configuration, `recap-AAAA-MM-JJ
 Compte 1 à 3 minutes par vidéo. Une réplique déjà dite n'est pas redemandée à ElevenLabs : elles sont gardées en cache dans
 `~/.cache/etrave-video/voix`.
 
-**Tout seul chaque soir** : la séance finit à 21:50 (heure de Paris), et l'EA écrit sa ligne « fin » deux minutes plus tard. Sur Mac,
-`crontab -e` puis :
+## Tout seul chaque soir
 
 ```
-10 22 * * 1-5 cd ~/Documents/GitHub/Bot-Trading && python3 video/outil.py recap >> ~/Documents/Etrave-video/recap.log 2>&1
+python3 video/outil.py installer
 ```
 
-Avec cron, utilise le même Python que dans le Terminal (`which python3` donne son chemin, par exemple `/usr/local/bin/python3`,
-à écrire à la place de `python3`). L'outil retrouve seul Node et ffmpeg dans `/usr/local/bin` et `/opt/homebrew/bin`. Sur Mac, la
-première fois, macOS peut demander d'autoriser cron à lire le dossier Documents (Réglages Système, Confidentialité, Accès complet
-au disque, ajouter `/usr/sbin/cron`).
+- L'outil est copié hors du dépôt, avec ses sons et sa musique : changer de branche ne le casse pas. Après une mise à jour de
+  l'outil, relance `installer`.
+- Il est lancé du lundi au vendredi à 22:20 et 23:50 (heure de l'ordinateur). Un Mac en veille le lance à son réveil, et un
+  soir manqué est rattrapé au lancement suivant.
+- Pour chaque séance finie avec au moins un trade (`auto_sans_trade` : aussi les autres), il crée sur le Bureau un dossier
+  `Étrave TikTok/AAAA-MM-JJ/` qui contient :
+  - `recap-AAAA-MM-JJ.mp4`, la vidéo ;
+  - `description.txt`, le texte à coller dans TikTok : l'accroche, le petit mot, les résultats, le compte (réel ou démo,
+    d'après le journal de l'EA), les mentions et les hashtags ;
+  - `couverture.jpg`, l'écran titre.
+- Une notification prévient quand c'est prêt.
+- Seules les séances à partir du jour de l'installation sont faites (`auto_depuis` pour remonter plus loin).
+- Le journal du mode automatique est `recap-auto.log`, dans le dossier de l'outil copié
+  (`~/Library/Application Support/Etrave/outil-video`).
+- `python3 video/outil.py auto` fait la même chose à la main. `desinstaller` retire la programmation.
+- Sur Mac, la première fois, macOS peut demander d'autoriser python3 à écrire sur le Bureau.
 
-Le Mac doit être allumé à cette heure-là. Si l'EA tourne sur un autre ordinateur (un serveur Windows), copie ses journaux ou
-indique leur dossier dans `dossier_journaux`.
+**Où tournent l'EA et l'outil.** L'outil lit les journaux de l'EA (`dossier_journaux`). Ils doivent donc être sur la même machine
+que lui :
+- l'EA tourne sur ce Mac : rien à faire ;
+- l'EA tourne sur un VPS Windows : soit l'outil y est installé aussi (Python, Node.js, ffmpeg, une police DIN dans `police`, puis
+  `installer`, qui crée deux tâches planifiées ; non testé sous Windows), soit les journaux sont copiés chaque soir dans un dossier
+  synchronisé lu par ce Mac.
 
 ## Configuration
 
@@ -125,7 +140,10 @@ indique leur dossier dans `dossier_journaux`.
 | `musique` | un morceau ou un dossier de morceaux pour la musique de fond (facultatif) |
 | `police` | le fichier DIN Alternate Bold |
 | `unite` | `r` (par défaut), `pourcent` (du solde, d'après le journal des trades du compte), `points`, ou `auto` |
-| `sortie` | où écrire les vidéos |
+| `sortie` | où écrire les vidéos (les rendus de travail) |
+| `dossier_publication` | le dossier des vidéos prêtes à publier, un sous-dossier par jour (`~/Desktop/Étrave TikTok`) |
+| `auto_depuis`, `auto_sans_trade` | mode automatique : première séance à faire (AAAA-MM-JJ) ; aussi les jours sans trade |
+| `mention_compte`, `hashtags` | la ligne sur le compte dans la description (sinon d'après le journal) ; les hashtags |
 | `presentation` | ton profil pour la vidéo de présentation (voir `presentation.py`) |
 
 ## Fichiers
@@ -135,7 +153,9 @@ outil.py         la commande (verifier, jours, recap, presentation, sons)
 journee.py       lit une séance dans les journaux de l'EA (heures de Paris par les fuseaux horaires, jamais +6 h en dur)
 recap.py         écrit les scènes du récap et le minutage calé sur la voix, rend l'image, assemble le son
 presentation.py  remplit le modèle de la présentation avec le profil, rend et mixe
-voix.py          ElevenLabs (clone de ta voix), heure de chaque mot, cache des répliques
+voix.py          ElevenLabs (clone de ta voix) : une prise par vidéo coupée par scène, heure de chaque mot, rythme, cache
+publication.py   le dossier du jour (vidéo, description TikTok, couverture) et le mode automatique
+installation.py  la copie de l'outil et le lancement chaque soir (launchd sur Mac, tâches planifiées sous Windows)
 mixage.py        ffmpeg : voix, bruitages et musique baissés sous la voix, niveau final
 police.py        largeur des textes dans la police DIN, pour que les étiquettes restent dans les zones sûres de TikTok
 nombres.py       nombres, heures et dates en toutes lettres pour la voix

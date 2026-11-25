@@ -295,3 +295,43 @@ def test_rien_de_personnel_ni_de_fichier_sous_licence_dans_video():
         assert not re.search(r"sk_[A-Za-z0-9]{20,}", texte), chemin                                # une clé d'API
         for interdit in interdits:
             assert interdit not in texte, (chemin, "donnée personnelle")
+
+
+# ───────────────────────── publication automatique ─────────────────────────
+import publication  # noqa: E402
+
+
+def test_description_tiktok_dit_le_compte_sans_rien_de_secret(tmp_path):
+    j = _journee(tmp_path, positions=((1, "D2", 9, 40, 100, 15, 50, 110, "Fin de journée"),))
+    texte = publication.description(j, {})
+    assert texte.startswith("Journée verte : récap de la séance du jeudi 16 avril 2026.")
+    assert "Trades réels, sur mon compte." in texte and "Nasdaq 100 : +" in texte and "Pas un conseil en investissement." in texte
+    assert "D2" not in texte and "RSI" not in texte and "élan" not in texte
+    j["source"] = "demo"
+    assert "compte démo" in publication.description(j, {})
+    assert "Mon texte" in publication.description(j, {"mention_compte": "Mon texte"})
+
+
+def test_mode_automatique(tmp_path, monkeypatch):
+    """Une vidéo par séance finie avec un trade, depuis auto_depuis ; rien pour un jour sans trade ; rien deux fois."""
+    journaux = tmp_path / "journaux"
+    journaux.mkdir()
+    ecrire_journee(str(journaux), datetime.date(2026, 4, 16))
+    faites = []
+
+    def fausse_video(j, config, sortie, journal=print, rendre=True):
+        faites.append(j["jour"])
+        chemin = os.path.join(sortie, "video.mp4")
+        open(chemin, "wb").write(b"\0")
+        return chemin
+    monkeypatch.setattr(publication.recap, "fabriquer", fausse_video)
+    monkeypatch.setattr(publication.subprocess, "run", lambda *a, **k: None)
+    config = {"sortie": str(tmp_path / "rendus"), "dossier_publication": str(tmp_path / "bureau"), "auto_depuis": "2026-04-01"}
+    dossiers = publication.auto(config, str(journaux), lambda t: None, datetime.date(2026, 4, 16))
+    assert faites == [datetime.date(2026, 4, 16)] and len(dossiers) == 1
+    assert sorted(os.listdir(dossiers[0])) == ["description.txt", "recap-2026-04-16.mp4"]
+    assert publication.auto(config, str(journaux), lambda t: None, datetime.date(2026, 4, 16)) == []      # déjà publié
+    assert publication.auto(dict(config, auto_depuis="2026-04-17"), str(journaux), lambda t: None) == []
+    ecrire_journee(str(journaux), datetime.date(2026, 4, 16), positions=())                               # sans trade : rien
+    config["dossier_publication"] = str(tmp_path / "bureau2")
+    assert publication.auto(config, str(journaux), lambda t: None, datetime.date(2026, 4, 16)) == []

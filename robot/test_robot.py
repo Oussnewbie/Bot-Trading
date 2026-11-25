@@ -205,6 +205,16 @@ def test_le_script_affiche_les_ordres_meme_si_la_taille_tradingview_s_arrondit_a
 
 
 
+def test_chaque_sortie_du_script_ferme_sa_propre_position():
+    """PINE-04 : sans close_entries_rule = "ANY", TradingView ferme la plus ancienne position (FIFO) : le stop d'une continuation
+    fermait la cassure A, et le script suivait le mauvais trade (résultat, règle mémoire, stop à l'entrée)."""
+    entete = PINE[PINE.index("strategy(\"Strategy V10"):]
+    entete = entete[:entete.index(")\n")]
+    assert 'close_entries_rule = "ANY"' in entete
+    # le script retrouve chaque sortie par le nom de son entrée : c'est ce que « ANY » rend juste
+    assert "legIdx(strategy.closedtrades.entry_id(i)) == leg" in PINE
+
+
 def test_les_entrees_b_c_d_du_script_restent_affichees():
     """PINE-03 : la taille d'une entrée B, C ou D du backtest TradingView ne tombe plus à zéro."""
     corps = PINE[PINE.index("legQty(float dist) =>"):]

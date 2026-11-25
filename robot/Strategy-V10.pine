@@ -76,8 +76,12 @@
 // CORRECTIFS DU 24/11/2026 : l'alerte « ORDRES ORB placés » donne le stop élargi (elle donnait l'autre bord du range) ; quand la
 // taille du backtest TradingView s'arrondit à zéro, elle est portée au pas minimum pour que les ordres et alertes restent affichés.
 // Version non passée par l'analyseur de TradingView au moment de ces correctifs.
+// CORRECTIF PINE-04 DU 25/11/2026 : close_entries_rule = "ANY". Par défaut (« FIFO »), TradingView ferme toujours la position la plus
+// ancienne : le stop d'une continuation D fermait la cassure A à sa place (étiquettes « D2 −1,3R » impossibles, A vue fermée trop
+// tôt, règle mémoire et stop à l'entrée de A calculés sur le mauvais trade). Chaque sortie ferme maintenant sa propre position,
+// comme dans l'EA. Non passé par l'analyseur de TradingView : à vérifier sur un graphique (chaque stop sous la bonne entrée).
 strategy("Strategy V10 — ORB New York, stop élargi (Confort) + repli VWAP + continuations", shorttitle = "Strategy V10", overlay = true,
-     initial_capital = 10000, currency = currency.USD, pyramiding = 20,
+     initial_capital = 10000, currency = currency.USD, pyramiding = 20, close_entries_rule = "ANY",
      process_orders_on_close = true, margin_long = 0, margin_short = 0, slippage = 2,
      max_lines_count = 500, max_boxes_count = 500, max_labels_count = 500)
 

@@ -6,9 +6,13 @@
                                                      la vidéo récap d'une séance (par défaut la dernière finie)
     python3 video/outil.py presentation              la vidéo de présentation de la chaîne (profil local requis)
     python3 video/outil.py sons                      télécharge les bruitages Mixkit manquants dans ton dossier de sons
+    python3 video/outil.py auto                      les séances finies avec un trade ou plus, pas encore publiées : vidéo,
+                                                     description et couverture dans un dossier par jour (Bureau)
+    python3 video/outil.py installer                 lance `auto` tout seul chaque soir de semaine (copie l'outil hors du dépôt)
+    python3 video/outil.py desinstaller              retire ce lancement automatique
 
 La configuration est un fichier privé, hors du dépôt : ~/.config/etrave-video/config.json (modèle : video/config.exemple.json).
---testeur lit les journaux du testeur de stratégie (sous-dossier `testeur`) : la vidéo porte alors la mention « Exemple ».
+--testeur lit les journaux du testeur de stratégie (sous-dossier `testeur`) : le fichier vidéo porte « -exemple » dans son nom.
 """
 import argparse
 import datetime
@@ -22,7 +26,7 @@ ICI = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, ICI)
 sys.path.insert(0, os.path.join(ICI, "..", "etrave"))      # pont.py et export.py d'Étrave : la même lecture des journaux
 CONFIG = os.path.expanduser("~/.config/etrave-video/config.json")
-# Lancé par cron, le PATH est réduit à /usr/bin:/bin : on y ajoute les dossiers habituels de Node et de ffmpeg (Homebrew, installateurs)
+# Lancé par launchd, cron ou une tâche planifiée, le PATH est réduit à /usr/bin:/bin : on y ajoute les dossiers habituels de Node et de ffmpeg (Homebrew, installateurs)
 for _d in ("/usr/local/bin", "/opt/homebrew/bin"):
     if os.path.isdir(_d) and _d not in os.environ.get("PATH", "").split(os.pathsep):
         os.environ["PATH"] = os.environ.get("PATH", "") + os.pathsep + _d
@@ -104,9 +108,9 @@ def telecharger_sons(config):
 
 def main(arguments=None):
     a = argparse.ArgumentParser(description="Étrave vidéo : récap de séance et présentation, en motion design.")
-    a.add_argument("commande", choices=["verifier", "jours", "recap", "presentation", "sons"])
+    a.add_argument("commande", choices=["verifier", "jours", "recap", "presentation", "sons", "auto", "installer", "desinstaller"])
     a.add_argument("--jour", help="date de la séance (New York), AAAA-MM-JJ ; par défaut la dernière finie")
-    a.add_argument("--testeur", action="store_true", help="journaux du testeur (vidéo marquée « Exemple »)")
+    a.add_argument("--testeur", action="store_true", help="journaux du testeur (fichier nommé « -exemple »)")
     a.add_argument("--sans-voix", action="store_true", help="ne pas appeler ElevenLabs")
     a.add_argument("--config", help=f"fichier de configuration (par défaut {CONFIG})")
     args = a.parse_args(arguments)
@@ -117,6 +121,29 @@ def main(arguments=None):
         return 0 if verifier(config) else 1
     if args.commande == "sons":
         telecharger_sons(config)
+        return 0
+    if args.commande == "installer":
+        import installation
+        installation.installer(config, args.config, print)
+        return 0
+    if args.commande == "desinstaller":
+        import installation
+        installation.desinstaller(print)
+        return 0
+    if args.commande == "auto":
+        import publication
+        print(f"— {datetime.datetime.now():%Y-%m-%d %H:%M} —", flush=True)
+        racine = os.path.expanduser(config.get("dossier_publication") or publication.BUREAU)
+        try:          # le droit d'écrire dans le dossier de publication (sur Mac, la première fois, macOS demande l'autorisation)
+            os.makedirs(racine, exist_ok=True)
+            essai = os.path.join(racine, ".ecriture")
+            open(essai, "w").close()
+            os.remove(essai)
+        except OSError as err:
+            print(f"Impossible d'écrire dans {racine} ({err}). Sur Mac : Réglages Système, Confidentialité et sécurité, "
+                  "Fichiers et dossiers (ou Accès complet au disque), autoriser python3.")
+            return 3
+        publication.auto(config, dossier_journaux(config, args.testeur), lambda t: print(t, flush=True))
         return 0
     if args.commande == "presentation":
         import presentation
