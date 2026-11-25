@@ -363,11 +363,11 @@ def test_aucun_chat_id_dans_le_script():
 def test_journal_d_execution_ecrit_apres_la_comptabilite():
     """Une ligne par position fermée, écrite une fois le trade compté, hors des boucles sur les deals (qui changent l'historique choisi)."""
     a = fonction("bool RecordClose(bool force)")
-    assert a.index("AppendTrade(tx, r, net, why);") < a.index('ExecRow(gPosId, "A", gDir, lvl, gVStop, why, gRiskMoney);') < a.rindex("return true;")
-    assert 'ExecRow(gPosId2, "A+", gDir, gPyrPlan, gVStop, why, gRiskMoney);' in a
+    assert a.index("AppendTrade(tx, r, net, why);") < a.index('ExecQueue(gPosId, "A", gDir, lvl, gVStop, why, gRiskMoney);') < a.rindex("return true;")
+    assert 'ExecQueue(gPosId2, "A+", gDir, gPyrPlan, gVStop, why, gRiskMoney);' in a
     jambe = fonction("bool LegRecord(SLeg &g, bool force)")
-    assert jambe.index("AppendLegTrade(g, tx, r, net, why);") < jambe.index("ExecRow(g.id, g.nom, g.dir, g.plan, g.vstop, why, g.riskMoney);")
-    assert 'ExecRow(g.id2, g.nom + "+", g.dir, g.pplan, g.vstop, why, g.riskMoney);' in jambe
+    assert jambe.index("AppendLegTrade(g, tx, r, net, why);") < jambe.index("ExecQueue(g.id, g.nom, g.dir, g.plan, g.vstop, why, g.riskMoney);")
+    assert 'ExecQueue(g.id2, g.nom + "+", g.dir, g.pplan, g.vstop, why, g.riskMoney);' in jambe
     filet = fonction("int CloseOrphans(string why, bool toutes)")
     assert filet.index("for(int k = 0; k < ArraySize(orphId); k++)") > filet.index("trade.PositionClose(tk, InpDeviation)")
     assert '" orpheline"' in filet and "!PosTracked(pid)" in filet
@@ -375,7 +375,7 @@ def test_journal_d_execution_ecrit_apres_la_comptabilite():
 
 def test_journal_valeurs_inconnues_vides_et_divisions_gardees():
     """Une valeur inconnue reste vide, jamais calculée contre 0 ; aucune division sans garde (une erreur critique arrêterait l'EA)."""
-    ligne = fonction("void ExecRow(long posId, string type, int dirHint, double plan, double vstop, string why, double riskMoney)")
+    ligne = fonction("void ExecRow(long posId, string type, int dirHint, double plan, double vstop, string why, double riskMoney, double rangeJour, double smultJour, int dayJour)")
     assert "NumOpt((inPx - plan) * dir, plan > 0 && inPx > 0, _Digits)" in ligne
     assert "NumOpt(riskMoney > 0 ? net / riskMoney : 0, riskMoney > 0, 4)" in ligne
     assert "risk > 0 ? mfe / risk : 0, exc && risk > 0" in ligne
@@ -400,3 +400,13 @@ def test_journal_des_seances_et_dossier_du_testeur():
     assert 'return UI_DIR + (MQLInfoInteger(MQL_TESTER) ? "testeur\\\\" : "")' in EA
     init = fonction("int OnInit()")
     assert 'FileDelete(JournalName("execution"), FILE_COMMON);' in init and 'FolderCreate("Etrave\\\\testeur", FILE_COMMON);' in init
+
+
+def test_journal_ecrit_hors_de_la_seance():
+    """Lire les ticks d'une entrée ancienne peut faire attendre l'EA jusqu'à 45 s : jamais pendant la séance, jamais avec une position."""
+    flush = fonction("void JournalFlush(bool force)")
+    assert "if(!(m >= FlatMin(ny) + 1 || m < mPre - 5) || gPend || EaPositions() > 0)" in flush
+    assert EA.count("ExecRow(") == 2                      # la définition et l'unique appel, dans JournalFlush
+    assert "JournalFlush(false);" in fonction("void OnTick()") and "JournalFlush(true);" in fonction("void OnDeinit(const int reason)")
+    deinit = fonction("void OnDeinit(const int reason)")
+    assert deinit.index("DeletePendings()") < deinit.index("JournalFlush(true);")   # les ordres d'abord

@@ -1044,9 +1044,9 @@ int CloseOrphans(string why, bool toutes)
          orphId[m] = pid; orphType[m] = TypeOfMagic(mg) + " orpheline"; orphDir[m] = pdir;
         }
      }
-   // après la boucle : l'historique choisi par ExecRow ne gêne plus la lecture des positions
+   // après la boucle : mises en file, écrites hors de la séance comme les autres
    for(int k = 0; k < ArraySize(orphId); k++)
-      ExecRow(orphId[k], orphType[k], orphDir[k], 0, 0, why, 0);
+      ExecQueue(orphId[k], orphType[k], orphDir[k], 0, 0, why, 0);
    return n;
   }
 
@@ -1141,9 +1141,9 @@ bool RecordClose(bool force)   // false = un deal de sortie n'est pas encore dan
    gDayTxt = id + " terminé (" + why + ") : " + RTxt(r);
    // journal d'exécution : une ligne par position (départ et ajout), après la comptabilité du trade
    double lvl = (gOrH > gOrL && gPosDay == gDay) ? (gDir == 1 ? gOrH : gOrL) : 0;
-   ExecRow(gPosId, "A", gDir, lvl, gVStop, why, gRiskMoney);
+   ExecQueue(gPosId, "A", gDir, lvl, gVStop, why, gRiskMoney);
    if(gPosId2 != 0 && gPosId2 != gPosId)
-      ExecRow(gPosId2, "A+", gDir, gPyrPlan, gVStop, why, gRiskMoney);
+      ExecQueue(gPosId2, "A+", gDir, gPyrPlan, gVStop, why, gRiskMoney);
    return true;
   }
 
@@ -2082,9 +2082,9 @@ bool LegRecord(SLeg &g, bool force)
           "\n" + why + (g.pyr ? ", avec pyramide" : "") + (px > 0 ? " · sortie à " + Px(px) : "") +
           "\nDepuis le début : " + (string)gN + " trades · " + RTxt(gSumR));
    // journal d'exécution : une ligne par position de la jambe (départ et ajout)
-   ExecRow(g.id, g.nom, g.dir, g.plan, g.vstop, why, g.riskMoney);
+   ExecQueue(g.id, g.nom, g.dir, g.plan, g.vstop, why, g.riskMoney);
    if(g.id2 != 0 && g.id2 != g.id)
-      ExecRow(g.id2, g.nom + "+", g.dir, g.pplan, g.vstop, why, g.riskMoney);
+      ExecQueue(g.id2, g.nom + "+", g.dir, g.pplan, g.vstop, why, g.riskMoney);
    return true;
   }
 
@@ -2922,7 +2922,7 @@ string RaisonCourtier(long rsn)
 // Une ligne du journal d'exécution pour la position posId, lue dans l'historique des deals. plan : prix visé à l'entrée (niveau
 // de la cassure pour A, niveau guetté pour D, prix du marché à la décision pour B et les ajouts ; 0 = inconnu). vstop : stop
 // surveillé par l'EA (0 = aucun). riskMoney : somme risquée par la cassure du jour, base du R (0 = inconnue).
-void ExecRow(long posId, string type, int dirHint, double plan, double vstop, string why, double riskMoney)
+void ExecRow(long posId, string type, int dirHint, double plan, double vstop, string why, double riskMoney, double rangeJour, double smultJour, int dayJour)
   {
    if(posId == 0 || !JournalOn() || !HistorySelectByPosition(posId))
       return;
@@ -2973,7 +2973,7 @@ void ExecRow(long posId, string type, int dirHint, double plan, double vstop, st
    bool   stopExit = rsn == DEAL_REASON_SL || StringFind(why, "Stop") == 0;
    double ref = rsn == DEAL_REASON_SL ? outSl : (vstop > 0 ? vstop : outSl);
    int    day = inMsc > 0 ? NYDate(ToNY((datetime)(inMsc / 1000))) : NYDate(ToNY(TimeCurrent()));
-   bool   sameDay = day == gDay && gOrH > gOrL;
+   bool   sameDay = day == dayJour && rangeJour > 0;
    string line = JOURNAL_VERSION + ";" + SourceTxt() + ";" + IntegerToString(posId) + ";" + JourTxt(day) + ";" + gSymFile + ";" + Champ(type) + ";" +
                  IntegerToString(dir) + ";" + DoubleToString(inVol, 2) + ";" +
                  UtcMs(inMsc) + ";" + NyTxt((datetime)(inMsc / 1000)) + ";" +
@@ -2986,8 +2986,75 @@ void ExecRow(long posId, string type, int dirHint, double plan, double vstop, st
                  NumOpt(risk > 0 ? mae / risk : 0, exc && risk > 0, 3) + ";" + src + ";" +
                  DoubleToString(fees, 2) + ";" + DoubleToString(swp, 2) + ";" + DoubleToString(net, 2) + ";" +
                  NumOpt(riskMoney > 0 ? net / riskMoney : 0, riskMoney > 0, 4) + ";" +
-                 NumOpt(gOrH - gOrL, sameDay, _Digits) + ";" + NumOpt(gStopMult, sameDay, 2) + ";" + AccountInfoString(ACCOUNT_CURRENCY) + ";" + (complet ? "1" : "0");
+                 NumOpt(rangeJour, sameDay, _Digits) + ";" + NumOpt(smultJour, sameDay, 2) + ";" + AccountInfoString(ACCOUNT_CURRENCY) + ";" + (complet ? "1" : "0");
    JournalWrite("execution", EXEC_COLONNES, line);
+  }
+
+// File d'attente du journal d'exécution. Lire les ticks d'une entrée vieille de plusieurs heures peut faire attendre l'EA jusqu'à
+// 45 secondes (synchronisation de l'historique, documentation de CopyTicks) : il ne gérerait plus les autres positions pendant ce
+// temps. À la fermeture, la ligne est donc seulement mise en file (instantané) ; elle est écrite hors de la séance de trading, sans
+// position ni ordre en attente (JournalFlush), et à l'arrêt de l'EA. Limite connue : une file non écrite est perdue si MetaTrader
+// plante avant la fin de la séance.
+struct SExecQ
+  {
+   long     id;
+   string   type;
+   int      dir;
+   double   plan;
+   double   vstop;
+   string   why;
+   double   riskMoney;
+   double   range;
+   double   smult;
+   int      day;
+  };
+SExecQ   gExecQ[];
+
+void ExecQueue(long posId, string type, int dir, double plan, double vstop, string why, double riskMoney)
+  {
+   if(posId == 0 || !JournalOn())
+      return;
+   int n = ArraySize(gExecQ);
+   if(ArrayResize(gExecQ, n + 1) != n + 1)
+      return;
+   gExecQ[n].id = posId; gExecQ[n].type = type; gExecQ[n].dir = dir; gExecQ[n].plan = plan; gExecQ[n].vstop = vstop;
+   gExecQ[n].why = why; gExecQ[n].riskMoney = riskMoney; gExecQ[n].range = gOrH > gOrL ? gOrH - gOrL : 0;
+   gExecQ[n].smult = gStopMult; gExecQ[n].day = gDay;
+  }
+
+// Nombre de positions de l'EA (cassure, B, C, D) sur ce symbole
+int EaPositions()
+  {
+   int n = 0;
+   for(int i = PositionsTotal() - 1; i >= 0; i--)
+     {
+      ulong tk = PositionGetTicket(i);
+      if(tk == 0 || PositionGetString(POSITION_SYMBOL) != _Symbol)
+         continue;
+      ulong mg = (ulong)PositionGetInteger(POSITION_MAGIC);
+      if(mg >= InpMagic && mg <= InpMagic + 2 + D_MAX)
+         n++;
+     }
+   return n;
+  }
+
+// Écrit la file du journal d'exécution. force = à l'arrêt de l'EA ; sinon seulement hors de la séance de trading (après la sortie de
+// fin de journée, ou avant 8:55 New York), sans position de l'EA ni ordre en attente.
+void JournalFlush(bool force)
+  {
+   if(ArraySize(gExecQ) == 0)
+      return;
+   if(!force)
+     {
+      datetime ny = ToNY(TimeCurrent());
+      int      m  = NYMin(ny);
+      if(!(m >= FlatMin(ny) + 1 || m < mPre - 5) || gPend || EaPositions() > 0)
+         return;
+     }
+   for(int i = 0; i < ArraySize(gExecQ); i++)
+      ExecRow(gExecQ[i].id, gExecQ[i].type, gExecQ[i].dir, gExecQ[i].plan, gExecQ[i].vstop, gExecQ[i].why, gExecQ[i].riskMoney,
+              gExecQ[i].range, gExecQ[i].smult, gExecQ[i].day);
+   ArrayResize(gExecQ, 0);
   }
 
 // Une ligne du journal des séances : « decision » quand le range de 9:30 est traité, « fin » après la sortie de fin de journée.
@@ -3199,6 +3266,8 @@ void OnDeinit(const int reason)
          GlobalVariablesFlush();
         }
      }
+   // journal d'exécution : les lignes encore en file sont écrites (fin du testeur, arrêt de l'EA), après la suppression des ordres
+   JournalFlush(true);
    if(hRSI != INVALID_HANDLE)
       IndicatorRelease(hRSI);
    if(hDI != INVALID_HANDLE)
@@ -3301,6 +3370,7 @@ void OnTick()
          gSessFin = gDay;
          Sv("sessfin", gSessFin);
         }
+      JournalFlush(false);   // journal d'exécution : seulement hors de la séance, sans position ni ordre
       static int sweepNote = 0;
       if(nS > 0 && sweepNote != NYDate(nyS))
         {

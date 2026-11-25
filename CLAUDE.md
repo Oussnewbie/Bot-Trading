@@ -101,8 +101,11 @@ etrave/    interface web locale de l'EA (Python sans dépendance), export.py (ex
   et `v9_d` et leur résultat ouvert `v8_resultat`. La clé `jambes` garde le bouton « Clôturer » visible après la sortie de A ;
   `lots_fixes` dit à la page que le risque en % n'est pas utilisé ; `sortie_ny` donne l'heure de sortie du jour.
 - Les entrées D ne posent aucun ordre chez le courtier : l'EA guette le niveau et entre au marché.
-- **Journaux d'exécution et des séances (25/11/2026)** : `execution-<symbole>.csv` (une ligne par position fermée, écrite par `ExecRow`
-  après la comptabilité de `RecordClose` / `LegRecord`, hors des boucles sur les deals) et `seances-<symbole>.csv` (`SeanceRow` :
+- **Journaux d'exécution et des séances (25/11/2026)** : `execution-<symbole>.csv` (une ligne par position fermée : mise en file par
+  `ExecQueue` après la comptabilité de `RecordClose` / `LegRecord`, écrite par `JournalFlush` → `ExecRow` seulement hors de la séance
+  (après la sortie de fin de journée ou avant 8:55 New York), sans position ni ordre, et à l'arrêt de l'EA : lire les ticks d'une
+  entrée ancienne peut faire attendre l'EA jusqu'à 45 s. Une file non écrite est perdue si MetaTrader plante pendant la séance) et
+  `seances-<symbole>.csv` (`SeanceRow` :
   « decision » à 9:35, « fin » après la sortie). En-têtes `EXEC_COLONNES` et `SEANCE_COLONNES` : l'export les lit par leur nom
   (`etrave/test_export.py` vérifie l'accord). Une valeur inconnue reste vide. Excursions : ticks pour les minutes d'entrée et de
   sortie, bougies M1 entre les deux. Dans le testeur, les journaux vont dans `Etrave\testeur\`, vidé à chaque passage : de quoi
