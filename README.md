@@ -129,7 +129,7 @@ reste la référence.
 
 | Onglet | Contenu |
 |---|---|
-| Séance | La frise du jour (range, cassure, entrées D, repli B, sortie) avec l'heure de New York, une ligne par marché (ce que fait l'EA, résultat ouvert, bouton « Clôturer »), les chiffres du compte, la courbe et la liste des trades. Une case par marché arrête les nouveaux trades. |
+| Séance | La frise du jour (range, cassure, entrées D, repli B, sortie) avec l'heure de New York, une ligne par marché (ce que fait l'EA, résultat ouvert, bouton « Clôturer »), les chiffres du compte, la courbe, la liste des trades et les exports trimestriels. Une case par marché arrête les nouveaux trades. |
 | Risque | Risque par trade (de 0,05 % à 20 % ; au-delà de 1 %, il faut taper RISQUE) et levier du courtier. La simulation rejoue encore les trades de l'ancienne ORB v6. |
 | Connexions | Telegram, connexion à un compte MetaTrader, installation de l'EA, lancement automatique. |
 
@@ -138,6 +138,17 @@ L'interface ne passe aucun ordre : la fermer ne change rien à l'EA. Elle n'éco
 chaque lancement ; n'ouvre jamais son port sur internet.
 
 ## Surveiller le robot
+
+**Journaux et export trimestriel.** En plus du journal des trades, l'EA écrit dans le dossier d'Étrave :
+- `execution-<symbole>.csv` : une ligne par position fermée (A, ajout de pyramide, B, D) avec le prix visé et le prix obtenu (le
+  glissement réel), le spread, le stop en place et le prix de sortie, le plus grand gain et la plus grande perte latents avant la
+  sortie, les frais et le résultat ;
+- `seances-<symbole>.csv` : ce que l'EA a décidé à 9:35 et l'état du jour après la sortie, qu'il y ait eu un trade ou non.
+
+Après chaque trimestre (dates de New York), Étrave écrit tout seul `exports/<trimestre>/` : les lignes du trimestre, un résumé
+(`resume.md`, et `resume.json` pour l'analyse), la description des colonnes, le rapprochement avec le journal des trades et l'état
+de l'interrupteur. Le bouton « Exporter le trimestre en cours » le fait à la demande. Dans le testeur de stratégie, les journaux vont
+dans le sous-dossier `testeur\` et ne sont jamais exportés.
 
 Sur 60 jours de trade, coupe le robot et fais le point si l'un de ces seuils est franchi : moins de 28 % de jours gagnants, un total
 pire que −40 R, ou une baisse de plus de 66 R depuis le dernier plus haut. Ces seuils ont été calculés pour toutes les entrées à
@@ -169,8 +180,9 @@ robot/
 etrave/
   etrave.py            serveur local de l'interface (Python, sans dépendance)
   page.html            la page
+  export.py            export trimestriel des journaux de l'EA
   pont.py, mt5.py, risque.py, telegram.py
-  test_interface.py    tests de l'interface et de son accord avec l'EA
+  test_interface.py, test_export.py   tests de l'interface, de l'export et de leur accord avec l'EA
 CLAUDE.md              consignes de travail sur ce dépôt
 ```
 

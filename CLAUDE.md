@@ -25,9 +25,9 @@ Les règles, l'installation et les chiffres des tests sont dans `README.md`.
 ```
 robot/     Strategy-V10.mq5, Strategy-V10.pine, test_robot.py (contrôles du code de l'EA et du Pine),
            mt5/ (demo.ini, demo_1000.set, testeur.ini)
-etrave/    interface web locale de l'EA (Python sans dépendance) + test_interface.py
+etrave/    interface web locale de l'EA (Python sans dépendance), export.py (export trimestriel) + test_interface.py, test_export.py
 ```
-- Tests : `.venv/bin/python -m pytest robot etrave -q` (70 tests). Le `.venv` du dépôt tourne sous Python 3.15.
+- Tests : `.venv/bin/python -m pytest robot etrave -q` (82 tests). Le `.venv` du dépôt tourne sous Python 3.15.
 - Étrave en essai : `.venv/bin/python etrave/etrave.py --sans-navigateur --port 8799 --dossier <dossier jetable>`, puis
   `http://127.0.0.1:8799`. Pour voir la page avec des données, écrire de faux `etat-<symbole>.txt` (format dans
   `etrave/test_interface.py`, `faux_etat`) et un `trades-<symbole>.csv`, et les réécrire toutes les 2 secondes (au-delà de 15 s sans
@@ -101,6 +101,15 @@ etrave/    interface web locale de l'EA (Python sans dépendance) + test_interfa
   et `v9_d` et leur résultat ouvert `v8_resultat`. La clé `jambes` garde le bouton « Clôturer » visible après la sortie de A ;
   `lots_fixes` dit à la page que le risque en % n'est pas utilisé ; `sortie_ny` donne l'heure de sortie du jour.
 - Les entrées D ne posent aucun ordre chez le courtier : l'EA guette le niveau et entre au marché.
+- **Journaux d'exécution et des séances (25/11/2026)** : `execution-<symbole>.csv` (une ligne par position fermée, écrite par `ExecRow`
+  après la comptabilité de `RecordClose` / `LegRecord`, hors des boucles sur les deals) et `seances-<symbole>.csv` (`SeanceRow` :
+  « decision » à 9:35, « fin » après la sortie). En-têtes `EXEC_COLONNES` et `SEANCE_COLONNES` : l'export les lit par leur nom
+  (`etrave/test_export.py` vérifie l'accord). Une valeur inconnue reste vide. Excursions : ticks pour les minutes d'entrée et de
+  sortie, bougies M1 entre les deux. Dans le testeur, les journaux vont dans `Etrave\testeur\`, vidé à chaque passage : de quoi
+  vérifier les journaux, pas de quoi régler le robot (historique déjà vu, glissement du testeur ≠ glissement réel).
+- **Export trimestriel** (`etrave/export.py`) : `exports/<AAAA-Tn>/` dans le dossier d'Étrave, au démarrage puis toutes les 6 heures,
+  pour chaque trimestre terminé depuis 3 jours (dates de New York) ; « Exporter le trimestre en cours » à la demande. Construit sous un
+  nom provisoire puis renommé. C'est la matière des ajustements futurs : glissement réel, spread, excursions, jours sans trade.
 - Jours fériés et demi-séances : aucun trade (`InpSkipShort`), même si `FlatMin` prévoit une sortie à 12:45.
 - **Page d'Étrave (« carte marine », 25/11/2026)** : thème clair par défaut, mode nuit ; chiffres en DIN (Bahnschrift sous Windows,
   DIN Alternate en gras seulement sur Mac), aucune police extérieure (CSP). L'onglet Séance dessine les fenêtres des règles

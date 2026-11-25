@@ -357,3 +357,46 @@ def test_aucun_chat_id_dans_le_script():
     """Dépôt public : le chat ID Telegram de l'utilisateur était la valeur par défaut du script (R-22, retiré le 25/11/2026)."""
     assert 'tgChat    = input.string("", "Chat ID"' in PINE
     assert not re.search(r"-100\d{10}", PINE + EA)
+
+
+# ───────────────────────── journaux d'exécution et des séances (25/11/2026) ─────────────────────────
+def test_journal_d_execution_ecrit_apres_la_comptabilite():
+    """Une ligne par position fermée, écrite une fois le trade compté, hors des boucles sur les deals (qui changent l'historique choisi)."""
+    a = fonction("bool RecordClose(bool force)")
+    assert a.index("AppendTrade(tx, r, net, why);") < a.index('ExecRow(gPosId, "A", gDir, lvl, gVStop, why, gRiskMoney);') < a.rindex("return true;")
+    assert 'ExecRow(gPosId2, "A+", gDir, gPyrPlan, gVStop, why, gRiskMoney);' in a
+    jambe = fonction("bool LegRecord(SLeg &g, bool force)")
+    assert jambe.index("AppendLegTrade(g, tx, r, net, why);") < jambe.index("ExecRow(g.id, g.nom, g.dir, g.plan, g.vstop, why, g.riskMoney);")
+    assert 'ExecRow(g.id2, g.nom + "+", g.dir, g.pplan, g.vstop, why, g.riskMoney);' in jambe
+    filet = fonction("int CloseOrphans(string why, bool toutes)")
+    assert filet.index("for(int k = 0; k < ArraySize(orphId); k++)") > filet.index("trade.PositionClose(tk, InpDeviation)")
+    assert '" orpheline"' in filet and "!PosTracked(pid)" in filet
+
+
+def test_journal_valeurs_inconnues_vides_et_divisions_gardees():
+    """Une valeur inconnue reste vide, jamais calculée contre 0 ; aucune division sans garde (une erreur critique arrêterait l'EA)."""
+    ligne = fonction("void ExecRow(long posId, string type, int dirHint, double plan, double vstop, string why, double riskMoney)")
+    assert "NumOpt((inPx - plan) * dir, plan > 0 && inPx > 0, _Digits)" in ligne
+    assert "NumOpt(riskMoney > 0 ? net / riskMoney : 0, riskMoney > 0, 4)" in ligne
+    assert "risk > 0 ? mfe / risk : 0, exc && risk > 0" in ligne
+    assert "inVol > 0 ? inVal / inVol : 0" in ligne and "outVol > 0 ? outVal / outVol : 0" in ligne
+    assert "HistoryDealGetDouble(d, DEAL_SL)" in ligne                       # stop en place lu sur le deal de sortie
+    assert "cost = (spr >= 0 && rg > 0 && gStopMult > 0)" in fonction("void SeanceRow(string moment)")
+    exc = fonction("bool Excursions(int dir, double entry, long inMsc, long outMsc, double &mfe, double &mae, double &spr, string &src)")
+    assert "CopyTicksRange(_Symbol, tk, COPY_TICKS_INFO" in exc and "if(!any)" in exc
+
+
+def test_journal_prix_vises_gardes_au_redemarrage():
+    assert 'Sv(k + "plan", g.plan); Sv(k + "pplan", g.pplan);' in EA and 'g.plan = Ld(k + "plan", 0); g.pplan = Ld(k + "pplan", 0);' in EA
+    assert 'Sv("pyrplan", gPyrPlan);' in EA and 'gPyrPlan = Ld("pyrplan", 0);' in EA
+    assert 'g.plan = StringSubstr(g.nom, 0, 1) == "D" ? g.trig : px;' in fonction("bool LegOpen(SLeg &g, int dir, double stop, string quoi)")
+    assert "gPyrPlan = mkt;" in fonction("void DoPyramid(double curR)") and "g.pplan = mkt;" in fonction("void LegPyramid(SLeg &g, double curR)")
+
+
+def test_journal_des_seances_et_dossier_du_testeur():
+    tick = fonction("void OnTick()")
+    assert 'if(gDay != dayAvant)\n         SeanceRow("decision");' in tick
+    assert 'NYMin(nyS) >= FlatMin(nyS) + 2 && gSessFin != gDay' in tick and 'SeanceRow("fin");' in tick
+    assert 'return UI_DIR + (MQLInfoInteger(MQL_TESTER) ? "testeur\\\\" : "")' in EA
+    init = fonction("int OnInit()")
+    assert 'FileDelete(JournalName("execution"), FILE_COMMON);' in init and 'FolderCreate("Etrave\\\\testeur", FILE_COMMON);' in init

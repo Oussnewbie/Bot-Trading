@@ -256,6 +256,8 @@ bool     gTPset   = true;
 datetime gFillBar = 0;
 int      gPosDay  = 0;
 string   gCloseWhy = "";
+double   gPyrPlan  = 0;       // journal d'exécution : prix du marché à la décision de l'ajout de A (0 = inconnu)
+int      gSessFin  = 0;       // journal des séances : date NY de la dernière ligne « fin » écrite
 int      gWaitClose = 0;
 bool     gPyr     = false;      // l'ajout a été fait
 bool     gUsePyrToday = true;   // faux si le broker a refusé l'ajout : pas de nouvel essai sur ce trade
@@ -292,6 +294,8 @@ struct SLeg
    double   trig;        // V9 (D) : niveau de déclenchement (extrême de la bougie)
    double   stp;         // V9 (D) : stop prévu (autre extrême de la bougie)
    datetime exp;         // V9 (D) : fin de validité du guet
+   double   plan;        // journal d'exécution : prix visé à l'entrée (niveau guetté pour D, prix à la décision pour B)
+   double   pplan;       // journal d'exécution : prix du marché à la décision de l'ajout
   };
 SLeg     gB, gC;
 // Plancher de bruit (règle H1 de la session 5, jugée une fois sur le S&P 500 et le Dow le 25/11/2026) :
@@ -679,6 +683,7 @@ void SaveState()
    Sv("sumr", gSumR); Sv("peak", gPeak); Sv("dd", gDD);
    // Correctif X-03 (revue du 17/11/2026) : l'ajout refusé reste refusé après un redémarrage.
    Sv("pyrtoday", gUsePyrToday);
+   Sv("pyrplan", gPyrPlan);
   }
 
 // Correctif X-03 (revue du 17/11/2026) : MetaTrader n'écrit ses variables globales sur le disque qu'à sa fermeture ; après un
@@ -710,6 +715,7 @@ void LoadState()
    gFillBar = (datetime)Ld("fillbar", 0); gPosDay = (int)Ld("posday", 0);
    gPyr = Ld("pyr", 0) != 0; gPosId2 = (long)Ld("posid2", 0); gVStop = Ld("vstop", 0); gBalStart = Ld("bal0", 0);
    gUsePyrToday = Ld("pyrtoday", 1) != 0;
+   gPyrPlan = Ld("pyrplan", 0); gSessFin = (int)Ld("sessfin", 0);
    gCloseSeen = (long)Ld("closeseen", 0);
    gN = (int)Ld("n", 0); gWin = (int)Ld("win", 0); gStreak = (int)Ld("streak", 0); gWorst = (int)Ld("worst", 0);
    gSumR = Ld("sumr", 0); gPeak = Ld("peak", 0); gDD = Ld("dd", 0);
@@ -1002,6 +1008,9 @@ void ClosePos(string why)   // ferme l'unité de départ et l'ajout
 int CloseOrphans(string why, bool toutes)
   {
    int n = 0, today = NYDate(ToNY(TimeCurrent()));
+   long   orphId[];     // positions que l'état de l'EA ne connaissait plus : une ligne du journal d'exécution après le balayage
+   string orphType[];
+   int    orphDir[];
    for(int i = PositionsTotal() - 1; i >= 0; i--)
      {
       ulong tk = PositionGetTicket(i);
@@ -1024,9 +1033,20 @@ int CloseOrphans(string why, bool toutes)
             if(mg == gD[k].magic)
                gD[k].closeWhy = why;
       n++;
+      long pid  = PositionGetInteger(POSITION_IDENTIFIER);
+      int  pdir = PositionGetInteger(POSITION_TYPE) == POSITION_TYPE_BUY ? 1 : -1;
       if(!trade.PositionClose(tk, InpDeviation))
          PrintFormat("Fermeture de sécurité refusée (%d) : %s", trade.ResultRetcode(), trade.ResultRetcodeDescription());
+      else if(!PosTracked(pid))
+        {
+         int m = ArraySize(orphId);
+         ArrayResize(orphId, m + 1); ArrayResize(orphType, m + 1); ArrayResize(orphDir, m + 1);
+         orphId[m] = pid; orphType[m] = TypeOfMagic(mg) + " orpheline"; orphDir[m] = pdir;
+        }
      }
+   // après la boucle : l'historique choisi par ExecRow ne gêne plus la lecture des positions
+   for(int k = 0; k < ArraySize(orphId); k++)
+      ExecRow(orphId[k], orphType[k], orphDir[k], 0, 0, why, 0);
    return n;
   }
 
@@ -1119,6 +1139,11 @@ bool RecordClose(bool force)   // false = un deal de sortie n'est pas encore dan
           "\nDepuis le début : " + (string)gN + " trades · " + RTxt(gSumR) +
           (InpUseMem && gSkipNext ? "\nRègle mémoire : trade gagnant, le prochain signal ne sera pas pris" : ""));
    gDayTxt = id + " terminé (" + why + ") : " + RTxt(r);
+   // journal d'exécution : une ligne par position (départ et ajout), après la comptabilité du trade
+   double lvl = (gOrH > gOrL && gPosDay == gDay) ? (gDir == 1 ? gOrH : gOrL) : 0;
+   ExecRow(gPosId, "A", gDir, lvl, gVStop, why, gRiskMoney);
+   if(gPosId2 != 0 && gPosId2 != gPosId)
+      ExecRow(gPosId2, "A+", gDir, gPyrPlan, gVStop, why, gRiskMoney);
    return true;
   }
 
@@ -1162,6 +1187,7 @@ void SyncPosition()
       gPyr     = CountPos(gDir) > 1;   // même sens : une position de sens contraire est fermée par CloseOpposite
       gUsePyrToday = !gPyr;
       gPosId2  = 0;
+      gPyrPlan = 0;
       gVStop   = 0;
       if(gPyr)
         {
@@ -1640,6 +1666,7 @@ void DoPyramid(double curR)
       return;
      }
    double apx = trade.ResultPrice();
+   gPyrPlan = mkt;   // journal d'exécution : prix visé de l'ajout
    // identifiant de la position de l'ajout (compte hedging : une deuxième position)
    for(int i = PositionsTotal() - 1; i >= 0; i--)
      {
@@ -1671,6 +1698,7 @@ void LegReset(SLeg &g)
    g.vstop = 0; g.riskMoney = 0; g.balStart = 0; g.be = false; g.pyr = false; g.fillBar = 0; g.day = 0;
    g.id = 0; g.id2 = 0; g.closeWhy = ""; g.wait = 0;
    g.arm = false; g.trig = 0; g.stp = 0; g.exp = 0;
+   g.plan = 0; g.pplan = 0;
   }
 
 void LegSave(SLeg &g)
@@ -1684,6 +1712,7 @@ void LegSave(SLeg &g)
    Sv(k + "pyr", g.pyr); Sv(k + "bar", (double)g.fillBar); Sv(k + "day", g.day);
    Sv(k + "id", (double)g.id); Sv(k + "id2", (double)g.id2);
    Sv(k + "arm", g.arm); Sv(k + "trig", g.trig); Sv(k + "stp", g.stp); Sv(k + "exp", (double)g.exp);
+   Sv(k + "plan", g.plan); Sv(k + "pplan", g.pplan);
   }
 
 void LegLoad(SLeg &g)
@@ -1695,6 +1724,7 @@ void LegLoad(SLeg &g)
    g.be = Ld(k + "be", 0) != 0; g.pyr = Ld(k + "pyr", 0) != 0; g.fillBar = (datetime)Ld(k + "bar", 0);
    g.day = (int)Ld(k + "day", 0); g.id = (long)Ld(k + "id", 0); g.id2 = (long)Ld(k + "id2", 0);
    g.arm = Ld(k + "arm", 0) != 0; g.trig = Ld(k + "trig", 0); g.stp = Ld(k + "stp", 0); g.exp = (datetime)Ld(k + "exp", 0);
+   g.plan = Ld(k + "plan", 0); g.pplan = Ld(k + "pplan", 0);
   }
 
 // La position que PositionGetTicket vient de sélectionner appartient-elle à cette jambe ?
@@ -1872,6 +1902,8 @@ bool LegOpen(SLeg &g, int dir, double stop, string quoi)
       g.risk = dist;
    g.lots = lots; g.vstop = 0; g.riskMoney = gV8RiskMoney; g.balStart = AccountInfoDouble(ACCOUNT_BALANCE);
    g.be = false; g.pyr = false; g.pyrFree = true; g.closeWhy = ""; g.wait = 0; g.id = 0; g.id2 = 0;
+   g.plan = StringSubstr(g.nom, 0, 1) == "D" ? g.trig : px;   // journal d'exécution : niveau guetté (D), prix à la décision (B)
+   g.pplan = 0;
    datetime t = TimeCurrent();
    g.fillBar = t - t % BAR;
    g.day = NYDate(ToNY(t));
@@ -1947,6 +1979,7 @@ void LegPyramid(SLeg &g, double curR)
      }
    g.pyr = true;
    g.be  = true;
+   g.pplan = mkt;   // journal d'exécution : prix visé de l'ajout
    LegIds(g);
    LegRaiseStop(g, lock, "Stop remonté");
    Notify(I_ADD + "PYRAMIDE sur l'entrée " + g.nom + " : clôture à " + RTxt(curR) + " (R de cette entrée)" +
@@ -2048,6 +2081,10 @@ bool LegRecord(SLeg &g, bool force)
    Notify((r > 0.05 ? I_WIN : r < -0.05 ? I_LOSS : I_FLAT) + "ENTRÉE " + g.nom + " CLÔTURÉE : " + RTxt(r) + " · " + PctS(pct) + " · " + Money(net) +
           "\n" + why + (g.pyr ? ", avec pyramide" : "") + (px > 0 ? " · sortie à " + Px(px) : "") +
           "\nDepuis le début : " + (string)gN + " trades · " + RTxt(gSumR));
+   // journal d'exécution : une ligne par position de la jambe (départ et ajout)
+   ExecRow(g.id, g.nom, g.dir, g.plan, g.vstop, why, g.riskMoney);
+   if(g.id2 != 0 && g.id2 != g.id)
+      ExecRow(g.id2, g.nom + "+", g.dir, g.pplan, g.vstop, why, g.riskMoney);
    return true;
   }
 
@@ -2748,6 +2785,252 @@ void AppendTrade(datetime tx, double r, double net, string why)
   }
 
 //+------------------------------------------------------------------+
+//| Journaux d'exécution et des séances (export trimestriel)          |
+//+------------------------------------------------------------------+
+// Deux fichiers de plus, à côté du journal des trades (inchangé), pour analyser l'exécution réelle et les jours sans trade :
+//  - execution-<symbole>.csv : une ligne par position fermée (A, ajout de A « A+ », B, D1 à D3 et leurs ajouts) : prix visé et
+//    prix obtenu (glissement), spread, stop en place et prix de sortie, excursions favorable et défavorable, frais, résultat ;
+//  - seances-<symbole>.csv : une ligne « decision » quand le range est traité, une ligne « fin » après la sortie, trade ou non.
+// En-tête en première ligne, séparateur « ; », point décimal, prix dans l'unité du symbole. Dans le testeur, les fichiers vont dans
+// Etrave\testeur\ (vidé au lancement) : jamais mêlés à ceux du compte. Un journal ne doit jamais gêner le trading : aucune erreur
+// ici n'arrête l'EA, et une valeur inconnue reste vide (jamais calculée contre 0). Étrave en fait un export par trimestre.
+#define JOURNAL_VERSION "1"
+#define EXEC_COLONNES   "version;source;id_position;jour_ny;symbole;entree;sens;lots;entree_utc_ms;entree_ny;prix_vise;prix_entree;glissement_entree;spread_entree;stop_initial;risque_prix;sortie_utc_ms;sortie_ny;stop_en_place;stop_virtuel;prix_sortie;glissement_sortie;raison;raison_courtier;mfe_prix;mae_prix;mfe_r;mae_r;excursion;frais;swap;resultat_net;r;range_prix;stop_mult;devise;complet"
+#define SEANCE_COLONNES "version;source;jour_ny;symbole;moment;heure_ny;range_bas;range_haut;range_prix;stop_mult;spread;cout_r;filtres;etat"
+
+bool   JournalOn() { return MQLInfoInteger(MQL_TESTER) || InpUseUI; }
+string JournalName(string base) { return UI_DIR + (MQLInfoInteger(MQL_TESTER) ? "testeur\\" : "") + base + "-" + gSymFile + ".csv"; }
+string SourceTxt()
+  {
+   if(MQLInfoInteger(MQL_TESTER))
+      return "testeur";
+   ENUM_ACCOUNT_TRADE_MODE tm = (ENUM_ACCOUNT_TRADE_MODE)AccountInfoInteger(ACCOUNT_TRADE_MODE);
+   return tm == ACCOUNT_TRADE_MODE_REAL ? "reel" : tm == ACCOUNT_TRADE_MODE_CONTEST ? "concours" : "demo";
+  }
+string Champ(string v) { StringReplace(v, ";", ","); StringReplace(v, "\r", " "); StringReplace(v, "\n", " "); return v; }
+string NumOpt(double v, bool known, int digits) { return known ? DoubleToString(v, digits) : ""; }
+string JourTxt(int ymd) { return ymd > 0 ? StringFormat("%04d-%02d-%02d", ymd / 10000, (ymd / 100) % 100, ymd % 100) : ""; }
+string NyTxt(datetime srv)
+  {
+   if(srv <= 0)
+      return "";
+   string v = TimeToString(ToNY(srv), TIME_DATE | TIME_SECONDS);
+   StringReplace(v, ".", "-");
+   return v;
+  }
+string UtcMs(long srvMsc) { return srvMsc > 0 ? IntegerToString(srvMsc - ServerOffsetSec((datetime)(srvMsc / 1000)) * 1000) : ""; }
+
+void JournalWrite(string base, string header, string line)
+  {
+   if(!JournalOn())
+      return;
+   string name = JournalName(base);
+   int h = FileOpen(name, FILE_READ | FILE_WRITE | FILE_TXT | FILE_ANSI | FILE_COMMON | FILE_SHARE_READ, 0, CP_UTF8);
+   if(h == INVALID_HANDLE)
+     {
+      PrintFormat("Journal %s : écriture impossible (erreur %d)", name, GetLastError());
+      return;
+     }
+   if(FileSize(h) == 0)
+      FileWriteString(h, header + "\r\n");
+   FileSeek(h, 0, SEEK_END);
+   FileWriteString(h, line + "\r\n");
+   FileClose(h);
+  }
+
+// Excursions de la position entre l'entrée et la sortie, au prix qui la fermerait (bid pour un achat, ask pour une vente) :
+// ticks pour la minute d'entrée et celle de sortie (seulement après l'entrée et avant la sortie), bougies M1 entre les deux (pour une
+// vente, ask = bid + spread de la bougie). src : « ticks », « ticks+M1 », ou « partiel » si une partie manquait. spr : spread du
+// premier tick après l'entrée (-1 si inconnu). false = rien n'a pu être lu.
+bool Excursions(int dir, double entry, long inMsc, long outMsc, double &mfe, double &mae, double &spr, string &src)
+  {
+   mfe = 0; mae = 0; spr = -1; src = "";
+   if(entry <= 0 || inMsc <= 0 || outMsc < inMsc || (dir != 1 && dir != -1))
+      return false;
+   double hi = -DBL_MAX, lo = DBL_MAX;
+   bool   any = false, manque = false, barres = false;
+   long   minIn = inMsc - inMsc % 60000, minOut = outMsc - outMsc % 60000;
+   long   de[2], a[2];
+   int    nseg = 1;
+   de[0] = inMsc;
+   a[0]  = minIn == minOut ? outMsc : minIn + 59999;
+   if(minIn != minOut)
+     {
+      de[1] = minOut;
+      a[1]  = outMsc;
+      nseg  = 2;
+     }
+   MqlTick tk[];
+   for(int s = 0; s < nseg; s++)
+     {
+      int n = CopyTicksRange(_Symbol, tk, COPY_TICKS_INFO, (ulong)de[s], (ulong)a[s]);
+      if(n <= 0)
+        {
+         manque = true;
+         continue;
+        }
+      for(int i = 0; i < n; i++)
+        {
+         double p = dir == 1 ? tk[i].bid : tk[i].ask;
+         if(p <= 0)
+            continue;
+         hi = MathMax(hi, p);
+         lo = MathMin(lo, p);
+         any = true;
+         if(s == 0 && spr < 0 && tk[i].ask > 0 && tk[i].bid > 0)
+            spr = tk[i].ask - tk[i].bid;
+        }
+     }
+   if(minOut - minIn > 60000)
+     {
+      MqlRates r[];
+      int n = CopyRates(_Symbol, PERIOD_M1, (datetime)((minIn + 60000) / 1000), (datetime)((minOut - 60000) / 1000), r);
+      if(n <= 0)
+         manque = true;
+      for(int i = 0; i < n; i++)
+        {
+         double add = dir == 1 ? 0 : r[i].spread * _Point;
+         hi = MathMax(hi, r[i].high + add);
+         lo = MathMin(lo, r[i].low + add);
+         any = true;
+         barres = true;
+        }
+     }
+   if(!any)
+      return false;
+   mfe = MathMax(0, dir == 1 ? hi - entry : entry - lo);
+   mae = MathMax(0, dir == 1 ? entry - lo : hi - entry);
+   src = manque ? "partiel" : barres ? "ticks+M1" : "ticks";
+   return true;
+  }
+
+string RaisonCourtier(long rsn)
+  {
+   if(rsn == DEAL_REASON_SL)
+      return "SL";
+   if(rsn == DEAL_REASON_TP)
+      return "TP";
+   if(rsn == DEAL_REASON_EXPERT)
+      return "EA";
+   if(rsn == DEAL_REASON_CLIENT || rsn == DEAL_REASON_MOBILE || rsn == DEAL_REASON_WEB)
+      return "manuel";
+   if(rsn == DEAL_REASON_SO)
+      return "stop_out";
+   return rsn < 0 ? "" : IntegerToString(rsn);
+  }
+
+// Une ligne du journal d'exécution pour la position posId, lue dans l'historique des deals. plan : prix visé à l'entrée (niveau
+// de la cassure pour A, niveau guetté pour D, prix du marché à la décision pour B et les ajouts ; 0 = inconnu). vstop : stop
+// surveillé par l'EA (0 = aucun). riskMoney : somme risquée par la cassure du jour, base du R (0 = inconnue).
+void ExecRow(long posId, string type, int dirHint, double plan, double vstop, string why, double riskMoney)
+  {
+   if(posId == 0 || !JournalOn() || !HistorySelectByPosition(posId))
+      return;
+   double inVal = 0, inVol = 0, outVal = 0, outVol = 0, inSl = 0, outSl = 0, fees = 0, swp = 0, net = 0;
+   long   inMsc = 0, outMsc = 0, rsn = -1;
+   int    dir = dirHint;
+   for(int i = 0; i < HistoryDealsTotal(); i++)
+     {
+      ulong d = HistoryDealGetTicket(i);
+      if(d == 0)
+         continue;
+      double vol = HistoryDealGetDouble(d, DEAL_VOLUME), px = HistoryDealGetDouble(d, DEAL_PRICE);
+      double cm  = HistoryDealGetDouble(d, DEAL_COMMISSION) + HistoryDealGetDouble(d, DEAL_FEE), sw = HistoryDealGetDouble(d, DEAL_SWAP);
+      fees += cm;
+      swp  += sw;
+      net  += HistoryDealGetDouble(d, DEAL_PROFIT) + cm + sw;
+      long e = HistoryDealGetInteger(d, DEAL_ENTRY);
+      if(e == DEAL_ENTRY_IN)
+        {
+         inVal += px * vol;
+         inVol += vol;
+         if(inMsc == 0)
+           {
+            inMsc = HistoryDealGetInteger(d, DEAL_TIME_MSC);
+            inSl  = HistoryDealGetDouble(d, DEAL_SL);
+           }
+         dir = HistoryDealGetInteger(d, DEAL_TYPE) == DEAL_TYPE_BUY ? 1 : -1;
+        }
+      else if(e == DEAL_ENTRY_OUT || e == DEAL_ENTRY_OUT_BY)
+        {
+         outVal += px * vol;
+         outVol += vol;
+         outMsc  = HistoryDealGetInteger(d, DEAL_TIME_MSC);
+         outSl   = HistoryDealGetDouble(d, DEAL_SL);
+         rsn     = HistoryDealGetInteger(d, DEAL_REASON);
+        }
+     }
+   if(dir != 1 && dir != -1)
+      dir = 1;
+   double inPx  = inVol > 0 ? inVal / inVol : 0;
+   double outPx = outVol > 0 ? outVal / outVol : 0;
+   bool   complet = inVol > 0 && outVol > 0;
+   double mfe = 0, mae = 0, spr = -1;
+   string src = "";
+   bool   exc = complet && Excursions(dir, inPx, inMsc, outMsc, mfe, mae, spr, src);
+   double risk = (inSl > 0 && inPx > 0) ? MathAbs(inPx - inSl) : 0;
+   // stop en place à la sortie : celui du courtier (DEAL_SL du deal de sortie), ou celui que l'EA surveillait s'il a fermé lui-même
+   bool   stopExit = rsn == DEAL_REASON_SL || StringFind(why, "Stop") == 0;
+   double ref = rsn == DEAL_REASON_SL ? outSl : (vstop > 0 ? vstop : outSl);
+   int    day = inMsc > 0 ? NYDate(ToNY((datetime)(inMsc / 1000))) : NYDate(ToNY(TimeCurrent()));
+   bool   sameDay = day == gDay && gOrH > gOrL;
+   string line = JOURNAL_VERSION + ";" + SourceTxt() + ";" + IntegerToString(posId) + ";" + JourTxt(day) + ";" + gSymFile + ";" + Champ(type) + ";" +
+                 IntegerToString(dir) + ";" + DoubleToString(inVol, 2) + ";" +
+                 UtcMs(inMsc) + ";" + NyTxt((datetime)(inMsc / 1000)) + ";" +
+                 NumOpt(plan, plan > 0, _Digits) + ";" + NumOpt(inPx, inPx > 0, _Digits) + ";" + NumOpt((inPx - plan) * dir, plan > 0 && inPx > 0, _Digits) + ";" +
+                 NumOpt(spr, spr >= 0, _Digits) + ";" + NumOpt(inSl, inSl > 0, _Digits) + ";" + NumOpt(risk, risk > 0, _Digits) + ";" +
+                 UtcMs(outMsc) + ";" + NyTxt((datetime)(outMsc / 1000)) + ";" +
+                 NumOpt(outSl, outSl > 0, _Digits) + ";" + NumOpt(vstop, vstop > 0, _Digits) + ";" + NumOpt(outPx, outPx > 0, _Digits) + ";" +
+                 NumOpt((ref - outPx) * dir, complet && stopExit && ref > 0, _Digits) + ";" + Champ(why) + ";" + RaisonCourtier(rsn) + ";" +
+                 NumOpt(mfe, exc, _Digits) + ";" + NumOpt(mae, exc, _Digits) + ";" + NumOpt(risk > 0 ? mfe / risk : 0, exc && risk > 0, 3) + ";" +
+                 NumOpt(risk > 0 ? mae / risk : 0, exc && risk > 0, 3) + ";" + src + ";" +
+                 DoubleToString(fees, 2) + ";" + DoubleToString(swp, 2) + ";" + DoubleToString(net, 2) + ";" +
+                 NumOpt(riskMoney > 0 ? net / riskMoney : 0, riskMoney > 0, 4) + ";" +
+                 NumOpt(gOrH - gOrL, sameDay, _Digits) + ";" + NumOpt(gStopMult, sameDay, 2) + ";" + AccountInfoString(ACCOUNT_CURRENCY) + ";" + (complet ? "1" : "0");
+   JournalWrite("execution", EXEC_COLONNES, line);
+  }
+
+// Une ligne du journal des séances : « decision » quand le range de 9:30 est traité, « fin » après la sortie de fin de journée.
+void SeanceRow(string moment)
+  {
+   if(!JournalOn() || gDay <= 0)
+      return;
+   double ask  = SymbolInfoDouble(_Symbol, SYMBOL_ASK), bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+   double spr  = (ask > 0 && bid > 0) ? ask - bid : -1;
+   double rg   = gOrH - gOrL;
+   double cost = (spr >= 0 && rg > 0 && gStopMult > 0) ? (spr + 2.0 * bid * COST_SLIP_PB * 1e-4) / (gStopMult * rg) : -1;
+   string line = JOURNAL_VERSION + ";" + SourceTxt() + ";" + JourTxt(gDay) + ";" + gSymFile + ";" + moment + ";" +
+                 TimeToString(ToNY(TimeCurrent()), TIME_MINUTES) + ";" + NumOpt(gOrL, rg > 0, _Digits) + ";" + NumOpt(gOrH, rg > 0, _Digits) + ";" +
+                 NumOpt(rg, rg > 0, _Digits) + ";" + DoubleToString(gStopMult, 2) + ";" + NumOpt(spr, spr >= 0, _Digits) + ";" + NumOpt(cost, cost >= 0, 4) + ";" +
+                 Champ(gFiltTxt) + ";" + Champ(gDayTxt);
+   JournalWrite("seances", SEANCE_COLONNES, line);
+  }
+
+// Type d'une position d'après son numéro magique (positions que l'état de l'EA ne connaissait plus)
+string TypeOfMagic(ulong mg)
+  {
+   if(mg == InpMagic)
+      return "A";
+   if(mg == InpMagic + 1)
+      return "B";
+   if(mg == InpMagic + 2)
+      return "C";
+   return "D" + IntegerToString((long)(mg - InpMagic - 2));
+  }
+
+bool PosTracked(long id)
+  {
+   if(id == 0)
+      return false;
+   if(id == gPosId || id == gPosId2 || id == gB.id || id == gB.id2 || id == gC.id || id == gC.id2)
+      return true;
+   for(int k = 0; k < D_MAX; k++)
+      if(id == gD[k].id || id == gD[k].id2)
+         return true;
+   return false;
+  }
+
+//+------------------------------------------------------------------+
 //| Panneau                                                           |
 //+------------------------------------------------------------------+
 void Panel()
@@ -2877,6 +3160,14 @@ int OnInit()
      }
    gLastBar = 0;   // la première bougie est contrôlée tout de suite (EA lancé à 9:35 : le range du jour est pris)
    ReadSettings();
+   if(MQLInfoInteger(MQL_TESTER))
+     {
+      // journaux du testeur : dans Etrave\testeur\, repartis de zéro à chaque passage, jamais mêlés à ceux du compte
+      FolderCreate("Etrave", FILE_COMMON);
+      FolderCreate("Etrave\\testeur", FILE_COMMON);
+      FileDelete(JournalName("execution"), FILE_COMMON);
+      FileDelete(JournalName("seances"), FILE_COMMON);
+     }
    if(!MQLInfoInteger(MQL_TESTER) && InpUseUI)
      {
       FolderCreate("Etrave", FILE_COMMON);
@@ -2948,8 +3239,13 @@ void OnTick()
       gLastBar = bt;
       OnNewBar();
      }
+   int dayAvant = gDay;
    if(gSetupDue && Setup())
+     {
       gSetupDue = false;
+      if(gDay != dayAvant)
+         SeanceRow("decision");   // journal des séances : ce qui a été décidé à 9:35, trade ou non
+     }
 
    // 3. entrée : ordres posés chez le courtier, ou côté surveillé par l'EA ; ordres à supprimer encore posés
    if(gDelDue && !gPend)
@@ -2998,6 +3294,13 @@ void OnTick()
       // qui suivent un « Clôturer » l'effaçait, et le balayage complet n'avait jamais lieu (environ une clôture sur six).
       if(sweepUi)
          gSweepAllAt = 0;
+      // journal des séances : une ligne « fin » par jour, une fois la sortie de fin de journée passée
+      if(gDay == NYDate(nyS) && NYMin(nyS) >= FlatMin(nyS) + 2 && gSessFin != gDay)
+        {
+         SeanceRow("fin");
+         gSessFin = gDay;
+         Sv("sessfin", gSessFin);
+        }
       static int sweepNote = 0;
       if(nS > 0 && sweepNote != NYDate(nyS))
         {

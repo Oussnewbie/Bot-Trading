@@ -15,9 +15,11 @@ Sécurité, comme le dashboard de Vigie — cette page peut changer le risque et
  - aucune autorisation n'est donnée aux autres origines, et la page ne charge aucune ressource extérieure.
 """
 import argparse
+import datetime
 import hmac
 import json
 import os
+import re
 import secrets
 import sys
 import threading
@@ -30,6 +32,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+import export  # noqa: E402
 import mt5  # noqa: E402
 import pont  # noqa: E402
 import risque  # noqa: E402
@@ -44,6 +47,9 @@ CORPS_MAX = 64 * 1024
 EN_TETE_JETON = "x-etrave-jeton"
 # `tasklist` lance un programme : on ne le redemande pas à chaque rafraîchissement de la page.
 MT5_OUVERT_CACHE_S = 5.0
+# Export trimestriel automatique : au démarrage, puis toutes les 6 heures (un trimestre terminé est exporté une seule fois).
+EXPORT_PERIODE_S = 6 * 3600
+TRIMESTRE = re.compile(r"^\d{4}-T[1-4]$")
 
 
 class Erreur(Exception):
@@ -109,6 +115,18 @@ class Application:
         except Exception:
             return False
 
+    def exporter_trimestres_finis(self):
+        """Exporte les trimestres terminés qui n'ont pas encore d'export. Ne lève jamais d'erreur : un export raté se refait au passage suivant."""
+        try:
+            for trimestre in export.exporter_trimestres_finis(self.dossier):
+                self.journal(f"export du trimestre {trimestre} écrit dans {export.dossier_exports(self.dossier)}")
+        except Exception as erreur:
+            self.journal(f"export trimestriel impossible ({type(erreur).__name__}), nouvel essai plus tard")
+
+    def exports(self):
+        return {"exports": export.exports_faits(self.dossier), "dossier": export.dossier_exports(self.dossier),
+                "enCours": export.trimestre_de(datetime.date.today())}
+
     # ── routes
     def traiter(self, methode, chemin, parametres, corps):
         route = f"{methode} {chemin}"
@@ -116,6 +134,15 @@ class Application:
             return self.etat()
         if route == "GET /api/trades":
             return {"trades": pont.lire_trades(self.dossier)}
+        if route == "GET /api/exports":
+            return self.exports()
+        if route == "POST /api/exports":
+            trimestre = corps.get("trimestre") or export.trimestre_de(datetime.date.today())
+            if not isinstance(trimestre, str) or not TRIMESTRE.match(trimestre):
+                raise Erreur(400, "Trimestre illisible : il a la forme 2027-T1.")
+            chemin_export, resume = export.exporter(self.dossier, trimestre)
+            self.journal(f"export du trimestre {trimestre} écrit dans {chemin_export}")
+            return {"ok": True, "trimestre": trimestre, "chemin": chemin_export, "resume": resume, **self.exports()}
         if route == "GET /api/risque":
             pct, levier = pont._nombre(parametres.get("pct")), pont._nombre(parametres.get("levier"))
             if pct is None or not (pont.RISQUE_MIN - 1e-9 <= pct <= pont.RISQUE_MAX + 1e-9):
@@ -313,6 +340,15 @@ def main(arguments=None):
     if not options.sans_navigateur:
         threading.Timer(0.6, lambda: webbrowser.open(serveur.url)).start()
     threading.Timer(1.0, serveur.application.ouvrir_mt5_si_demande).start()
+
+    def exporter_puis_reprogrammer():
+        serveur.application.exporter_trimestres_finis()
+        minuterie = threading.Timer(EXPORT_PERIODE_S, exporter_puis_reprogrammer)
+        minuterie.daemon = True
+        minuterie.start()
+    depart = threading.Timer(5.0, exporter_puis_reprogrammer)
+    depart.daemon = True
+    depart.start()
     try:
         serveur.serve_forever()
     except KeyboardInterrupt:

@@ -244,6 +244,14 @@
         <div class="scroll" id="trades"></div>
       </details>
     </div>
+    <div class="bloc">
+      <div class="head-row">
+        <h2>Exports trimestriels</h2>
+        <button class="btn small" id="export-now" type="button">Exporter le trimestre en cours</button>
+      </div>
+      <div class="hint">Après chaque trimestre, Étrave écrit tout seul un dossier avec les trades, le détail de l’exécution (prix visé et obtenu, spread, stops, gain et perte latents), les séances avec ou sans trade, et un résumé. Il le fait au premier démarrage qui suit la fin du trimestre, puis le garde.</div>
+      <div class="scroll" id="exports"></div>
+    </div>
   </section>
 
   <section id="tab-risk" hidden>
@@ -754,6 +762,36 @@ function renderTrades(devise) {
     el('tbody', {}, ...rows)));
 }
 
+// ---------------------------------------------------------------- exports trimestriels
+let exportsInfo = null;
+async function loadExports() {
+  try { exportsInfo = await api('/api/exports'); } catch (error) { exportsInfo = null; }
+  renderExports();
+}
+function renderExports() {
+  const host = $('exports');
+  if (!exportsInfo) return host.replaceChildren(el('div', { class: 'empty' }, 'Liste des exports indisponible.'));
+  const dossier = el('p', { class: 'hint' }, 'Dossier : ', el('span', { class: 'num' }, exportsInfo.dossier));
+  if (!exportsInfo.exports.length) return host.replaceChildren(dossier, el('div', { class: 'empty' }, `Aucun export pour l’instant. Le premier trimestre complet sera exporté tout seul ; « Exporter le trimestre en cours » écrit dès maintenant ${exportsInfo.enCours}.`));
+  const rows = exportsInfo.exports.map((x) => el('tr', {},
+    el('td', {}, x.nom),
+    el('td', {}, x.en_cours ? 'en cours, partiel' : 'terminé'),
+    el('td', { class: 'num' }, String(x.trades)),
+    el('td', { class: 'num opt' }, x.genere ? dateFr(x.genere) : '—'),
+    el('td', { class: 'num' }, el('button', { class: 'btn small', type: 'button', onclick: () => exportNow(x.nom) }, 'Refaire'))));
+  host.replaceChildren(dossier, el('table', {},
+    el('thead', {}, el('tr', {}, el('th', {}, 'Trimestre'), el('th', {}, 'État'), el('th', { class: 'num' }, 'Trades'), el('th', { class: 'num opt' }, 'Écrit le'), el('th', {}, ''))),
+    el('tbody', {}, ...rows)));
+}
+async function exportNow(trimestre) {
+  try {
+    const result = await api('/api/exports', trimestre ? { trimestre } : {});
+    exportsInfo = result;
+    toast(`Export ${result.trimestre} écrit.`);
+  } catch (error) { toast(error.message); }
+  renderExports();
+}
+
 // ---------------------------------------------------------------- risque
 const RISK_PRESETS = [0.25, 0.5, 1, 2, 5, 10, 20];
 function bounds() { return state ? state.reglages.bornes : { risqueMin: 0.05, risqueMax: 20, risqueAConfirmer: 1, levierMax: 2000 }; }
@@ -1029,7 +1067,7 @@ function showTab(name) {
   for (const id of ONGLETS) $(`tab-${id}`).hidden = id !== name;
   try { localStorage.setItem('onglet', name); } catch (error) { /* sans gravité */ }
   if (!state) return;
-  if (name === 'overview') renderOverview();
+  if (name === 'overview') { renderOverview(); loadExports(); }
   if (name === 'risk') { renderRisk(); loadSim(); }
   if (name === 'connections') { renderConnections.drawn = false; renderConnections(); }
 }
@@ -1038,6 +1076,7 @@ $('risk-input').addEventListener('input', () => { draft.risque = Number(String($
 $('risk-slider').addEventListener('input', () => { draft.risque = sliderToRisk(Number($('risk-slider').value)); renderRisk('slider'); loadSim(); });
 $('lever-input').addEventListener('input', () => { const raw = $('lever-input').value.trim(); draft.levier = raw === '' ? null : Number(raw.replace(',', '.')); renderRisk('lever'); loadSim(); });
 $('risk-cancel').addEventListener('click', () => { draft = null; renderRisk(); loadSim(); });
+$('export-now').addEventListener('click', () => exportNow(null));
 $('risk-save').addEventListener('click', () => {
   if (draft.risque > bounds().risqueAConfirmer && draft.risque > savedRisk()) {
     $('risk-dlg-text').textContent = `Tu passes à ${riskText(draft.risque)} du solde par trade.${sim && sim.risquePct === draft.risque ? ` Dans le test, la pire baisse à ce risque est de ${num(sim.pireBaissePct, 0)} %, et ${sim.serie} pertes de suite coûtent ${num(sim.seriePct, 0)} % du compte.` : ''} Au-delà de ${riskText(bounds().risqueAConfirmer)}, c’est ton choix : rien dans le test ne le recommande.`;
