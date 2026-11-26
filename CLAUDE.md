@@ -34,7 +34,7 @@ etrave/    interface web locale de l'EA (Python sans dépendance), export.py (ex
 .claude/   commands/audit.md (/audit) et agents/auditeur.md (auditeur adapté au robot) ; rapports dans audits/ (ignoré)
 video/     (branche communication/outil-video) vidéos TikTok : récap de séance et présentation, `python3 video/outil.py` ; README
 ```
-- Tests : `.venv/bin/python -m pytest robot etrave -q` (129 tests ; sur la branche `communication/outil-video`, ajouter `video`). Le `.venv` du dépôt tourne sous Python 3.15.
+- Tests : `.venv/bin/python -m pytest robot etrave -q` (164 tests ; sur la branche `communication/outil-video`, ajouter `video`). Le `.venv` du dépôt tourne sous Python 3.15.
 - Étrave en essai : `.venv/bin/python etrave/etrave.py --sans-navigateur --port 8799 --dossier <dossier jetable>`, puis
   `http://127.0.0.1:8799`. Pour voir la page avec des données, écrire de faux `etat-<symbole>.txt` (format dans
   `etrave/test_interface.py`, `faux_etat`) et un `trades-<symbole>.csv`, et les réécrire toutes les 2 secondes (au-delà de 15 s sans
@@ -89,9 +89,12 @@ video/     (branche communication/outil-video) vidéos TikTok : récap de séanc
    pour que MetaTrader garde le profil. Un `[StartUp]` n'enregistre pas l'EA dans le profil. `robot/mt5/demo.ini` reste le modèle
    manuel. But : mesurer le **glissement réel** (entrées A, B, D et sortie de 15:50). Deux MetaTrader
    ne tournent pas ensemble : arrêter la démo pour un test.
-4. Interrupteur, sur 60 jours de trade : moins de 28 % de jours gagnants, un total pire que −40 R, ou une baisse de plus de 66 R. Non
-   codé, calculé pour la V10 à 0,25 %, pour un marché : l'export le juge **marché par marché** (ET-16). En lots fixes sur 1 000 $,
-   −40 R serait le compte entier.
+4. Interrupteur, sur 60 jours de trade, **par marché** (AUD-09, 27/11/2026 ; `export.SEUILS_INTERRUPTEUR`, recalculés depuis
+   `reference.json` : pire fenêtre de 60 jours × 1,25 pour le total et la baisse, pire part de jours gagnants − 5 points ; données
+   déjà vues, pas une preuve) : Nasdaq < 26,67 % de jours gagnants, total < −14,54 R ou baisse > 23,88 R ; S&P 500 < 18,33 %,
+   < −44,83 R ou > 48,64 R. Avant : 28 %, −40 R, 66 R, calculés pour la V10 et un seul marché. Étrave le vérifie toutes les 10 min,
+   l'affiche dans l'onglet Séance et envoie un Telegram une fois par franchissement (`interrupteur.txt`), à 60 jours complets. Il
+   n'arrête pas l'EA : c'est à l'utilisateur de décider.
 5. Le risque par trade se décide une fois le glissement réel connu. C'est la décision de l'utilisateur.
 6. **Recherche du 26/11/2026** (hors dépôt, `donnees/`) : protections contre les retournements, coupes CHoCH M1 à M15, dojis,
    confirmations M5/M15, filtres de tendance H1/H4/jour, range de 15/30 min, largeur du stop, carte de 26 critères à 9:35, deux grilles
@@ -119,8 +122,19 @@ video/     (branche communication/outil-video) vidéos TikTok : récap de séanc
   MetaTrader garde encore, heures du serveur). Le Pine n'a pas
   ce calendrier : `fomcExtra`. Si la Fed déplace une date, corriger les deux listes (un test vérifie leur accord).
 - **Heure du serveur** (26/11/2026) : `DetecterHeureServeur` (hors testeur, `InpSrvAuto`) déduit le décalage d'hiver de
-  `TimeTradeServer() - TimeGMT()` arrondi à l'heure (avertissement au-delà de 10 min d'écart), avec la règle `InpSrvDST` (US par défaut) ; `InpSrvGMT` ne sert plus
-  qu'au testeur, où `TimeGMT()` vaut l'heure du serveur. Dépend de l'horloge de l'ordinateur ; changement notifié.
+  `TimeTradeServer() - TimeGMT()` arrondi à l'heure (avertissement au-delà de 10 min d'écart à l'heure attendue), avec la règle `InpSrvDST` (US par défaut).
+  AUD-03 (27/11/2026) : `CheckClock` exige que ce décalage détecté égale `InpSrvGMT` (GMT+2 chez TradinGlobal), sinon `gClockOk`
+  faux et pas de trade : la détection ne se contrôlait qu'elle-même, et une horloge d'ordinateur fausse de 30 à 90 min faisait
+  trader la bougie de 8:30 ou de 10:30. Changer de courtier = régler `InpSrvGMT`. Dans le testeur, `TimeGMT()` vaut l'heure du serveur.
+- **Compte et état (AUD-01, AUD-02, 27/11/2026)** : un compte réel ne trade que si `reglages.txt` porte `reel_autorise=<numéro du
+  compte>` (écrit par Étrave après le mot REEL ; `CompteAutorise`, garde dans `Setup` et `CheckEntries`) ; un compte démo trade
+  toujours. L'état porte le numéro du compte (`<GV>login`) : `ChargerEtatDuCompte` efface l'état d'un autre compte au lieu de le
+  relire ; un état sans numéro (d'avant le correctif) n'est repris que sur un compte démo ; rien n'est écrit (`Sv`) tant que le
+  compte est inconnu (démarrage de MetaTrader). Verrou par symbole (AUD-11) : variable globale temporaire
+  `StratV11_verrou_<symbole>_<magic>` et son battement `_bat` (minuteur toutes les 2 s, posé même sans interface).
+- **Risque plafonné à 1 %** (AUD-05, 27/11/2026, choix de Claude sur délégation de l'utilisateur) : `RISK_MAX` = 1.0 dans l'EA et
+  Étrave ; une valeur plus haute est ramenée à 1 % (l'utilisateur avait enregistré 2,5 % : pire baisse −80 % dans la simulation de
+  la page). Ne le remonte jamais sans son accord.
 - Les numéros magiques 50930 à 50935 sont partagés avec d'anciennes versions (V9, ORB v6) ; le filet de sécurité et
   `EaPositions` surveillent 50930 à 50939. Préfixe d'état `StratV11_`. Compte
   **hedging** obligatoire.
@@ -170,6 +184,12 @@ video/     (branche communication/outil-video) vidéos TikTok : récap de séanc
   (`REGLES_NY`, accord avec l'EA vérifié par un test) et ne les allume que si l'EA a des ordres ou des positions. Le magenta
   (`--mark`) est réservé à l'aiguille « maintenant ». Les noms des variables CSS sont utilisés par le script : changer leurs valeurs,
   pas leurs noms. Pas de « · » pour joindre des textes générés par la page.
+- **Étrave, audit du 26/11/2026 (27/11/2026)** : bouton « Arrêt d'urgence » (mot ARRET : les deux cases décochées et une clôture
+  demandée à chaque EA en marche, `pont.arret_urgence`) ; « Autoriser ce compte réel » (mot REEL, seulement le numéro d'un EA en
+  marche sur un compte réel, `pont.autoriser_compte_reel`) ; risque de 0,05 à 1 %, mot RISQUE au-delà de 0,5 % ; « Fermer
+  MetaTrader » refusé aussi sur le dernier état connu d'un EA muet (mot FERMER pour passer outre) ; « Installer l'EA » refusé
+  pendant un trade ; au double-clic, MetaTrader n'est pas lancé si la compilation a échoué (`lancement.json`) ; version compilée
+  (`ea_build`) affichée ; taille estimée et lot minimum dans l'onglet Risque (`risque.estimer_taille`) ; valeurs non finies refusées.
 - **Revues de code** : les constats corrigés portent leur numéro (EA-xx, X-xx, PINE-xx, ET-xx, VID-xx) dans un commentaire du code et
   un contrôle (`robot/test_robot.py`, `etrave/test_*.py`, `video/test_video.py`). Avant de déclarer un constat réglé, vérifie le code.
   - **Corrigés le 25/11/2026** : X-13 (stop des D compté depuis le déclenchement, comme le Pine et le simulateur ; testeur 12 mois
@@ -190,6 +210,19 @@ video/     (branche communication/outil-video) vidéos TikTok : récap de séanc
     de changer), EX-6 (D en ordres stop chez le courtier si la démo montre un glissement des D nettement pire que celui de A),
     EX-8 (marge : 15 unités réservées, à vérifier avec le levier réel du compte ; démo sur deux graphiques). Pine V11 non vérifié sur
     TradingView.
+  - **Audit du 26/11/2026** (rapport `audits/2026-11-26-2345.md`, hors dépôt), corrigés le 27/11/2026 avec un contrôle chacun
+    (`test_aud…`) : AUD-01 (compte réel autorisé seulement depuis Étrave), AUD-02 (état propre au compte), AUD-03 et AUD-04 (heure
+    contre-vérifiée par `InpSrvGMT`, écart annoncé par rapport à l'heure attendue), AUD-05 (risque plafonné à 1 %), AUD-06 (après une
+    réponse perdue, l'historique des deals et des ordres est relu avant tout renvoi de A ; doublon de A de même taille ouvert à moins
+    de 30 s fermé, plus pris pour une pyramide), AUD-07 (ordre stop déjà posé repris à la relance, état écrit avant la pose), AUD-08
+    (stop du courtier relu chaque minute, `VerifierStops` : reposé ou position fermée), AUD-11 (un seul graphique par symbole),
+    AUD-12 (EX-2 dans le Pine), AUD-17 (« JOUR MANQUÉ » quand l'EA n'a pas préparé le range ; pas d'entrée tardive), AUD-18 (jambe
+    B/D inconnue de l'état reprise, `LegAdopt`), AUD-20 (clôture demandée réessayée toutes les 10 s), AUD-22 (`ea_build`), AUD-23
+    (pas d'essai Telegram pendant un trade), AUD-24 (`lot_min`, `lot_pas`, `valeur_point_lot`, `prix` dans l'état), AUD-28 (même
+    liste de marchés dans l'EA et le Pine). Étrave : AUD-01, AUD-05, AUD-09, AUD-10, AUD-15 (médiane du range sur la bonne colonne),
+    AUD-16, AUD-19, AUD-21, AUD-22, AUD-24, AUD-25, AUD-26 (chiffres de la page), AUD-27 (échec d'effacement du fichier de
+    connexion journalisé, réessayé). Testeur 01/01/2025 → 25/11/2026, 0,1 lot, après ces correctifs : transactions et journaux
+    identiques à la V11 d'avant, au centime (NDX100 1 372 transactions, +2 991,22 $ ; SPX500 1 184, +413,92 $).
   - **Encore ouverts** :
     - X-11 / ET-04 : deux terminaux sur un même ordinateur partagent `reglages.txt` et les clôtures (règle d'usage dans le README) ;
     - X-02 : les sorties et le stop virtuel exigent un EA en marche (VPS) ;
@@ -199,8 +232,7 @@ video/     (branche communication/outil-video) vidéos TikTok : récap de séanc
       backtest TradingView) ; `legQty` au moins un pas (voulu) ; PINE-04 à PINE-08 pas encore vérifiés sur TradingView ; le lot
       affiché ignore le minimum du courtier ; le garde-fou coût (1,65 pb) vaut celui de l'EA pour un spread de 0,45 pb ;
     - EA, rares, signalés à l'audit : la perte d'une position fermée par `CloseOpposite` n'entre pas dans le R ; `gDayTxt` et
-      `gFiltTxt` ne sont pas sauvegardés (ligne « fin » fausse après un redémarrage) ; un jour où `Setup` n'aboutit pas de toute la
-      bougie de 9:35 disparaît sans message ; `JournalFlush(true)` dans `OnDeinit` peut dépasser le délai de MetaTrader ;
+      `gFiltTxt` ne sont pas sauvegardés (ligne « fin » fausse après un redémarrage) ; `JournalFlush(true)` dans `OnDeinit` peut dépasser le délai de MetaTrader ;
     - Étrave : l'export ne sépare pas démo et réel (colonne `source` des journaux ; « pas grave » pour l'utilisateur). Réglé le
       26/11/2026 : l'interrupteur est jugé marché par marché (ET-16) ;
     - Vidéo, à décider avec l'utilisateur : le trait « Jusqu'à +106 pts » est vert et l'épingle des photos rouge, alors que vert et

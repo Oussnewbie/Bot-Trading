@@ -19,6 +19,7 @@ le trade est gardé, avec un risque plus petit. Le calcul fait de même, jour pa
 """
 import datetime
 import json
+import math
 import os
 
 REFERENCE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "reference.json")
@@ -41,9 +42,50 @@ def charger(chemin=REFERENCE):
     return _cache[chemin]
 
 
+def mediane_range(trades, marche=None):
+    """La médiane de la largeur du range rapportée au prix (colonne range_sur_prix), pour un marché ou pour tous."""
+    largeurs = sorted(t[3] for t in trades if marche is None or t[1] == marche)
+    return largeurs[len(largeurs) // 2] if largeurs else None
+
+
 def risque_possible(levier, range_sur_prix, part_marge=PART_MARGE, unites=UNITES, stop=STOP_RANGES):
     """Le plus grand risque (fraction du solde) que la marge permet ce jour-là."""
     return levier * range_sur_prix * stop * part_marge / unites
+
+
+def estimer_taille(solde, risque_pct, prix, valeur_point_lot, lot_pas, lot_min, marche, reference=None):
+    """AUD-24 (audit du 26/11/2026) : la taille d'une cassure A sur ce marché, avec le lot minimum et le pas de volume du
+    courtier (l'onglet Risque les ignorait). Estimation, avec le range médian du test au lieu du range du jour :
+
+        risque en argent = solde × risque %
+        stop             ≈ STOP_RANGES × médiane de range_sur_prix du marché (reference.json) × prix
+        argent par lot   = stop × valeur_point_lot (argent par point de prix et par lot, donné par l'EA)
+        lots             = arrondi vers le bas au pas de volume, comme l'EA ; sous le lot minimum, l'EA ne prend pas le trade
+
+    None si une valeur manque, n'est pas un nombre fini ou n'a pas de sens (0, négatif), ou si le marché est inconnu."""
+    valeurs = (solde, risque_pct, prix, valeur_point_lot, lot_pas, lot_min)
+    if any(isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v) for v in valeurs):
+        return None
+    if min(solde, risque_pct, prix, valeur_point_lot, lot_pas) <= 0 or lot_min < 0:
+        return None
+    mediane = mediane_range((charger() if reference is None else reference)["trades"], marche)
+    if not mediane:
+        return None
+    risque_argent = solde * risque_pct / 100.0
+    stop_prix = STOP_RANGES * mediane * prix
+    argent_par_lot = stop_prix * valeur_point_lot
+    bruts = risque_argent / argent_par_lot
+    lots = round(math.floor(bruts / lot_pas + 1e-9) * lot_pas, 8)      # 1e-9 : 0.3 / 0.1 vaut 2.9999999999999996
+    sous_minimum = lots <= 0 or lots < lot_min - 1e-9
+    risque_reel = 0.0 if sous_minimum else lots * argent_par_lot
+    reduction = 100.0 * (1.0 - risque_reel / risque_argent)
+    return {
+        "marche": marche, "lots": 0.0 if sous_minimum else lots, "lotsBruts": bruts, "lotMin": lot_min, "lotPas": lot_pas,
+        "stopPrix": stop_prix, "argentParLot": argent_par_lot, "risqueArgent": risque_argent, "risqueReelArgent": risque_reel,
+        "reductionPct": reduction, "sousMinimum": sous_minimum,
+        # l'arrondi au pas fait perdre plus de 30 % du risque voulu
+        "arrondiTropFort": not sous_minimum and reduction > 30.0,
+    }
 
 
 def simuler(risque_pct, levier=None, reference=None):
@@ -99,8 +141,9 @@ def simuler(risque_pct, levier=None, reference=None):
         "seriePct": 100.0 * (1.0 - cout_pire),
         "pireJourPct": -100.0 * pire_jour,
         "pireJourR": -pire_jour / voulu if voulu else 0.0,
-        # levier qu'il faut pour que la moitié des jours passent sans réduction à ce risque
-        "rangeMedianPct": 100.0 * sorted(t[2] for t in trades)[len(trades) // 2],
+        # levier qu'il faut pour que la moitié des jours passent sans réduction à ce risque. AUD-15 (audit du 26/11/2026) : la
+        # médiane prenait t[2] (le R du jour, médiane négative) au lieu de t[3] (le range rapporté au prix) : « environ 1:0 »
+        "rangeMedianPct": 100.0 * mediane_range(trades),
         # unités que l'EA réserve (toutes les entrées et leurs pyramides) : ce que la marge doit pouvoir porter
         "unites": UNITES,
         "stopRanges": STOP_RANGES,

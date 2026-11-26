@@ -131,9 +131,11 @@ def test_export_automatique_des_trimestres_finis(dossier):
 
 
 def test_interrupteur_sur_60_jours():
+    # AUD-09 : seuils par marché (ici ceux du Nasdaq) ; une baisse de 60 R dépasse maintenant le seuil (23,88 R, avant 66 R)
     trades = [{"date": (datetime.date(2027, 1, 1) + datetime.timedelta(days=i)).isoformat(), "r": -1.0} for i in range(60)]
-    i = export.interrupteur(trades, datetime.date(2027, 12, 31))
-    assert i["jours"] == 60 and i["complet"] and i["total_r"] == -60.0 and set(i["franchi"]) == {"jours gagnants", "total"}
+    i = export.interrupteur(trades, datetime.date(2027, 12, 31), export.SEUILS_INTERRUPTEUR["nasdaq"])
+    assert i["jours"] == 60 and i["complet"] and i["total_r"] == -60.0 and set(i["franchi"]) == {"jours gagnants", "total", "baisse"}
+    assert export.interrupteur(trades, datetime.date(2027, 12, 31))["franchi"] == []      # marché inconnu : mesures, pas de verdict
     assert export.interrupteur([], datetime.date(2027, 1, 1)) == {"jours": 0}
 
 
@@ -162,13 +164,14 @@ def test_interrupteur_indicatif_avant_60_jours(tmp_path):
 
 
 def test_interrupteur_marche_par_marche(tmp_path):
-    """ET-16 : les seuils (calculés pour un marché) se jugent marché par marché. 60 jours à -0,6 R sur chacun : -36 R par marché,
-    au-dessus du seuil de -40 R ; additionnés, -72 R auraient franchi le seuil du total à tort."""
+    """ET-16 : les seuils (calculés pour un marché) se jugent marché par marché. AUD-09 : avec les seuils par marché de la V11
+    (total −14,54 R pour le Nasdaq, −44,83 R pour le S&P), 60 jours à −0,2 R sur chacun : −12 R par marché, au-dessus de chaque
+    seuil ; additionnés, −24 R auraient franchi le seuil du total du Nasdaq à tort."""
     jours = [(datetime.date(2027, 1, 1) + datetime.timedelta(days=i)).isoformat() for i in range(60)]
-    trades = [{"date": j, "symbole": s, "r": -0.6} for j in jours for s in ("NDX100", "SPX500")]
+    trades = [{"date": j, "symbole": s, "r": -0.2} for j in jours for s in ("NDX100", "SPX500")]
     par_marche = export.interrupteurs(trades, datetime.date(2027, 12, 31))
     assert set(par_marche) == {"NDX100", "SPX500"} and all(i["complet"] and "total" not in i["franchi"] for i in par_marche.values())
-    assert "total" in export.interrupteur(trades, datetime.date(2027, 12, 31))["franchi"]       # l'ancienne addition
+    assert "total" in export.interrupteur(trades, datetime.date(2027, 12, 31), export.SEUILS_INTERRUPTEUR["nasdaq"])["franchi"]   # l'ancienne addition
     dossier = str(tmp_path)
     ecrire(os.path.join(dossier, "trades-NDX100.csv"), [trade("2027-01-04", "NDX100", -1.0, -27.0)])
     ecrire(os.path.join(dossier, "trades-SPX500.csv"), [trade("2027-01-04", "SPX500", 0.5, 4.0)])
@@ -202,3 +205,46 @@ def test_un_export_a_la_fois(dossier):
     assert "with _VERROU_EXPORT:" in source and "_remplacer(provisoire, final)" in source and "os.replace(provisoire" not in source
     page = open(os.path.join(ICI, "page.html"), encoding="utf-8").read()
     assert "if (exportBusy) return;" in page
+
+
+def test_resume_json_sans_valeur_non_finie(dossier):
+    """AUD-16 : « nan » ou « inf » dans un journal passait dans resume.json en NaN / Infinity, qui ne sont pas du JSON."""
+    ecrire(os.path.join(dossier, "execution-SPX500.csv"), [";".join(EXEC),
+        ligne(EXEC, id_position=21, jour_ny="2027-01-04", symbole="SPX500", entree="A", sens=1, glissement_entree="nan",
+              spread_entree="inf", mfe_r="-inf", mae_r="1e999", resultat_net="5.00", r="0.2")])
+    chemin, _ = export.exporter(dossier, "2027-T1", aujourdhui=datetime.date(2027, 4, 10))
+    brut = open(os.path.join(chemin, "resume.json"), encoding="utf-8").read()
+    assert "NaN" not in brut and "Infinity" not in brut
+    for texte in ("nan", "inf", "-inf", "1e999"):
+        assert export.nombre(texte) is None
+    assert "allow_nan=False" in open(os.path.join(ICI, "export.py"), encoding="utf-8").read()
+
+
+def _baisse_independante(valeurs):
+    cumul, sommet, pire = 0.0, 0.0, 0.0
+    for v in valeurs:
+        cumul += v
+        if cumul > sommet:
+            sommet = cumul
+        if sommet - cumul > pire:
+            pire = sommet - cumul
+    return pire
+
+
+def test_seuils_de_l_interrupteur_par_marche_recalcules_depuis_la_reference():
+    """AUD-09 : les seuils (moins de 28 % de jours gagnants, −40 R, 66 R) venaient de la V10 et d'un seul marché. Ils sont
+    recalculés par marché sur reference.json (V11) : sur toutes les fenêtres glissantes de 60 jours de trade, pire total × 1,25,
+    pire baisse × 1,25, pire part de jours gagnants − 5 points. Recalcul indépendant ici."""
+    ref = json.load(open(os.path.join(ICI, "reference.json"), encoding="utf-8"))["trades"]
+    assert set(export.SEUILS_INTERRUPTEUR) == {"nasdaq", "sp500"} and export.JOURS_INTERRUPTEUR == 60
+    assert export.seuils_depuis_reference(ref) == export.SEUILS_INTERRUPTEUR
+    for marche, seuils in export.SEUILS_INTERRUPTEUR.items():
+        r = [t[2] for t in sorted((t for t in ref if t[1] == marche), key=lambda t: t[0])]
+        fenetres = [r[i:i + 60] for i in range(len(r) - 59)]
+        assert seuils["total_min_r"] == pytest.approx(1.25 * min(sum(f) for f in fenetres), abs=0.005)
+        assert seuils["baisse_max_r"] == pytest.approx(1.25 * max(_baisse_independante(f) for f in fenetres), abs=0.005)
+        assert seuils["jours_gagnants_min_pct"] == pytest.approx(min(100 * sum(v > 0.05 for v in f) / 60 for f in fenetres) - 5, abs=0.005)
+    source = open(os.path.join(ICI, "export.py"), encoding="utf-8").read()
+    assert "AUD-09" in source and "déjà vues" in source and "pas une preuve" in source
+    # le résumé écrit les seuils du marché, plus ceux de la V10 en dur
+    assert "seuil 28 %" not in source and "(seuil −40 R)" not in source and "(seuil 66 R)" not in source

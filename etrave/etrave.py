@@ -50,6 +50,13 @@ EN_TETE_JETON = "x-etrave-jeton"
 MT5_OUVERT_CACHE_S = 5.0
 # Export trimestriel automatique : au démarrage, puis toutes les 6 heures (un trimestre terminé est exporté une seule fois).
 EXPORT_PERIODE_S = 6 * 3600
+# AUD-09 (audit du 26/11/2026) : l'interrupteur (export.interrupteurs, seuils par marché) vérifié toutes les 10 minutes par une
+# minuterie de main, jamais à chaque appel de la page ; un franchissement déjà annoncé sur Telegram est retenu dans ce fichier.
+INTERRUPTEUR_PERIODE_S = 10 * 60
+FICHIER_INTERRUPTEUR = "interrupteur.txt"
+# AUD-22 (audit du 26/11/2026) : double-clic dont l'installation ou la compilation de l'EA a échoué (MetaTrader pas lancé). Un
+# fichier du dossier d'Étrave, pas une variable : le double-clic, Étrave déjà lancée, passe par un autre processus que la page.
+FICHIER_LANCEMENT = "lancement.json"
 # Correctif ET-09 (audit du 25/11/2026) : fullmatch partout. Avec match, « $ » acceptait un retour à la ligne final.
 TRIMESTRE = re.compile(r"\d{4}-T[1-4]")
 
@@ -58,6 +65,19 @@ class Erreur(Exception):
     def __init__(self, code, message):
         super().__init__(message)
         self.code = code
+
+
+def occupes(etats):
+    """Les EA qui ont un trade ou un ordre : (symboles des EA en marche, états des EA muets dont le DERNIER état le disait).
+    AUD-19 / AUD-21 (audit du 26/11/2026) : seuls les EA en marche étaient regardés ; un EA gelé ou un MetaTrader planté en
+    pleine séance laissait fermer MetaTrader ou recompiler l'EA sans un mot."""
+    occupe = lambda e: e["position"] or e["attente"] or (e["jambes"] or 0) > 0
+    return [e["symbole"] for e in etats if e["en_marche"] and occupe(e)], [e for e in etats if not e["en_marche"] and occupe(e)]
+
+
+def _muets_txt(muets):
+    return " et ".join(f"{e['symbole']} (dernier état il y a {int(e['age_s'] // 60)} min)" if e["age_s"] >= 120 else
+                       f"{e['symbole']} (dernier état il y a {int(e['age_s'])} s)" for e in muets)
 
 
 class Application:
@@ -75,6 +95,9 @@ class Application:
         self._mt5_terminaux = mt5_terminaux or mt5.terminaux
         self.journal = journal or (lambda message: None)
         self._ouvert = (0.0, None)
+        self._interrupteur = None                       # AUD-09 : dernière vérification (verifier_interrupteur)
+        self._interrupteur_annonce = set()              # franchissements déjà écrits dans le journal par ce processus
+        self._verrou_interrupteur = threading.Lock()
 
     # ── ce que la page affiche
     def etat(self):
@@ -84,7 +107,89 @@ class Application:
             "reglages": pont.reglages_publics(self.dossier),
             "eas": [{cle: valeur for cle, valeur in e.items() if cle != "terminal"} for e in etats],
             "mt5": self.mt5(etats),
+            "lancement": self.lancement(self._mt5_terminaux(etats)),
+            # AUD-09 : la dernière vérification de l'interrupteur (None avant la première), par symbole et avec son marché
+            "interrupteur": self._interrupteur,
         }
+
+    def verifier_interrupteur(self, aujourdhui=None):
+        """AUD-09 : les trois mesures de l'interrupteur sur les 60 derniers jours de trade de chaque marché (journaux
+        trades-<symbole>.csv, même fonction que l'export) ; au premier franchissement (60 jours de trade complets, ET-11), un
+        message Telegram avec le jeton enregistré, une seule fois par franchissement. Ne lève jamais d'erreur."""
+        with self._verrou_interrupteur:
+            try:
+                marches = export.interrupteurs(pont.lire_trades(self.dossier), aujourdhui or export.aujourdhui_ny())
+            except Exception as erreur:
+                self.journal(f"interrupteur pas vérifié ({type(erreur).__name__}), nouvel essai dans 10 minutes")
+                return self._interrupteur
+            self._interrupteur = {"verifie": int(time.time()), "marches": marches}
+            try:
+                self._prevenir_interrupteur(marches)
+            except Exception as erreur:
+                self.journal(f"interrupteur : message pas envoyé ({type(erreur).__name__}), nouvel essai dans 10 minutes")
+            return self._interrupteur
+
+    def _prevenir_interrupteur(self, marches):
+        chemin = os.path.join(self.dossier, FICHIER_INTERRUPTEUR)
+        try:
+            retenus = pont.lire_cles(chemin, strict=True)
+        except pont.Refus:
+            return                                      # fichier occupé : on ne risque pas un deuxième message, essai suivant
+        avant = dict(retenus)
+        for symbole, i in marches.items():
+            if not pont.SYMBOLE.fullmatch(symbole):
+                continue
+            if not (i.get("complet") and i.get("franchi")):
+                retenus.pop(symbole, None)              # franchissement terminé : le prochain sera annoncé
+                self._interrupteur_annonce.discard(symbole)
+                continue
+            if symbole in retenus:
+                continue
+            message = export.texte_interrupteur(symbole, i)
+            if symbole not in self._interrupteur_annonce:
+                self._interrupteur_annonce.add(symbole)
+                self.journal(message)
+            try:
+                envoye = telegram.envoyer(self.dossier, message, self.appel_telegram)
+            except (pont.Refus, telegram.Injoignable) as erreur:   # messages sans jeton (voir telegram.appeler)
+                self.journal(f"interrupteur {symbole} : message Telegram pas parti ({erreur}), nouvel essai dans 10 minutes")
+                continue
+            if envoye:                                  # sans Telegram configuré : rien de retenu, envoyé une fois configuré
+                retenus[symbole] = time.strftime("%Y-%m-%d %H:%M")
+                self.journal(f"interrupteur {symbole} : message Telegram envoyé")
+        if retenus != avant:
+            pont.ecrire_cles(chemin, retenus)
+
+    def _noter_lancement(self, ok, message=""):
+        """AUD-22 : retient (ok=False) ou efface (ok=True) le dernier lancement de MetaTrader refusé faute d'EA compilé."""
+        chemin = os.path.join(self.dossier, FICHIER_LANCEMENT)
+        try:
+            if ok:
+                if os.path.exists(chemin):
+                    os.remove(chemin)
+                return
+            with open(chemin + ".tmp", "w", encoding="utf-8") as f:
+                json.dump({"ok": False, "quand": int(time.time()), "message": message}, f, ensure_ascii=False, allow_nan=False)
+            os.replace(chemin + ".tmp", chemin)
+        except OSError:
+            pass
+
+    def lancement(self, connus=None):
+        """AUD-22 : le dernier lancement refusé (EA pas compilé), ou None. Effacé dès que l'EA compilé de `connus[0]` est plus
+        récent que la source (compilé avec F7, ou par un autre chemin) : sinon le message restait, MetaTrader déjà ouvert."""
+        try:
+            with open(os.path.join(self.dossier, FICHIER_LANCEMENT), "r", encoding="utf-8") as f:
+                lu = json.load(f)
+        except (OSError, ValueError):
+            return None
+        if not isinstance(lu, dict) or lu.get("ok") is not False or not isinstance(lu.get("message"), str):
+            return None
+        donnees = mt5.donnees_de(connus[0]) if connus else None
+        if donnees and mt5.ea_a_jour(donnees, SOURCE_EA):
+            self._noter_lancement(True)
+            return None
+        quand = lu.get("quand")
+        return {"ok": False, "quand": quand if isinstance(quand, int) and not isinstance(quand, bool) else None, "message": lu["message"][:2000]}
 
     def mt5(self, etats):
         en_marche = any(e["en_marche"] for e in etats)
@@ -123,15 +228,47 @@ class Application:
                 self.journal("Connecte d’abord MetaTrader 5 à ton compte depuis la page (Connexions) : Étrave l’ouvrira ensuite tout seul.")
                 return False
             if not mt5.ea_a_jour(mt5.donnees_de(connus[0]), SOURCE_EA):
-                resultat = self._mt5_installer(connus[0], connus, SOURCE_EA, ouvert=False)
-                self.journal("EA et profil mis à jour dans MetaTrader 5" if resultat.get("compile") else
-                             "EA copié dans MetaTrader 5, mais pas compilé : " + " / ".join(resultat.get("journal", [])[-3:]))
+                try:
+                    resultat = self._mt5_installer(connus[0], connus, SOURCE_EA, ouvert=False)
+                except pont.Refus as refus:
+                    resultat = {"compile": None, "journal": [str(refus)]}
+                except Exception as erreur:
+                    resultat = {"compile": None, "journal": [f"installation impossible ({type(erreur).__name__})"]}
+                # AUD-22 (audit du 26/11/2026) : MetaTrader lancé malgré une compilation ratée démarrait avec l'ancien EA (ou
+                # sans EA). Il n'est plus lancé ; le journal et la page disent pourquoi.
+                if not resultat.get("compile"):
+                    detail = " / ".join(resultat.get("journal", [])[-3:])
+                    message = ("MetaTrader 5 pas ouvert : " + ("la compilation de l’EA a échoué" if resultat.get("compile") is False
+                                                               else "l’EA n’a pas pu être installé et compilé")
+                               + ", MetaTrader aurait démarré avec l’ancien EA ou sans EA." + (f" Détail : {detail}." if detail else "")
+                               + " Corrige l’EA ou compile-le dans MetaEditor (F7), puis relance Étrave, ou clique sur « Installer ou "
+                               "mettre à jour l’EA » (onglet Connexions).")
+                    self.journal(message)
+                    self._noter_lancement(False, message)
+                    return False
+                self.journal("EA et profil mis à jour dans MetaTrader 5")
             self._mt5_lancer(connus[0], connus, None, ouvert=False)
+            self._noter_lancement(True)
             self.journal("MetaTrader 5 ouvert automatiquement (Nasdaq et S&P 500 avec la V11, profil Etrave-demo)")
             return True
         except Exception as erreur:
             self.journal(f"MetaTrader 5 pas ouvert automatiquement : {erreur}")
             return False
+
+    def tailles(self, risque_pct):
+        """AUD-24 : la taille estimée d'une cassure, par marché, pour chaque EA qui donne solde, prix, valeur du point, pas et lot
+        minimum (EA en marche d'abord). Rien pour un EA en lots fixes : le risque en % n'y sert pas."""
+        resultat, vus = [], set()
+        for e in sorted(pont.lire_etats(self.dossier), key=lambda x: not x["en_marche"]):
+            marche = e.get("instrument")
+            if marche not in pont.INSTRUMENTS or marche in vus or (e.get("lots_fixes") or 0) > 0:
+                continue
+            taille = risque.estimer_taille(e.get("solde"), risque_pct, e.get("prix"), e.get("valeur_point_lot"), e.get("lot_pas"),
+                                           e.get("lot_min"), marche)
+            if taille:
+                vus.add(marche)
+                resultat.append({"symbole": e["symbole"], "devise": e.get("devise", ""), "enMarche": e["en_marche"], **taille})
+        return resultat
 
     def exporter_trimestres_finis(self):
         """Exporte les trimestres terminés qui n'ont pas encore d'export. Ne lève jamais d'erreur : un export raté se refait au passage suivant."""
@@ -167,7 +304,7 @@ class Application:
                 raise Erreur(400, "Risque hors bornes")
             if levier is not None and not (1 <= levier <= pont.LEVIER_MAX):
                 levier = None
-            return risque.simuler(pct, levier)
+            return {**risque.simuler(pct, levier), "tailles": self.tailles(pct)}
         if route == "POST /api/reglages":
             changees = pont.regler(self.dossier, corps.get("valeurs"), corps.get("confirmation", ""))
             if changees:
@@ -192,6 +329,37 @@ class Application:
             numero = pont.demander_cloture(self.dossier, corps.get("symbole"), corps.get("confirmation", ""))
             self.journal(f"clôture demandée sur {corps.get('symbole')}")
             return {"ok": True, "numero": numero}
+        if route == "POST /api/arret-urgence":
+            # AUD-10 : décoche les deux marchés et demande la clôture à chaque EA en marche ; ceux qui ne tournent pas sont
+            # signalés : leurs positions se ferment dans MetaTrader. Réarmer = recocher les cases des marchés.
+            etats = pont.lire_etats(self.dossier)
+            en_marche = list(dict.fromkeys(e["symbole"] for e in etats if e["en_marche"]))
+            sans_ea = [s for s in dict.fromkeys(e["symbole"] for e in etats if not e["en_marche"]) if s not in en_marche]
+            _, fermes, ecartes = pont.arret_urgence(self.dossier, en_marche, corps.get("confirmation", ""))
+            sans_ea += ecartes
+            message = "Les deux marchés sont décochés : plus aucun nouveau trade."
+            if fermes:
+                message += f" Clôture demandée sur {' et '.join(fermes)} : l’EA ferme tout dans les 2 secondes."
+            if sans_ea:
+                message += (f" L’EA ne tourne pas sur {' et '.join(sans_ea)} : ferme ses positions et ses ordres directement dans "
+                            "MetaTrader 5.")
+            message += " Pour repartir, recoche les cases des marchés (onglet Séance)."
+            self.journal("ARRÊT D’URGENCE depuis la page : marchés décochés" + (f", clôture demandée sur {', '.join(fermes)}" if fermes else "")
+                         + (f", EA arrêté sur {', '.join(sans_ea)}" if sans_ea else ""))
+            return {"ok": True, "fermes": fermes, "sansEa": sans_ea, "message": message, "reglages": pont.reglages_publics(self.dossier)}
+        if route == "POST /api/compte/autoriser":
+            # AUD-01 : autoriser l'EA à trader sur le compte réel vu (mot REEL), ou retirer l'autorisation (sans mot : c'est
+            # le sens prudent)
+            if corps.get("retirer") is True:
+                changees = pont.retirer_autorisation_reel(self.dossier)
+                if changees:
+                    self.journal("autorisation du compte réel retirée")
+                return {"ok": True, "changees": changees, "reglages": pont.reglages_publics(self.dossier)}
+            changees = pont.autoriser_compte_reel(self.dossier, corps.get("login"), corps.get("confirmation", ""),
+                                                  pont.lire_etats(self.dossier))
+            if changees:
+                self.journal(f"compte réel n° {corps.get('login')} autorisé depuis la page")
+            return {"ok": True, "changees": changees, "reglages": pont.reglages_publics(self.dossier)}
         if route == "POST /api/mt5/lancer":
             etats = pont.lire_etats(self.dossier)
             chemin, connus = self._terminal(corps, etats)
@@ -211,18 +379,33 @@ class Application:
             return {"ok": True, **resultat}
         if route == "POST /api/mt5/installer":
             etats = pont.lire_etats(self.dossier)
+            # AUD-21 : recompiler recharge l'EA, en pleine séance s'il a un trade ou un ordre : refusé, comme la fermeture
+            en_cours, muets = occupes(etats)
+            if en_cours:
+                raise Erreur(409, "Un trade ou un ordre est en cours sur " + " et ".join(en_cours) + " : recompiler l’EA le recharge en "
+                             "pleine séance. Installe après la clôture du trade ou après la séance.")
             chemin, connus = self._terminal(corps, etats)
             ouvert = any(e["en_marche"] for e in etats) or self._mt5_ouvert() is not False   # profil remplacé MetaTrader fermé
+            if muets and ouvert:
+                raise Erreur(409, f"L’EA ne répond plus sur {_muets_txt(muets)}, et ce dernier état disait un trade ou un ordre en "
+                             "cours : recompiler le recharge. Vérifie dans MetaTrader 5, ferme-le (bouton « Fermer MetaTrader 5 »), "
+                             "puis installe.")
             resultat = self._mt5_installer(chemin, connus, SOURCE_EA, ouvert=ouvert)
             self.journal("EA copié dans MetaTrader 5" + (" et compilé" if resultat.get("compile") else ""))
+            if resultat.get("compile"):
+                self._noter_lancement(True)                     # AUD-22 : le message d'un double-clic raté n'a plus lieu d'être
             return {"ok": True, **resultat}
         if route == "POST /api/mt5/fermer":
             # Fermer MetaTrader pendant un trade laisserait la sortie de 15:50 et les jambes sans surveillance (X-02).
-            occupes = [e["symbole"] for e in pont.lire_etats(self.dossier)
-                       if e["en_marche"] and (e["position"] or e["attente"] or (e["jambes"] or 0) > 0)]
-            if occupes:
-                raise Erreur(409, "Un trade ou un ordre est en cours sur " + ", ".join(occupes) + " : clôture-le d’abord "
+            en_cours, muets = occupes(pont.lire_etats(self.dossier))
+            if en_cours:
+                raise Erreur(409, "Un trade ou un ordre est en cours sur " + ", ".join(en_cours) + " : clôture-le d’abord "
                              "(bouton « Clôturer »), puis ferme MetaTrader 5.")
+            # AUD-19 : EA arrêté ou gelé dont le dernier état disait un trade ou un ordre : seulement avec le mot FERMER
+            if muets and corps.get("confirmation") != pont.MOTS["fermer"]:
+                raise Erreur(409, f"L’EA ne répond plus sur {_muets_txt(muets)}, et ce dernier état disait un trade ou un ordre en "
+                             "cours. Fermer MetaTrader 5 le laisserait sans surveillance (stops surveillés par l’EA, sortie de 15:50) : "
+                             f"vérifie dans MetaTrader, puis confirme en tapant {pont.MOTS['fermer']}.")
             resultat = self._mt5_fermer()
             self._ouvert = (0.0, None)
             self.journal("MetaTrader 5 fermé depuis la page")
@@ -263,7 +446,9 @@ def creer_serveur(dossier, port=PORT, **options):
             pass
 
         def repondre(self, code, corps, type_contenu="application/json; charset=utf-8"):
-            donnees = corps.encode("utf-8") if isinstance(corps, str) else json.dumps(corps, ensure_ascii=False).encode("utf-8")
+            # AUD-16 : allow_nan=False, NaN et Infinity ne sont pas du JSON (le navigateur refuse toute la réponse). Une valeur
+            # non finie qui passerait malgré pont._nombre donne une erreur 500 nette au lieu d'une page figée.
+            donnees = corps.encode("utf-8") if isinstance(corps, str) else json.dumps(corps, ensure_ascii=False, allow_nan=False).encode("utf-8")
             self.send_response(code)
             for nom, valeur in (
                 ("content-type", type_contenu), ("content-length", str(len(donnees))), ("cache-control", "no-store"),
@@ -372,6 +557,7 @@ def main(arguments=None):
 
     def journal(message):
         print(f"{time.strftime('%H:%M:%S')}  {message}", flush=True)
+    mt5.journal = journal                                       # AUD-27 : les messages de mt5.py vont dans le même journal
 
     try:
         serveur = creer_serveur(dossier, options.port, journal=journal)
@@ -401,6 +587,15 @@ def main(arguments=None):
     depart = threading.Timer(5.0, exporter_puis_reprogrammer)
     depart.daemon = True
     depart.start()
+
+    def verifier_interrupteur_puis_reprogrammer():      # AUD-09 : toutes les 10 minutes, comme l'export
+        serveur.application.verifier_interrupteur()
+        minuterie = threading.Timer(INTERRUPTEUR_PERIODE_S, verifier_interrupteur_puis_reprogrammer)
+        minuterie.daemon = True
+        minuterie.start()
+    interrupteur = threading.Timer(8.0, verifier_interrupteur_puis_reprogrammer)
+    interrupteur.daemon = True
+    interrupteur.start()
     try:
         serveur.serve_forever()
     except KeyboardInterrupt:

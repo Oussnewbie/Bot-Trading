@@ -14,6 +14,7 @@ trimestre terminé qui n'en a pas encore ; Étrave l'appelle au démarrage puis 
 import datetime
 import glob
 import json
+import math
 import os
 import shutil
 import statistics
@@ -24,8 +25,20 @@ import pont
 
 SOUS_DOSSIER = "exports"
 MARGE_JOURS = 3            # un trimestre est terminé 3 jours après sa fin : sa dernière séance a eu le temps d'être écrite
-# Interrupteur du robot, sur 60 jours de trade (calculé pour toutes les entrées à 0,25 % ; non codé dans le robot)
-INTERRUPTEUR = {"jours": 60, "jours_gagnants_min_pct": 28.0, "total_min_r": -40.0, "baisse_max_r": 66.0}
+# Interrupteur du robot, jugé marché par marché (ET-16) sur les 60 derniers jours de trade de chaque marché.
+JOURS_INTERRUPTEUR = 60
+GAGNANT_R = 0.05           # un jour est gagnant au-delà de +0,05 R (comme le résumé)
+# AUD-09 (audit du 26/11/2026) : seuils PAR MARCHÉ, recalculés pour la V11. Avant : moins de 28 % de jours gagnants, total pire
+# que −40 R, baisse de plus de 66 R, calculés pour la V10 et pour un seul marché.
+# Règle, appliquée à etrave/reference.json (la V11 rejouée, une ligne par marché et par jour de trade) : sur toutes les fenêtres
+# glissantes de 60 jours de trade du marché, pire total × 1,25, pire baisse × 1,25, pire part de jours gagnants − 5 points
+# (seuils_depuis_reference ; etrave/test_export.py les recalcule depuis reference.json).
+# Ces seuils viennent de données déjà vues (l'historique qui a servi à mettre la stratégie au point) : des repères, et
+# pas une preuve. Un seuil franchi dit « coupe ce marché et fais le point », pas « la stratégie ne marche plus ».
+SEUILS_INTERRUPTEUR = {
+    "nasdaq": {"jours_gagnants_min_pct": 26.67, "total_min_r": -14.54, "baisse_max_r": 23.88},
+    "sp500": {"jours_gagnants_min_pct": 18.33, "total_min_r": -44.83, "baisse_max_r": 48.64},
+}
 
 COLONNES_DOC = {
     "execution": [
@@ -85,10 +98,12 @@ def lire_journal(dossier, base):
 
 
 def nombre(valeur):
+    """Un nombre fini, ou None (AUD-16 : « nan » ou « inf » d'un journal passaient en NaN dans resume.json)."""
     try:
-        return float(valeur) if valeur not in (None, "") else None
+        resultat = float(valeur) if valeur not in (None, "") else None
     except (TypeError, ValueError):
         return None
+    return resultat if resultat is not None and math.isfinite(resultat) else None
 
 
 def jour_de(texte):
@@ -203,34 +218,81 @@ def classer_etat(texte):
     return t[:60] or "inconnu"
 
 
-def interrupteur(trades, jusqua):
-    """Les trois seuils de l'interrupteur sur les 60 derniers jours de trade jusqu'à `jusqua` (toutes les données connues)."""
+def mesurer(r):
+    """Les trois mesures de l'interrupteur sur une suite de résultats journaliers en R : part de jours gagnants (%), total, baisse."""
+    return {"jours_gagnants_pct": 100.0 * sum(1 for v in r if v > GAGNANT_R) / len(r), "total_r": sum(r), "baisse_r": _baisse(r)}
+
+
+def seuils_depuis_reference(trades_ref, jours=JOURS_INTERRUPTEUR):
+    """AUD-09 : les seuils de chaque marché d'après reference.json ([date, marché, R du jour, range/prix]), avec la règle écrite au
+    début de ce fichier. Sert à vérifier SEUILS_INTERRUPTEUR (et à les recalculer si reference.json change)."""
+    seuils = {}
+    for marche in sorted({t[1] for t in trades_ref}):
+        par_jour = {}
+        for date, m, r, _ in trades_ref:
+            if m == marche:
+                par_jour[date] = par_jour.get(date, 0.0) + r
+        suite = [par_jour[d] for d in sorted(par_jour)]
+        fenetres = [mesurer(suite[i:i + jours]) for i in range(len(suite) - jours + 1)]
+        if fenetres:
+            seuils[marche] = {"jours_gagnants_min_pct": round(min(f["jours_gagnants_pct"] for f in fenetres) - 5.0, 2),
+                              "total_min_r": round(1.25 * min(f["total_r"] for f in fenetres), 2),
+                              "baisse_max_r": round(1.25 * max(f["baisse_r"] for f in fenetres), 2)}
+    return seuils
+
+
+def interrupteur(trades, jusqua, seuils=None):
+    """Les trois mesures de l'interrupteur sur les 60 derniers jours de trade jusqu'à `jusqua` (toutes les données connues), et les
+    seuils franchis. `seuils` : ceux du marché (SEUILS_INTERRUPTEUR) ; None (marché inconnu) = les mesures sans verdict."""
     par_jour = {}
     for t in trades:
         j = jour_de(t["date"])
         if j and j <= jusqua and t.get("r") is not None:
             par_jour[j] = par_jour.get(j, 0.0) + t["r"]
-    jours = sorted(par_jour)[-INTERRUPTEUR["jours"]:]
+    jours = sorted(par_jour)[-JOURS_INTERRUPTEUR:]
     r = [par_jour[j] for j in jours]
     if not r:
         return {"jours": 0}
-    gagnants = 100.0 * sum(1 for v in r if v > 0.05) / len(r)
-    total, baisse = sum(r), _baisse(r)
+    m = mesurer(r)
+    franchi = []
+    if seuils:
+        franchi = [nom for nom, ok in (("jours gagnants", m["jours_gagnants_pct"] >= seuils["jours_gagnants_min_pct"]),
+                                       ("total", m["total_r"] >= seuils["total_min_r"]),
+                                       ("baisse", m["baisse_r"] <= seuils["baisse_max_r"])) if not ok]
     return {
-        "jours": len(r), "complet": len(r) >= INTERRUPTEUR["jours"],
-        "jours_gagnants_pct": round(gagnants, 1), "total_r": round(total, 2), "baisse_r": round(baisse, 2),
-        "franchi": [nom for nom, ok in (("jours gagnants", gagnants >= INTERRUPTEUR["jours_gagnants_min_pct"]),
-                                        ("total", total >= INTERRUPTEUR["total_min_r"]),
-                                        ("baisse", baisse <= INTERRUPTEUR["baisse_max_r"])) if not ok],
+        "jours": len(r), "complet": len(r) >= JOURS_INTERRUPTEUR,
+        "jours_gagnants_pct": round(m["jours_gagnants_pct"], 1), "total_r": round(m["total_r"], 2), "baisse_r": round(m["baisse_r"], 2),
+        "seuils": seuils, "franchi": franchi,
     }
 
 
 def interrupteurs(trades, jusqua):
-    """ET-16 (26/11/2026, décision de l'utilisateur) : l'interrupteur jugé marché par marché. Ses seuils ont été calculés pour un
-    seul marché ; additionner le Nasdaq et le S&P le même jour faisait bouger le total environ deux fois plus vite, et pouvait dire
-    « coupe le robot » alors que chaque marché restait dans sa norme. {symbole: interrupteur(...)}."""
+    """ET-16 (26/11/2026, décision de l'utilisateur) : l'interrupteur jugé marché par marché. Additionner le Nasdaq et le S&P le
+    même jour faisait bouger le total environ deux fois plus vite, et pouvait dire « coupe le robot » alors que chaque marché
+    restait dans sa norme. AUD-09 : chaque symbole est jugé avec les seuils de son marché (pont.instrument_de) ; un symbole d'un
+    autre marché a ses mesures, sans verdict. {symbole: interrupteur(...) avec « marche »}."""
     symboles = sorted({t.get("symbole") or "?" for t in trades})
-    return {s: interrupteur([t for t in trades if (t.get("symbole") or "?") == s], jusqua) for s in symboles}
+    resultat = {}
+    for s in symboles:
+        marche = pont.instrument_de(s)
+        resultat[s] = {**interrupteur([t for t in trades if (t.get("symbole") or "?") == s], jusqua, SEUILS_INTERRUPTEUR.get(marche)),
+                       "marche": marche}
+    return resultat
+
+
+def texte_interrupteur(symbole, i):
+    """AUD-09 : le message Telegram d'un interrupteur franchi (sur 60 jours de trade)."""
+    s = i["seuils"]
+    nom = {"nasdaq": "Nasdaq", "sp500": "S&P 500"}.get(i.get("marche"), symbole)
+    details = []
+    if "jours gagnants" in i["franchi"]:
+        details.append(f"{_pct(i['jours_gagnants_pct'])} de jours gagnants (seuil {_pct(s['jours_gagnants_min_pct'])})")
+    if "total" in i["franchi"]:
+        details.append(f"total {_txt(i['total_r'], ' R', True)} (seuil {_txt(s['total_min_r'], ' R', True)})")
+    if "baisse" in i["franchi"]:
+        details.append(f"baisse de {_txt(i['baisse_r'], ' R')} (seuil {_txt(s['baisse_max_r'], ' R')})")
+    return (f"{pont.NOM} : interrupteur franchi sur {symbole} ({nom}), sur ses {i['jours']} derniers jours de trade : "
+            f"{', '.join(details)}. Décoche ce marché dans {pont.NOM} et fais le point avant de le relancer.")
 
 
 def resumer(trimestre, trades_tous, executions, seances, aujourdhui, en_cours):
@@ -381,6 +443,11 @@ def resume_lisible(r):
     for symbole, i in r["interrupteur"].items():          # ET-16 : chaque marché à part
         if not i.get("jours"):
             continue
+        seuils = i.get("seuils")
+        if not seuils:                                     # AUD-09 : marché inconnu, pas de seuil
+            lignes.append(f"- Interrupteur {symbole} : marché inconnu, pas de seuil. Sur ses {i['jours']} derniers jours de trade : "
+                          f"{_pct(i['jours_gagnants_pct'])} de jours gagnants, total {_txt(i['total_r'], ' R', True)}, baisse {_txt(i['baisse_r'], ' R')}.")
+            continue
         # Correctif ET-11 (audit du 25/11/2026) : avant 60 jours de trade, un seuil dépassé disait « coupe le robot » (deux jours
         # perdants suffisaient). Les seuils se jugent sur 60 jours : avant, ce n'est qu'une indication.
         if not i["franchi"]:
@@ -390,8 +457,9 @@ def resume_lisible(r):
         else:
             verdict = "Au-delà du seuil pour l'instant : " + ", ".join(i["franchi"]) + " (à juger sur 60 jours de trade)."
         lignes.append(f"- Interrupteur {symbole}, sur ses {i['jours']} derniers jours de trade{'' if i['complet'] else ' (moins de 60 : indicatif)'} : "
-                      f"{_pct(i['jours_gagnants_pct'])} de jours gagnants (seuil 28 %), total {_txt(i['total_r'], ' R', True)} (seuil −40 R), "
-                      f"baisse {_txt(i['baisse_r'], ' R')} (seuil 66 R). " + verdict)
+                      f"{_pct(i['jours_gagnants_pct'])} de jours gagnants (seuil {_pct(seuils['jours_gagnants_min_pct'])}), "
+                      f"total {_txt(i['total_r'], ' R', True)} (seuil {_txt(seuils['total_min_r'], ' R', True)}), "
+                      f"baisse {_txt(i['baisse_r'], ' R')} (seuil {_txt(seuils['baisse_max_r'], ' R')}). " + verdict)
     lignes += ["", "Ces chiffres sont ceux d'un trimestre : assez pour mesurer l'exécution (glissement, spread), trop peu pour juger la stratégie.", ""]
     return "\n".join(lignes)
 
@@ -463,7 +531,7 @@ def _exporter(dossier, trimestre, aujourdhui=None):
     if entete_seances:
         _ecrire_csv(os.path.join(provisoire, "seances.csv"), entete_seances, seances)
     with open(os.path.join(provisoire, "resume.json"), "w", encoding="utf-8") as f:
-        json.dump(resume, f, ensure_ascii=False, indent=2)
+        json.dump(resume, f, ensure_ascii=False, indent=2, allow_nan=False)   # AUD-16 : jamais de NaN dans le JSON
     with open(os.path.join(provisoire, "resume.md"), "w", encoding="utf-8") as f:
         f.write(resume_lisible(resume))
     with open(os.path.join(provisoire, "colonnes.md"), "w", encoding="utf-8") as f:

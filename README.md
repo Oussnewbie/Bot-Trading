@@ -72,8 +72,8 @@ feront.
 
 | Test | Résultat |
 |---|---|
-| Nasdaq 2018-2026, spread réel + 1 point de glissement | +477 R, 47 % de trades gagnants, pire baisse −32 R, pire journée −5,1 R |
-| Nasdaq 2010-2017, coûts au poids d'aujourd'hui | +194 R, 44 % de trades gagnants, pire baisse −53 R ; avec les coûts au poids de 2018, +23 R seulement |
+| V10, Nasdaq 2018-2026, spread réel + 1 point de glissement | +477 R, 47 % de trades gagnants, pire baisse −32 R, pire journée −5,1 R |
+| V10, Nasdaq 2010-2017, coûts au poids d'aujourd'hui | +194 R, 44 % de trades gagnants, pire baisse −53 R ; avec les coûts au poids de 2018, +23 R seulement |
 | V10, Nasdaq + S&P 500, 2019-2026, 0,1 lot sur 1 000 $, historique ramené aux prix d'aujourd'hui | environ +9 200 $, 43 % de trades gagnants, pire journée −322 $, pire baisse −643 $ |
 | Testeur MetaTrader, NDX100, 20/11/2025 → 19/11/2026, 0,1 lot sur 1 000 $ (V10) | +1 885 $, 379 trades, 53 % de jours gagnants, pire jour −91 $, pire baisse −321 $ |
 | **V11**, testeur MetaTrader, NDX100 + SPX500, 01/01/2025 → 25/11/2026, 0,1 lot (deux passages de 10 000 $ additionnés) | **+3 405 $, 45 % de jours gagnants, pire jour −101 $, pire baisse −248 $** (V10 : +3 951 $, 47 %, −110 $, −360 $) |
@@ -87,7 +87,11 @@ feront.
 - Le glissement réel compte beaucoup : avec 3 points par exécution au lieu de 1, le gain baisse d'environ 37 % et la pire baisse double.
 - Le S&P 500 a été testé avec ces règles (prix du courtier 2019-2026, données déjà vues, et 12 mois dans le testeur) : il gagne
   nettement moins que le Nasdaq et dépend davantage des coûts. Le Dow Jones est exclu : testé tel quel, il ne gagne rien.
-- Le capital peut stagner longtemps : jusqu'à 20 mois sans nouveau plus haut dans les tests 2018-2026.
+- Le capital peut stagner longtemps : jusqu'à 20 mois sans nouveau plus haut sur le Nasdaq dans les tests 2018-2026. Sur le S&P 500,
+  la V11 rejouée (référence de l'onglet Risque, 2019 → 25/11/2026) n'a plus fait de nouveau plus haut depuis le 06/09/2023
+  (38 mois ; −5,7 R sous ce sommet à la fin).
+- Le gain tient à peu de jours : sur le Nasdaq, une vingtaine de journées de tendance font l'essentiel du total. Un jour manqué
+  (EA arrêté, MetaTrader fermé) peut coûter une bonne partie de l'année.
 
 ## Installer et lancer : un double-clic
 
@@ -176,9 +180,9 @@ pas (l'EA saute alors l'entrée).
 
 | Onglet | Contenu |
 |---|---|
-| Séance | La frise du jour (range, cassure, entrées D, repli B, sortie) avec l'heure de New York, une ligne par marché (ce que fait l'EA, résultat ouvert, bouton « Clôturer »), les chiffres du compte, la courbe, la liste des trades et les exports trimestriels. Une case par marché arrête les nouveaux trades. |
-| Risque | Risque par trade (de 0,05 % à 20 % ; au-delà de 1 %, il faut taper RISQUE) et levier du courtier. La simulation rejoue la V11 sur le Nasdaq et le S&P 500 (données du courtier 2019-2026, toutes les entrées) : gain par an, pire baisse, pire série et pire journée à ce risque. |
-| Connexions | Telegram, connexion à un compte MetaTrader, installation de l'EA et des deux graphiques, ouverture et fermeture de MetaTrader, lancement automatique. |
+| Séance | La frise du jour (range, cassure, entrées D, repli B, sortie) avec l'heure de New York, une ligne par marché (ce que fait l'EA, résultat ouvert, bouton « Clôturer »), l'interrupteur de chaque marché, les chiffres du compte, la courbe, la liste des trades et les exports trimestriels. Une case par marché arrête les nouveaux trades. Le bouton « Arrêt d'urgence », toujours visible, décoche les deux marchés et ferme tous les trades (mot ARRET) ; pour repartir, recoche les cases. |
+| Risque | Risque par trade (de 0,05 % à 1 %, plafond de l'EA et d'Étrave ; au-delà de 0,5 %, il faut taper RISQUE ; un réglage plus haut enregistré avant est ramené à 1 %) et levier du courtier. La simulation rejoue la V11 sur le Nasdaq et le S&P 500 (données du courtier 2019-2026, toutes les entrées) : gain par an, pire baisse, pire série et pire journée à ce risque. La taille estimée de chaque marché prévient si elle passe sous le lot minimum du courtier (aucun trade) ou si l'arrondi réduit nettement le risque. |
+| Connexions | Telegram, connexion à un compte MetaTrader, autorisation d'un compte réel (mot REEL : sans elle, l'EA ne trade pas sur un compte réel), installation de l'EA et des deux graphiques (refusée pendant un trade), ouverture et fermeture de MetaTrader, lancement automatique. Au double-clic, si l'EA ne compile pas, MetaTrader n'est pas lancé et la page le dit. |
 
 L'interface et l'EA se parlent par des fichiers du dossier commun de MetaTrader (`…\MetaQuotes\Terminal\Common\Files\Etrave` ;
 sur Mac, le même dossier dans le Wine de MetaTrader 5 pour Mac).
@@ -198,9 +202,16 @@ Après chaque trimestre (dates de New York), Étrave écrit tout seul `exports/<
 de l'interrupteur, marché par marché (ses seuils ont été calculés pour un marché). Le bouton « Exporter le trimestre en cours » le fait à la demande. Dans le testeur de stratégie, les journaux vont
 dans le sous-dossier `testeur\` et ne sont jamais exportés.
 
-Sur 60 jours de trade, coupe le robot et fais le point si l'un de ces seuils est franchi : moins de 28 % de jours gagnants, un total
-pire que −40 R, ou une baisse de plus de 66 R depuis le dernier plus haut. Ces seuils ont été calculés pour toutes les entrées à
-0,25 % ; ils ne sont pas codés dans le robot. En lots fixes sur 1 000 $, 1 R vaut environ 25 à 30 $ : −40 R serait le compte entier.
+Sur 60 jours de trade, marché par marché, coupe le robot et fais le point si l'un de ces seuils est franchi :
+
+| Marché | Jours gagnants | Total | Baisse depuis le dernier plus haut |
+|---|---|---|---|
+| Nasdaq 100 | moins de 26,7 % | pire que −14,5 R | plus de 23,9 R |
+| S&P 500 | moins de 18,3 % | pire que −44,8 R | plus de 48,6 R |
+
+Ces seuils valent 1,25 fois la pire fenêtre de 60 jours de la V11 rejouée (5 points de moins pour les jours gagnants) : ils viennent
+de données déjà vues, ce ne sont pas des preuves. Étrave les vérifie toutes les 10 minutes, les affiche dans l'onglet Séance et
+t'envoie un message Telegram au premier franchissement. Elle ne coupe pas le robot : c'est ta décision.
 
 ## Limites connues
 
@@ -214,10 +225,17 @@ pire que −40 R, ou une baisse de plus de 66 R depuis le dernier plus haut. Ces
   surveillé par l'EA (un envoi bloque l'EA jusqu'à 3 secondes).
 - **EA en marche obligatoire** : sorties, stop au prix d'entrée et filet de sécurité ne fonctionnent que si l'EA tourne, d'où le VPS.
 - **Ordres en attente** : ne supprime pas à la main les ordres stop de l'EA ; 10 secondes après leur disparition, il renonce au trade.
-- **EA lancé en retard** : après 9:35, si le prix a déjà franchi le niveau, l'EA entre au marché, avec plus de glissement, et renonce si
-  le risque réel dépasserait 1,25 R.
-- **Heure du serveur** : détectée par l'EA à partir de l'horloge de l'ordinateur. Une horloge ou un fuseau faux décalerait le range :
-  laisse l'ordinateur régler son heure tout seul. Le panneau affiche l'heure de New York à vérifier.
+- **EA lancé en retard** : lancé entre 9:35 et 9:40, il prépare encore le range ; si le prix a déjà franchi le niveau, il entre au
+  marché, avec plus de glissement, et renonce si le risque réel dépasserait 1,25 R. Lancé après 9:40, le jour est perdu : message
+  « JOUR MANQUÉ », pas d'entrée tardive (jamais testée).
+- **Compte réel** : l'EA ne prend aucun trade sur un compte réel tant que son numéro n'est pas autorisé dans Étrave (« Autoriser ce
+  compte réel », mot REEL). Un compte démo trade toujours. L'état de l'EA (règle mémoire, statistiques) est propre à chaque compte.
+- **Un seul graphique par marché** : posé sur un deuxième graphique du même symbole, l'EA refuse de démarrer.
+- **Stop vérifié** : chaque minute, l'EA relit le stop de ses positions chez le courtier ; s'il manque, il le repose ou ferme la
+  position, avec une alerte.
+- **Heure du serveur** : détectée par l'EA à partir de l'horloge de l'ordinateur, puis comparée au réglage « Décalage GMT du serveur »
+  (GMT+2 en hiver chez TradinGlobal). S'ils ne concordent pas (horloge décalée de plus de 30 min, ou courtier à une autre heure),
+  pas de trade et une alerte : laisse l'ordinateur régler son heure tout seul. Le panneau affiche l'heure de New York à vérifier.
 - **Un seul MetaTrader avec l'EA par ordinateur** : deux terminaux partagent les réglages d'Étrave, et un « Clôturer » fermerait les deux.
 - **Fermetures exceptionnelles** de la Bourse (deuil national, panne) : absentes du calendrier, la position passerait la fermeture.
 - **Arrêt brutal** : après un plantage, un ordre stop peut rester chez le courtier jusqu'à son expiration (9:45, ou la fin de la

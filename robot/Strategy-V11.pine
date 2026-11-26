@@ -305,9 +305,10 @@ if barstate.isfirst
 isFomc(int d) =>
     array.includes(FOMC, d) or array.includes(fomcX, d)
 
-// Marchés autorisés (verrou du 25/11/2026) : Nasdaq 100 et S&P 500, comme l'EA (MarcheAutorise)
+// Marchés autorisés (verrou du 25/11/2026) : Nasdaq 100 et S&P 500, comme l'EA (MarcheAutorise).
+// AUD-28 (audit du 26/11/2026) : exactement la même liste que InstrumentOf de l'EA (un test compare les deux).
 string tkU = str.upper(syminfo.ticker)
-bool marcheOk = str.contains(tkU, "NAS") or str.contains(tkU, "NDX") or str.contains(tkU, "NQ") or str.contains(tkU, "USTEC") or str.contains(tkU, "US100") or str.contains(tkU, "TECH100") or str.contains(tkU, "SPX") or str.contains(tkU, "SP500") or str.contains(tkU, "US500") or str.contains(tkU, "USA500") or str.startswith(tkU, "ES1")
+bool marcheOk = str.contains(tkU, "NAS") or str.contains(tkU, "NDX") or str.contains(tkU, "NQ") or str.contains(tkU, "USTEC") or str.contains(tkU, "US100") or str.contains(tkU, "USATECH") or str.contains(tkU, "TECH100") or str.contains(tkU, "SPX") or str.contains(tkU, "SP500") or str.contains(tkU, "US500") or str.contains(tkU, "USA500") or str.contains(tkU, "S&P") or str.contains(tkU, "SPI500") or str.startswith(tkU, "ES1")
 if not marcheOk
     runtime.error("Strategy V11 : ce script ne trade que le Nasdaq 100 et le S&P 500 (" + syminfo.ticker + " refusé).")
 
@@ -773,7 +774,7 @@ openLegStop(string nm, int d, float trig, float stop, float inval, float q, bool
          risk = math.abs(trig - stop), qty = q, usd = v8.usd, fillBar = bar_index + 1, tFill = time_close, col = C_LD, usePyr = pyrOk, pend = true, expBar = bar_index + nBars, inval = inval, rsl = stop)
     strategy.entry(g.id, d == 1 ? strategy.long : strategy.short, qty = q, stop = trig, comment = nm + " continuation")
     strategy.exit("X" + g.id, from_entry = g.id, stop = slOrdre, comment_loss = "Stop", comment_profit = "Stop")
-    float  lots = legLots(g.risk)
+    float  lots = math.min(legLots(g.risk), legLots(math.abs(trig - slOrdre)))   // AUD-12 : lot plafonné comme dans l'EA (EX-2)
     string sens = d == 1 ? "ACHAT " : "VENTE "
     if showOrders
         int x2 = time_close + nBars * BAR
@@ -1087,6 +1088,12 @@ if v8On
     if useD and kA >= 0 and kA < dCount and not inFlat and not na(cur) and openQtyOf(0) > 0 and bar_index >= v8.breakBar and high > low and not v8.stopHit   // V10 : pas si l'autre bord du range a été touché
         if na(array.get(legD, kA))
             float qD = legQty(stopMult * (high - low))
+            // AUD-12 (audit du 26/11/2026), comme EX-2 dans l'EA : le risque réel d'une D (de son niveau à l'entrée de A, son stop
+            // posé) ne dépasse pas celui de la cassure ; trop loin de l'entrée de A pour la plus petite taille : pas de D.
+            float trigD = v8.dir == 1 ? high : low
+            float distA = math.abs(trigD - cur.entry)
+            float capD  = distA > 0 and not na(v8.usd) ? math.floor(v8.usd / (distA * syminfo.pointvalue * fx) / qtyStep + 0.000001) * qtyStep : 0.0
+            qD := math.min(qD, capD)
             // V11 : une continuation n'existe que si son niveau est au-delà de l'entrée de A (son stop est l'entrée de A)
             if qD > 0 and (v8.dir == 1 ? high > cur.entry : low < cur.entry)
                 array.set(legD, kA, openLegStop("D" + str.tostring(kA + 1), v8.dir, v8.dir == 1 ? high : low, v8.dir == 1 ? high - stopMult * (high - low) : low + stopMult * (high - low), v8.dir == 1 ? low : high, qD, dPyr, dValid, cur.entry))

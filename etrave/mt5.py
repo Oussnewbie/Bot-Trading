@@ -286,6 +286,35 @@ def controler(login, mot_de_passe, serveur):
     return login.strip(), mot_de_passe, serveur.strip()
 
 
+def journal(message):
+    """Où vont les messages de ce module. Étrave le remplace par son journal daté (main dans etrave.py)."""
+    print(message, file=sys.stderr, flush=True)
+
+
+# AUD-27 (audit du 26/11/2026) : fichiers de connexion (mot de passe en clair) qu'on n'a pas pu effacer. L'échec était avalé ;
+# il est écrit dans le journal, et ces fichiers sont réessayés au lancement suivant (et au démarrage d'Étrave), quel que soit
+# leur âge.
+_A_EFFACER = set()
+_VERROU_EFFACER = threading.Lock()
+
+
+def _effacer_connexion(fichier):
+    """Efface un fichier de connexion. True s'il n'existe plus ; sinon journalise (jamais le mot de passe) et le retient."""
+    try:
+        os.remove(fichier)
+    except FileNotFoundError:
+        pass
+    except OSError as erreur:
+        with _VERROU_EFFACER:
+            _A_EFFACER.add(fichier)
+        journal(f"Fichier de connexion à MetaTrader pas effacé ({type(erreur).__name__}) : {fichier}. Il contient le mot de passe "
+                "du compte : nouvel essai au prochain lancement de MetaTrader depuis Étrave ; s'il reste, efface-le à la main.")
+        return False
+    with _VERROU_EFFACER:
+        _A_EFFACER.discard(fichier)
+    return True
+
+
 def effacer_connexions_oubliees(dossier=None, maintenant=None):
     """Efface les fichiers de connexion (mot de passe en clair) qu'un arrêt brutal d'Étrave a laissés dans le dossier temporaire.
 
@@ -295,13 +324,21 @@ def effacer_connexions_oubliees(dossier=None, maintenant=None):
     dossier = tempfile.gettempdir() if dossier is None else dossier
     maintenant = time.time() if maintenant is None else maintenant
     effaces = 0
+    with _VERROU_EFFACER:
+        a_reessayer = sorted(_A_EFFACER)
+    for fichier in a_reessayer:                                 # AUD-27 : les échecs précédents d'abord, quel que soit leur âge
+        if os.path.exists(fichier) and _effacer_connexion(fichier):
+            effaces += 1
+        elif not os.path.exists(fichier):
+            with _VERROU_EFFACER:
+                _A_EFFACER.discard(fichier)
     for fichier in glob.glob(os.path.join(dossier, "etrave-*.ini")):
         try:
-            if maintenant - os.path.getmtime(fichier) >= EFFACER_APRES_S:
-                os.remove(fichier)
-                effaces += 1
-        except OSError:
-            pass
+            vieux = maintenant - os.path.getmtime(fichier) >= EFFACER_APRES_S
+        except OSError:                                         # déjà effacé entre-temps
+            continue
+        if vieux and _effacer_connexion(fichier):
+            effaces += 1
     return effaces
 
 
@@ -336,10 +373,7 @@ def lancer(chemin, connus, identifiants=None, ouvert=False, systeme=sys.platform
         commande.append(f"/config:{chemin_windows(fichier) if mac else fichier}")
 
         def effacer():
-            try:
-                os.remove(fichier)
-            except OSError:
-                pass
+            _effacer_connexion(fichier)                         # AUD-27 : un échec est journalisé et réessayé, plus avalé
         # Sans mot de passe (profil seul), le fichier reste jusqu'au prochain nettoyage (effacer_connexions_oubliees) : effacé à la
         # sortie d'Étrave, il disparaissait avant que MetaTrader le lise quand le double-clic trouvait Étrave déjà lancée.
         if verifies is not None:

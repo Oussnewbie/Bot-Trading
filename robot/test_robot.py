@@ -637,3 +637,197 @@ def test_etiquettes_v11():
     """26/11/2026 : la version, l'état lu par Étrave, la raison des trades et le panneau disaient encore « V10 »."""
     for texte in ('#property version     "11.00"', 'Kv(h, "ea", "11.00");', 'string w = "V11 " + g.nom', '"Entrées V11 : "'):
         assert texte in EA, texte
+
+
+# ───────────────────────── audit du 26/11/2026 (AUD-xx) ─────────────────────────
+def mql_round(x):
+    """MathRound de MQL5 : la moitié s'éloigne de zéro."""
+    return math.floor(x + 0.5) if x >= 0 else -math.floor(-x + 0.5)
+
+
+def horloge(avance_min, srv_gmt_h=2, dst=False):
+    """Copie en Python de DetecterHeureServeur() + CheckClock() (détection automatique) : l'horloge de l'ordinateur est en
+    avance de `avance_min` minutes sur l'heure vraie ; le serveur est réellement à GMT+srv_gmt_h (+1 h en été).
+    Renvoie (heure du serveur jugée bonne, écart annoncé en minutes : positif = horloge de l'ordinateur en avance)."""
+    vrai = (srv_gmt_h + (1 if dst else 0)) * 3600
+    brut = vrai - avance_min * 60                  # TimeTradeServer() - TimeGMT() : l'ordinateur en avance réduit l'écart
+    reel = mql_round(brut / 3600.0) * 3600
+    base = reel - (3600 if dst else 0)
+    attendu = srv_gmt_h * 3600 + (3600 if dst else 0)
+    decalage = base + (3600 if dst else 0)         # ServerOffsetSec avec la base détectée
+    ok = abs(brut - decalage) <= 1800 and base == srv_gmt_h * 3600
+    return ok, round((attendu - brut) / 60)
+
+
+def test_aud03_horloge_decalee_d_une_heure_bloque_le_trading():
+    """AUD-03 : avec une horloge d'ordinateur décalée de 50 à 70 min, la détection prenait la bougie de 8:30 ou de 10:30 sans
+    alerte : CheckClock comparait la détection à elle-même. Elle doit concorder avec le décalage réglé (InpSrvGMT)."""
+    for avance in (40, 50, 60, 70, 80, -40, -60, -80):
+        assert horloge(avance)[0] is False, avance
+        assert horloge(avance, dst=True)[0] is False, avance
+    for avance in (0, 10, 20, 29, -20, -29):
+        assert horloge(avance)[0] is True, avance
+    clock = fonction("void CheckClock()")
+    assert "InpSrvAuto && gSrvBaseOk && gSrvBaseSec != (long)InpSrvGMT * 3600" in clock
+    assert clock.index("DetecterHeureServeur();") < clock.index("gSrvBaseSec != (long)InpSrvGMT * 3600")
+
+
+def test_aud04_ecart_de_l_horloge_annonce_par_rapport_a_l_heure_attendue():
+    """AUD-04 : à +40 min, le message disait « décalée de 20 min » (écart à l'heure pleine la plus proche)."""
+    assert horloge(40)[1] == 40 and horloge(80)[1] == 80 and horloge(30)[1] == 30 and horloge(-25)[1] == -25
+    det = fonction("void DetecterHeureServeur()")
+    assert "long attendu = (long)InpSrvGMT * 3600 + (dst ? 3600 : 0);" in det
+    assert "(attendu - brut) / 60.0" in det and '"en avance"' in det and '"en retard"' in det
+
+
+def compte_autorise(testeur, demo, login, fichier):
+    """Copie en Python de CompteAutorise()."""
+    if testeur or demo:
+        return True
+    return login > 0 and login == fichier
+
+
+def test_aud01_compte_reel_jamais_trade_sans_autorisation():
+    """AUD-01 : le double-clic lançait le trading automatique sur le compte enregistré, réel compris, sans contrôle."""
+    assert compte_autorise(True, False, 123, 0) and compte_autorise(False, True, 123, 0)
+    assert not compte_autorise(False, False, 123, 0)
+    assert not compte_autorise(False, False, 123, 456) and not compte_autorise(False, False, 0, 0)
+    assert compte_autorise(False, False, 123, 123)
+    f = fonction("bool CompteAutorise()")
+    assert "MQLInfoInteger(MQL_TESTER)" in f and "ACCOUNT_TRADE_MODE_DEMO" in f
+    assert "return login > 0 && login == gReelAutorise;" in f
+    setup = corps("Setup")
+    garde = setup.index("if(!CompteAutorise())")
+    assert setup.index("if(!gClockOk)") < garde < setup.index("gObserve   = true;") < setup.index("PlaceStop(1)")
+    assert 'k == "reel_autorise"' in fonction("void ReadSettings()")
+    assert 'Kv(h, "compte_autorise", CompteAutorise() ? "1" : "0");' in fonction("void WriteState()")
+    entrees = fonction("void CheckEntries()")
+    assert entrees.index("if(!CompteAutorise())") < entrees.index("trade.Buy(gLots")
+    assert "InpCompteReel" not in EA                     # rien à régler dans MetaTrader : l'autorisation vient d'Étrave
+
+
+def test_aud02_l_etat_appartient_a_un_compte():
+    """AUD-02 : l'état (règle mémoire, jour, trade ouvert, statistiques) d'un compte démo était relu tel quel sur un compte réel."""
+    charge = fonction("void ChargerEtatDuCompte()")
+    assert "if(login <= 0)\n      return;" in charge                      # compte pas encore connu au démarrage : réessayé
+    assert "(long)lu == login || (lu == 0 && demo)" in charge and "LoadState();" in charge
+    assert "GlobalVariablesDeleteAll(GV);" in charge and 'Sv("login", (double)login);' in charge
+    assert 'Sv("login", (double)AccountInfoInteger(ACCOUNT_LOGIN));' in fonction("void SaveState()")
+    assert "if(MQLInfoInteger(MQL_TESTER) || !gEtatCharge)\n      return;" in fonction("void SaveState()")
+    init = fonction("int OnInit()")
+    assert "ChargerEtatDuCompte();" in init and "      LoadState();\n" not in init
+    tick = fonction("void OnTick()")
+    assert tick.index("if(!gEtatCharge)") < tick.index("SyncPosition();")
+
+
+def test_aud05_risque_plafonne_a_1_pct():
+    """AUD-05 : jusqu'à 20 % par trade était accepté (ruine possible selon la marge) ; au-delà du plafond, ramené au plafond."""
+    assert re.search(r"#define RISK_MAX\s+1\.0\b", EA)
+    lecture = fonction("void ReadSettings()")
+    assert "risk = MathMin(x, RISK_MAX);" in lecture
+    assert "double risk   = MathMin(InpRiskPct, RISK_MAX);" in lecture
+
+
+def test_aud06_pas_de_renvoi_tant_que_l_historique_n_a_pas_ete_relu():
+    """AUD-06 : après une réponse perdue, l'ordre A repartait au bout de 3 s si la position n'était pas encore visible."""
+    trouve = fonction("bool EntreeATrouvee(datetime depuis)")
+    assert "HistorySelect(" in trouve and "DEAL_ENTRY_IN" in trouve and "HistoryOrdersTotal()" in trouve and "OrdersTotal()" in trouve
+    entrees = fonction("void CheckEntries()")
+    assert entrees.index("GetTickCount() - gAmbigMs < 3000") < entrees.index("EntreeATrouvee(gAmbigT)") < entrees.index("trade.Buy(gLots")
+    assert "gAmbigT = TimeCurrent();" in entrees
+
+
+def test_aud06_doublon_de_a_ferme_et_pas_pris_pour_une_pyramide():
+    """AUD-06 : deux positions A de même taille ouvertes à quelques secondes d'écart passaient pour une pyramide."""
+    doublon = fonction("int FermerDoublonsA()")
+    assert "POSITION_TIME_MSC" in doublon and "DOUBLON_S" in doublon and "trade.PositionClose(" in doublon
+    assert "MathAbs(vol - volRef) < step / 2" in doublon
+    sync = fonction("void SyncPosition()")
+    assert sync.index("FermerDoublonsA() > 0") < sync.index("gPyr     = CountPos(gDir) > 1;")
+    tick = fonction("void OnTick()")
+    assert "FermerDoublonsA();" in tick
+
+
+def test_aud07_ordre_stop_deja_pose_repris_a_la_relance():
+    """AUD-07 : relancé pendant la bougie de 9:35 avant l'écriture de l'état, l'EA reposait les deux ordres stop."""
+    pose = fonction("bool PlaceStop(int d)")
+    assert pose.index("if(HasPending(d))\n      return true;") < pose.index("trade.BuyStop(")
+    setup = corps("Setup")
+    assert setup.index("GlobalVariablesFlush();") < setup.index("PlaceStop(1)")
+
+
+def test_aud08_stop_du_courtier_relu_chaque_minute():
+    """AUD-08 : une position sans stop chez le courtier n'était jamais repérée."""
+    verif = fonction("void VerifierStops()")
+    assert "PositionGetDouble(POSITION_SL) > 0" in verif and "trade.PositionModify(" in verif and "trade.PositionClose(" in verif
+    assert "mg < InpMagic || mg > InpMagic + 2 + D_MAX" in verif
+    tick = fonction("void OnTick()")
+    assert tick.index("TimeCurrent() - sweepAt >= 60") < tick.index("VerifierStops();") < tick.index("CloseOrphans(")
+
+
+def test_aud11_un_seul_graphique_par_symbole():
+    """AUD-11 : la V11 posée sur deux graphiques du même symbole doublait le risque et partageait le même état."""
+    init = fonction("int OnInit()")
+    assert "if(!PrendreVerrou())" in init and "INIT_FAILED" in init[init.index("if(!PrendreVerrou())"):]
+    verrou = fonction("bool PrendreVerrou()")
+    assert "GlobalVariableSetOnCondition(" in verrou and "GlobalVariableTemp(" in verrou and "VERROU_MUET_S" in verrou
+    assert "RelacherVerrou();" in fonction("void OnDeinit(const int reason)")
+    assert "BattreVerrou();" in fonction("void OnTimer()")
+
+
+def test_aud17_jour_manque_signale():
+    """AUD-17 : EA lancé ou relancé après la bougie de 9:35 : le jour disparaissait sans message."""
+    barre = fonction("void OnNewBar()")
+    assert "JOUR MANQUÉ" in barre and "NYMin(ny1) > mOR" in barre and "gManque != NYDate(ny1)" in barre
+
+
+def test_aud18_jambe_inconnue_de_l_etat_reprise():
+    """AUD-18 : une jambe B/D marquée refusée ou perdue alors que sa position existe restait sans gestion jusqu'à 15:51."""
+    tick = fonction("void LegOnTick(SLeg &g)")
+    assert tick.index("if(!g.enPos && has)") < tick.index("if(g.enPos && !has)")
+    adopt = fonction("void LegAdopt(SLeg &g)")
+    assert "POSITION_PRICE_OPEN" in adopt and "POSITION_SL" in adopt and "g.enPos = true;" in adopt and "LegSave(g);" in adopt
+
+
+def test_aud20_cloture_demandee_reessayee():
+    """AUD-20 : si la clôture demandée et le balayage de 10 s étaient refusés, plus aucun essai jusqu'à 15:51."""
+    tick = fonction("void OnTick()")
+    assert "if(sweepUi && nS > 0)" in tick and "gSweepAllAt = TimeCurrent() + 10;" in tick
+    assert "CLÔTURE PAS ENCORE FAITE" in tick
+
+
+def test_aud22_version_compilee_publiee():
+    assert 'Kv(h, "ea_build", TimeToString(__DATETIME__, TIME_DATE | TIME_SECONDS));' in fonction("void WriteState()")
+
+
+def test_aud23_pas_d_essai_telegram_pendant_un_trade():
+    lecture = fonction("void ReadSettings()")
+    assert "(gPend || gSetupDue || gIn || OpenLegs() > 0 || EnvoiDiffere())" in lecture
+
+
+def test_aud24_lot_minimum_et_pas_publies():
+    etat = fonction("void WriteState()")
+    for cle in ("lot_min", "lot_pas", "valeur_point_lot", "prix"):
+        assert f'Kd(h, "{cle}"' in etat, cle
+
+
+def marches_du_code(texte, motif):
+    return set(re.findall(motif, texte))
+
+
+def test_aud28_meme_liste_de_marches_dans_l_ea_et_le_script():
+    """AUD-28 : « USATECHIDXUSD » ou « ES1! » étaient acceptés par l'un et refusés par l'autre."""
+    ea = marches_du_code(fonction("string InstrumentOf(string sym)"), r'StringFind\(s, "([A-Z0-9&]+)"\)')
+    pine_ligne = PINE[PINE.index("bool marcheOk ="):PINE.index("\n", PINE.index("bool marcheOk ="))]
+    pine = marches_du_code(pine_ligne, r'str\.(?:contains|startswith)\(tkU, "([A-Z0-9&]+)"\)')
+    assert ea == pine, (ea ^ pine)
+    assert 'StringFind(s, "ES1") == 0' in fonction("string InstrumentOf(string sym)") and 'str.startswith(tkU, "ES1")' in pine_ligne
+
+
+def test_aud12_le_script_plafonne_le_risque_reel_des_d_comme_l_ea():
+    """AUD-12 : l'EA plafonne le risque réel d'une D (jusqu'à l'entrée de A) à celui de la cassure (EX-2) ; le Pine prenait toute
+    la taille, et une D étroite loin de l'entrée de A risquait plus que la cassure."""
+    assert "float capD  = distA > 0 and not na(v8.usd) ? math.floor(v8.usd / (distA * syminfo.pointvalue * fx) / qtyStep + 0.000001) * qtyStep : 0.0" in PINE
+    assert "qD := math.min(qD, capD)" in PINE
+    assert PINE.index("qD := math.min(qD, capD)") < PINE.index("if qD > 0 and (v8.dir == 1 ? high > cur.entry : low < cur.entry)")
+    assert "float  lots = math.min(legLots(g.risk), legLots(math.abs(trig - slOrdre)))" in PINE
