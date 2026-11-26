@@ -34,6 +34,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import export  # noqa: E402
+import fin_de_journee  # noqa: E402
 import mt5  # noqa: E402
 import pont  # noqa: E402
 import risque  # noqa: E402
@@ -53,6 +54,8 @@ EXPORT_PERIODE_S = 6 * 3600
 # AUD-09 (audit du 26/11/2026) : l'interrupteur (export.interrupteurs, seuils par marché) vérifié toutes les 10 minutes par une
 # minuterie de main, jamais à chaque appel de la page ; un franchissement déjà annoncé sur Telegram est retenu dans ce fichier.
 INTERRUPTEUR_PERIODE_S = 10 * 60
+# Fin de journée (27/11/2026) : chaque minute, Étrave regarde si la séance est close pour lancer l'outil vidéo (fin_de_journee.py).
+VIDEO_PERIODE_S = 60
 FICHIER_INTERRUPTEUR = "interrupteur.txt"
 # AUD-22 (audit du 26/11/2026) : double-clic dont l'installation ou la compilation de l'EA a échoué (MetaTrader pas lancé). Un
 # fichier du dossier d'Étrave, pas une variable : le double-clic, Étrave déjà lancée, passe par un autre processus que la page.
@@ -84,7 +87,7 @@ class Application:
     """Les routes de l'interface, sans le transport HTTP (les tests l'appellent directement)."""
 
     def __init__(self, dossier, appel_telegram=None, mt5_ouvert=None, mt5_lancer=None, mt5_installer=None, mt5_demarrage=None,
-                 mt5_fermer=None, mt5_terminaux=None, journal=None):
+                 mt5_fermer=None, mt5_terminaux=None, journal=None, video_lancer=None, video_dossier=None, video_python=None):
         self.dossier = dossier
         self.appel_telegram = appel_telegram or telegram.appeler
         self._mt5_ouvert = mt5_ouvert or mt5.est_ouvert
@@ -98,6 +101,12 @@ class Application:
         self._interrupteur = None                       # AUD-09 : dernière vérification (verifier_interrupteur)
         self._interrupteur_annonce = set()              # franchissements déjà écrits dans le journal par ce processus
         self._verrou_interrupteur = threading.Lock()
+        # Fin de journée : l'outil vidéo installé, lancé une fois par jour quand la séance est close (injectés par les tests)
+        self._video_lancer = video_lancer or fin_de_journee.lancer
+        self._video_dossier = video_dossier or fin_de_journee.dossier_outil_video()
+        self._video_python = video_python
+        self._video_attente = ""
+        self._verrou_video = threading.Lock()
 
     # ── ce que la page affiche
     def etat(self):
@@ -110,7 +119,49 @@ class Application:
             "lancement": self.lancement(self._mt5_terminaux(etats)),
             # AUD-09 : la dernière vérification de l'interrupteur (None avant la première), par symbole et avec son marché
             "interrupteur": self._interrupteur,
+            "video": self.video(),
         }
+
+    # ── fin de journée : l'outil vidéo (demande de l'utilisateur du 27/11/2026)
+    def video(self):
+        return {"installe": fin_de_journee.installe(self._video_dossier), "derniere": fin_de_journee.derniere(self.dossier),
+                "attente": self._video_attente}
+
+    def verifier_fin_de_journee(self, etats=None, maintenant=None):
+        """Lance l'outil vidéo une fois par jour de New York, quand la séance est close (fin_de_journee.pret). Retourne True s'il
+        vient d'être lancé. Ne lève jamais d'erreur : la tâche programmée de l'outil vidéo reste en secours."""
+        with self._verrou_video:
+            try:
+                etats = pont.lire_etats(self.dossier) if etats is None else etats
+                if not fin_de_journee.installe(self._video_dossier):
+                    self._video_attente = "outil vidéo pas installé"
+                    return False
+                jour = fin_de_journee.heure_ny(maintenant).date().isoformat()
+                deja = fin_de_journee.derniere(self.dossier)
+                if deja and deja["jour"] == jour:
+                    self._video_attente = ""
+                    return False
+                pret, attente = fin_de_journee.pret(etats, self.dossier, maintenant)
+                self._video_attente = attente
+                if not pret:
+                    return False
+                heure = fin_de_journee.heure_ny(maintenant).strftime("%H:%M")
+                commande = fin_de_journee.commande(self._video_dossier, self._video_python or fin_de_journee.python_outil_video())
+                env = dict(os.environ, HYPERFRAMES_NO_TELEMETRY="1", HYPERFRAMES_NO_UPDATE_CHECK="1")
+                # retenu AVANT le lancement : un échec ne relance pas chaque minute (la tâche de 22:20 réessaiera)
+                fin_de_journee.retenir(self.dossier, jour, heure, "lancee")
+                try:
+                    self._video_lancer(commande, os.path.join(self._video_dossier, "recap-auto.log"), env)
+                except OSError as erreur:
+                    fin_de_journee.retenir(self.dossier, jour, heure, "echec")
+                    self.journal(f"outil vidéo pas lancé ({type(erreur).__name__}) : la tâche programmée de 22:20 réessaiera")
+                    return False
+                self._video_attente = ""
+                self.journal(f"séance close : outil vidéo lancé ({heure} New York)")
+                return True
+            except Exception as erreur:   # jamais de plantage d'Étrave pour la vidéo
+                self.journal(f"fin de journée : vérification impossible ({type(erreur).__name__})")
+                return False
 
     def verifier_interrupteur(self, aujourdhui=None):
         """AUD-09 : les trois mesures de l'interrupteur sur les 60 derniers jours de trade de chaque marché (journaux
@@ -596,6 +647,15 @@ def main(arguments=None):
     interrupteur = threading.Timer(8.0, verifier_interrupteur_puis_reprogrammer)
     interrupteur.daemon = True
     interrupteur.start()
+
+    def verifier_fin_de_journee_puis_reprogrammer():    # chaque minute : séance close, vidéo du jour lancée une fois
+        serveur.application.verifier_fin_de_journee()
+        minuterie = threading.Timer(VIDEO_PERIODE_S, verifier_fin_de_journee_puis_reprogrammer)
+        minuterie.daemon = True
+        minuterie.start()
+    fin_journee = threading.Timer(12.0, verifier_fin_de_journee_puis_reprogrammer)
+    fin_journee.daemon = True
+    fin_journee.start()
     try:
         serveur.serve_forever()
     except KeyboardInterrupt:

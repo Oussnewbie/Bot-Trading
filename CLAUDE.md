@@ -190,6 +190,14 @@ video/     (branche communication/outil-video) vidéos TikTok : récap de séanc
   MetaTrader » refusé aussi sur le dernier état connu d'un EA muet (mot FERMER pour passer outre) ; « Installer l'EA » refusé
   pendant un trade ; au double-clic, MetaTrader n'est pas lancé si la compilation a échoué (`lancement.json`) ; version compilée
   (`ea_build`) affichée ; taille estimée et lot minimum dans l'onglet Risque (`risque.estimer_taille`) ; valeurs non finies refusées.
+- **Vidéo de fin de journée** (`etrave/fin_de_journee.py`, demande de l'utilisateur du 27/11/2026 : « lancé en fin de journée quand
+  tout est clôturé ») : chaque minute, Étrave regarde si la séance est close (au moins 5 min après `sortie_ny`, aucun trade, ordre ou
+  jambe dans le dernier état de chaque EA, ligne « fin » du jour écrite par chaque EA en marche), puis lance une fois par jour de New
+  York `outil.py auto` de l'outil vidéo installé (`~/Library/Application Support/Etrave/outil-video`, même dossier et même Python
+  que `video/installation.py` ; un test le vérifie sur la branche de l'outil). Commande fixe en liste, sans shell, processus détaché,
+  sortie dans `recap-auto.log`, jour retenu dans `video-fin-de-journee.txt` (avant le lancement : un échec n'est pas relancé chaque
+  minute). La tâche programmée de l'outil (22:20 et 23:50) reste en secours. `/api/etat` renvoie `video` (installé, dernier
+  lancement, ce qu'on attend).
 - **Revues de code** : les constats corrigés portent leur numéro (EA-xx, X-xx, PINE-xx, ET-xx, VID-xx) dans un commentaire du code et
   un contrôle (`robot/test_robot.py`, `etrave/test_*.py`, `video/test_video.py`). Avant de déclarer un constat réglé, vérifie le code.
   - **Corrigés le 25/11/2026** : X-13 (stop des D compté depuis le déclenchement, comme le Pine et le simulateur ; testeur 12 mois
