@@ -4,6 +4,7 @@
     python etrave/etrave.py                 démarre et ouvre la page dans le navigateur
     python etrave/etrave.py --port 8790     autre port (8788 par défaut)
     python etrave/etrave.py --sans-navigateur
+    python etrave/etrave.py --tout          ouvre aussi MetaTrader 5 (Mac : double-clic sur etrave/Etrave.command)
 
 Aucune dépendance : Python 3.8 ou plus récent suffit. L'interface ne passe aucun ordre : elle écrit des réglages et des
 demandes que l'EA lit (voir pont.py). La fermer ne change rien à l'EA ni à ses alertes.
@@ -62,13 +63,16 @@ class Erreur(Exception):
 class Application:
     """Les routes de l'interface, sans le transport HTTP (les tests l'appellent directement)."""
 
-    def __init__(self, dossier, appel_telegram=None, mt5_ouvert=None, mt5_lancer=None, mt5_installer=None, mt5_demarrage=None, journal=None):
+    def __init__(self, dossier, appel_telegram=None, mt5_ouvert=None, mt5_lancer=None, mt5_installer=None, mt5_demarrage=None,
+                 mt5_fermer=None, mt5_terminaux=None, journal=None):
         self.dossier = dossier
         self.appel_telegram = appel_telegram or telegram.appeler
         self._mt5_ouvert = mt5_ouvert or mt5.est_ouvert
         self._mt5_lancer = mt5_lancer or mt5.lancer
         self._mt5_installer = mt5_installer or mt5.installer_ea
         self._mt5_demarrage = mt5_demarrage or mt5.demarrage_windows
+        self._mt5_fermer = mt5_fermer or mt5.fermer
+        self._mt5_terminaux = mt5_terminaux or mt5.terminaux
         self.journal = journal or (lambda message: None)
         self._ouvert = (0.0, None)
 
@@ -88,32 +92,45 @@ class Application:
         if time.time() - quand > MT5_OUVERT_CACHE_S:
             ouvert = self._mt5_ouvert()
             self._ouvert = (time.time(), ouvert)
-        connus = mt5.terminaux(etats)
+        connus = self._mt5_terminaux(etats)
         return {
             "windows": sys.platform.startswith("win"),
+            "mac": mt5.est_mac(),
+            "pilotable": mt5.pilotable(),
             "ouvert": True if en_marche else ouvert,
             "terminaux": [{"id": i, "dossier": os.path.basename(os.path.dirname(chemin))} for i, chemin in enumerate(connus)],
             "demarrageWindows": bool(mt5.fichier_demarrage() and os.path.exists(mt5.fichier_demarrage())),
         }
 
     def _terminal(self, corps, etats):
-        connus = mt5.terminaux(etats)
+        connus = self._mt5_terminaux(etats)
         choix = corps.get("terminal", 0)
         chemin = connus[choix] if isinstance(choix, int) and not isinstance(choix, bool) and 0 <= choix < len(connus) else None
         return chemin, connus
 
-    def ouvrir_mt5_si_demande(self):
-        """Au démarrage d'Étrave : ouvre MetaTrader s'il est fermé et que l'option est cochée. Ne lève jamais d'erreur."""
+    def ouvrir_mt5_si_demande(self, forcer=False):
+        """Au démarrage d'Étrave : ouvre MetaTrader s'il est fermé et que l'option est cochée (ou `forcer`, double-clic sur
+        Etrave.command). Sur Mac, met d'abord à jour l'EA s'il a changé dans le dépôt (le profil « Etrave-demo » avec).
+        Ne lève jamais d'erreur."""
         try:
-            if not pont.reglages_publics(self.dossier)["mt5Auto"] or self._mt5_ouvert() is not False:
+            publics = pont.reglages_publics(self.dossier)
+            if not (forcer or publics["mt5Auto"]) or self._mt5_ouvert() is not False:
                 return False
-            connus = mt5.terminaux(pont.lire_etats(self.dossier))
+            connus = self._mt5_terminaux(pont.lire_etats(self.dossier))
             if not connus:
                 return False
+            if forcer and not publics["mt5Auto"] and not mt5.est_mac() and not publics.get("mt5Login"):
+                self.journal("Connecte d’abord MetaTrader 5 à ton compte depuis la page (Connexions) : Étrave l’ouvrira ensuite tout seul.")
+                return False
+            if not mt5.ea_a_jour(mt5.donnees_de(connus[0]), SOURCE_EA):
+                resultat = self._mt5_installer(connus[0], connus, SOURCE_EA, ouvert=False)
+                self.journal("EA et profil mis à jour dans MetaTrader 5" if resultat.get("compile") else
+                             "EA copié dans MetaTrader 5, mais pas compilé : " + " / ".join(resultat.get("journal", [])[-3:]))
             self._mt5_lancer(connus[0], connus, None, ouvert=False)
-            self.journal("MetaTrader 5 ouvert automatiquement")
+            self.journal("MetaTrader 5 ouvert automatiquement (Nasdaq et S&P 500 avec la V11, profil Etrave-demo)")
             return True
-        except Exception:
+        except Exception as erreur:
+            self.journal(f"MetaTrader 5 pas ouvert automatiquement : {erreur}")
             return False
 
     def exporter_trimestres_finis(self):
@@ -182,6 +199,10 @@ class Application:
             if corps.get("connexion"):
                 identifiants = (corps.get("login"), corps.get("motDePasse"), corps.get("serveur"))
             ouvert = any(e["en_marche"] for e in etats) or bool(self._mt5_ouvert())
+            # VPS vierge : l'EA est compilé avant d'ouvrir les deux graphiques qui l'attendent (le profil vient avec).
+            if not ouvert and chemin in connus and not mt5.ea_a_jour(mt5.donnees_de(chemin), SOURCE_EA):
+                installe = self._mt5_installer(chemin, connus, SOURCE_EA, ouvert=False)
+                self.journal("EA et profil installés dans MetaTrader 5" if installe.get("compile") else "EA copié, mais pas compilé")
             resultat = self._mt5_lancer(chemin, connus, identifiants, ouvert=ouvert)
             self._ouvert = (0.0, None)
             self.journal("MetaTrader 5 lancé" + (" avec connexion à un compte" if identifiants else ""))
@@ -189,9 +210,22 @@ class Application:
                 pont.retenir_mt5(self.dossier, login=str(identifiants[0]).strip(), serveur=str(identifiants[2]).strip())
             return {"ok": True, **resultat}
         if route == "POST /api/mt5/installer":
-            chemin, connus = self._terminal(corps, pont.lire_etats(self.dossier))
-            resultat = self._mt5_installer(chemin, connus, SOURCE_EA)
+            etats = pont.lire_etats(self.dossier)
+            chemin, connus = self._terminal(corps, etats)
+            ouvert = any(e["en_marche"] for e in etats) or self._mt5_ouvert() is not False   # profil remplacé MetaTrader fermé
+            resultat = self._mt5_installer(chemin, connus, SOURCE_EA, ouvert=ouvert)
             self.journal("EA copié dans MetaTrader 5" + (" et compilé" if resultat.get("compile") else ""))
+            return {"ok": True, **resultat}
+        if route == "POST /api/mt5/fermer":
+            # Fermer MetaTrader pendant un trade laisserait la sortie de 15:50 et les jambes sans surveillance (X-02).
+            occupes = [e["symbole"] for e in pont.lire_etats(self.dossier)
+                       if e["en_marche"] and (e["position"] or e["attente"] or (e["jambes"] or 0) > 0)]
+            if occupes:
+                raise Erreur(409, "Un trade ou un ordre est en cours sur " + ", ".join(occupes) + " : clôture-le d’abord "
+                             "(bouton « Clôturer »), puis ferme MetaTrader 5.")
+            resultat = self._mt5_fermer()
+            self._ouvert = (0.0, None)
+            self.journal("MetaTrader 5 fermé depuis la page")
             return {"ok": True, **resultat}
         if route == "POST /api/mt5/options":
             if isinstance(corps.get("auto"), bool):
@@ -328,6 +362,8 @@ def main(arguments=None):
     lecteur.add_argument("--port", type=int, default=int(os.environ.get("ETRAVE_PORT", PORT)))
     lecteur.add_argument("--dossier", default=None, help="dossier partagé avec l'EA (par défaut : dossier commun de MetaTrader)")
     lecteur.add_argument("--sans-navigateur", action="store_true")
+    lecteur.add_argument("--tout", action="store_true", help="ouvre aussi MetaTrader 5 s'il est fermé (Etrave.command sur Mac : "
+                         "met l'EA et le profil à jour, ouvre les deux graphiques avec la V11 et garde le Mac éveillé)")
     options = lecteur.parse_args(arguments)
     dossier = options.dossier or pont.dossier_commun()
     os.makedirs(dossier, exist_ok=True)
@@ -342,6 +378,8 @@ def main(arguments=None):
     except OSError:
         if deja_lancee(options.port):
             print(f"{pont.NOM} tourne déjà : http://127.0.0.1:{options.port}")
+            if options.tout:                                    # double-clic alors qu'Étrave tourne : MetaTrader s'ouvre quand même
+                Application(dossier, journal=journal).ouvrir_mt5_si_demande(forcer=True)
             if not options.sans_navigateur:
                 webbrowser.open(f"http://127.0.0.1:{options.port}")
             return 0
@@ -353,7 +391,7 @@ def main(arguments=None):
     print("  Laisse cette fenêtre ouverte tant que tu utilises la page. La fermer n'arrête ni l'EA ni ses alertes.")
     if not options.sans_navigateur:
         threading.Timer(0.6, lambda: webbrowser.open(serveur.url)).start()
-    threading.Timer(1.0, serveur.application.ouvrir_mt5_si_demande).start()
+    threading.Timer(1.0, serveur.application.ouvrir_mt5_si_demande, kwargs={"forcer": options.tout}).start()
 
     def exporter_puis_reprogrammer():
         serveur.application.exporter_trimestres_finis()

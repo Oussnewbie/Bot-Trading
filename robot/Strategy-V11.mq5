@@ -71,7 +71,7 @@
 // ouvert ; réponse du courtier perdue sans ordre en double ; état sur le disque pour un redémarrage ; filet de sécurité qui ferme
 // chaque minute toute position restée après la sortie ; messages envoyés un par un.
 #property copyright   "Bot-Trading"
-#property version     "10.00"
+#property version     "11.00"
 #property description "Strategy V11 : cassure du range de 9:30 New York (stop à 3 ranges, pyramide, mémoire, jours FOMC et fériés exclus), repli sur le VWAP et 3 continuations. Nasdaq 100 et S&P 500, compte hedging. Règles verrouillées."
 
 #include <Trade\Trade.mqh>
@@ -92,7 +92,8 @@ input group "Interface Étrave"
 input bool         InpUseUI     = true;         // Lire le risque, les cases et Telegram dans l'interface Étrave
 
 input group "Heure du serveur du broker"
-input int          InpSrvGMT    = 2;            // Décalage GMT du serveur en hiver (heures)
+input bool         InpSrvAuto   = true;         // Heure du serveur détectée automatiquement (hors testeur)
+input int          InpSrvGMT    = 2;            // Décalage GMT du serveur en hiver (heures) : testeur, ou détection coupée
 input ENUM_SRV_DST InpSrvDST    = SRV_DST_US;   // Heure d'été du serveur
 
 // ── Règles VERROUILLÉES le 25/11/2026 à la demande de l'utilisateur (« sans possibilité de changer manuellement ») : profil
@@ -299,6 +300,8 @@ long     gTestSeen  = -1;       // dernière demande d'essai vue (-1 = fichier j
 long     gCloseSeen = 0;        // dernière demande de clôture traitée
 bool     gCloseDue  = false;
 bool     gClockOk   = true;     // l'heure du serveur correspond aux réglages
+long     gSrvBaseSec = 0;       // décalage d'hiver du serveur détecté (secondes), si gSrvBaseOk
+bool     gSrvBaseOk  = false;
 double   gBalStart  = 0;        // solde au moment de l'entrée (résultat du trade en %)
 datetime gSweepAllAt = 0;        // heure du balayage complet demandé après une clôture depuis l'interface (CloseOrphans)
 bool     gGvDirty   = false;    // état modifié depuis la dernière écriture sur le disque (FlushState)
@@ -358,7 +361,7 @@ bool EuDst(datetime utc)   // du dernier dimanche de mars au dernier dimanche d'
 
 long ServerOffsetSec(datetime srv)
   {
-   long     base = (long)InpSrvGMT * 3600;
+   long     base = gSrvBaseOk ? gSrvBaseSec : (long)InpSrvGMT * 3600;
    datetime utc  = (datetime)(srv - base);
    bool     dst  = InpSrvDST == SRV_DST_US ? UsDst(utc) : InpSrvDST == SRV_DST_EU ? EuDst(utc) : false;
    return base + (dst ? 3600 : 0);
@@ -477,6 +480,46 @@ const int FOMC_DATES[] =
    20270317, 20270428, 20270609, 20270728, 20270915, 20271117, 20280126
   };
 
+// Automatisme du 26/11/2026 : au-delà de la liste codée, les décisions de taux de la Fed sont lues dans le calendrier
+// économique de MetaTrader (événement « fed-interest-rate-decision »), hors testeur. Vérifié le 26/11/2026 : mêmes dates que la
+// liste de 2025 à fin 2027 chez TradinGlobal, sauf le 27/10/2027 : le calendrier de MetaTrader l'a encore, la liste l'a retiré d'après
+// le calendrier révisé de la Fed. Le calendrier peut donc garder une date périmée : on ne le lit qu'après la liste.
+bool FomcCalendrier(int ymd)
+  {
+   if(MQLInfoInteger(MQL_TESTER))
+      return false;
+   static ulong idFed = 0;
+   static bool  trouve = false;
+   if(!trouve)
+     {
+      MqlCalendarEvent ev[];
+      int n = CalendarEventByCountry("US", ev);
+      if(n <= 0)
+         return false;                       // calendrier pas encore chargé : nouvel essai au jour suivant
+      trouve = true;
+      for(int i = 0; i < n; i++)
+         if(ev[i].event_code == "fed-interest-rate-decision")
+           {
+            idFed = ev[i].id;
+            break;
+           }
+     }
+   if(idFed == 0)
+      return false;
+   MqlDateTime s;
+   ZeroMemory(s);
+   s.year = ymd / 10000;
+   s.mon  = (ymd / 100) % 100;
+   s.day  = ymd % 100;
+   datetime jour = StructToTime(s);
+   MqlCalendarValue v[];
+   int m = CalendarValueHistoryByEvent(idFed, v, jour - 2 * 86400, jour + 3 * 86400);
+   for(int k = 0; k < m; k++)
+      if(NYDate(ToNY(v[k].time)) == ymd)
+         return true;
+   return false;
+  }
+
 bool IsFomc(int ymd)   // ymd : date de New York au format aaaammjj
   {
    for(int i = 0; i < ArraySize(FOMC_DATES); i++)
@@ -495,7 +538,7 @@ bool IsFomc(int ymd)   // ymd : date de New York au format aaaammjj
       if(StringLen(p) == 8 && (int)StringToInteger(p) == ymd)
          return true;
      }
-   return false;
+   return ymd > FOMC_DATES[ArraySize(FOMC_DATES) - 1] && FomcCalendrier(ymd);
   }
 
 //+------------------------------------------------------------------+
@@ -2101,7 +2144,7 @@ void AppendLegTrade(SLeg &g, datetime tx, double r, double net, string why)
    datetime ny = ToNY(tx);
    string day = TimeToString(ny, TIME_DATE);
    StringReplace(day, ".", "-");
-   string w = "V10 " + g.nom + " : " + why;
+   string w = "V11 " + g.nom + " : " + why;
    StringReplace(w, ";", ",");
    TradesWrite(IntegerToString((long)(tx - ServerOffsetSec(tx))) + ";" + day + ";" + TimeToString(ny, TIME_MINUTES) + ";" + gSymFile + ";" +
                IntegerToString(g.dir) + ";" + DoubleToString(g.lots, 2) + ";" + DoubleToString(r, 4) + ";" + DoubleToString(net, 2) + ";" +
@@ -2775,10 +2818,47 @@ void UiClose()
 
 // L'heure du serveur correspond-elle toujours aux réglages ? (contrôlé au lancement, puis en continu : un mauvais
 // réglage d'heure d'été ne se voit que les semaines où les États-Unis et l'Europe sont décalés)
+// Automatisme du 26/11/2026 (« tout se règle tout seul ») : hors testeur, le décalage d'hiver du serveur se déduit de l'écart
+// entre l'heure du serveur et l'heure GMT de l'ordinateur, arrondi à l'heure (les courtiers sont à l'heure pleine : une horloge
+// fausse de moins de 30 min ne change rien ; au-delà de 10 min, un avertissement), avec la règle d'heure d'été réglée
+// (américaine par défaut). Les réglages InpSrvGMT / InpSrvDST ne servent plus que dans le testeur, où TimeGMT() vaut
+// l'heure du serveur, ou si la détection est coupée.
+void DetecterHeureServeur()
+  {
+   if(!InpSrvAuto || MQLInfoInteger(MQL_TESTER) || !TerminalInfoInteger(TERMINAL_CONNECTED))
+      return;
+   datetime srv = TimeTradeServer();
+   datetime gmt = TimeGMT();
+   if(srv <= 0 || gmt <= 0)
+      return;
+   long brut = (long)(srv - gmt);
+   long reel = (long)MathRound((double)brut / 3600.0) * 3600;
+   static bool averti = false;
+   if(MathAbs(brut - reel) > 600 && !averti)
+     {
+      averti = true;
+      Notify(I_WARN + StringFormat("HORLOGE : l'heure de cet ordinateur semble décalée de %d min par rapport au serveur. "
+                                   "Mets-la à l'heure automatique (l'EA s'en sert pour trouver l'heure de New York).", (int)MathRound((brut - reel) / 60.0)));
+     }
+   datetime utc = (datetime)(srv - reel);
+   bool dst  = InpSrvDST == SRV_DST_US ? UsDst(utc) : InpSrvDST == SRV_DST_EU ? EuDst(utc) : false;
+   long base = reel - (dst ? 3600 : 0);
+   if(gSrvBaseOk && base == gSrvBaseSec)
+      return;
+   bool change = gSrvBaseOk;
+   gSrvBaseSec = base;
+   gSrvBaseOk  = true;
+   string txt  = StringFormat("Heure du serveur détectée : GMT%+.2g en hiver (maintenant GMT%+.2g)", base / 3600.0, reel / 3600.0);
+   Print(BOT + " · " + _Symbol + " · " + txt);
+   if(change)
+      Notify(I_WARN + "HEURE DU SERVEUR : " + txt + ". Les heures de New York suivent.");
+  }
+
 void CheckClock()
   {
    if(!TerminalInfoInteger(TERMINAL_CONNECTED))
       return;
+   DetecterHeureServeur();
    long real = (long)(TimeTradeServer() - TimeGMT());
    bool ok   = MathAbs(real - ServerOffsetSec(TimeTradeServer())) <= 1800;
    if(!ok && gClockOk)
@@ -2807,7 +2887,7 @@ void WriteState()
    double m  = BrokerMarginPerLot();
    double pl = gIn ? OpenProfit() : 0;
    Kv(h, "version", "1");
-   Kv(h, "ea", "10.00");
+   Kv(h, "ea", "11.00");
    Kv(h, "symbole", gSymFile);
    Kv(h, "instrument", gInstr);
    Kv(h, "actif", gActive ? "1" : "0");
@@ -3296,7 +3376,7 @@ void Panel()
               "Range 9:30 : " + (gOrH > 0 ? Px(gOrL) + " – " + Px(gOrH) + " (" + Pts(gOrH - gOrL) + ")" : "—") + "\n" +
               "Filtres : " + ((InpUseRSI || InpUseExt) ? gFiltTxt : "désactivés") + "\n" +
               "Cassure (A) : " + (live != "" ? live : gDayTxt) + "\n" +
-              "Entrées V10 : " + LegTxt(gB, InpUseB) + " · " + LegTxt(gC, InpUseC) + " · " + DTxt() + "\n" +
+              "Entrées V11 : " + LegTxt(gB, InpUseB) + " · " + LegTxt(gC, InpUseC) + " · " + DTxt() + "\n" +
               "Historique : " + (gN == 0 ? "aucun trade" : (string)gN + " trades · " + DoubleToString(100.0 * gWin / gN, 0) + " % gagnants · " + RTxt(gSumR) +
               " · " + (gSumR >= 0 ? "+" : "") + DoubleToString(gSumR / gN, 2) + "R par trade · pire baisse -" + DoubleToString(gDD, 1) + "R · " + (string)gWorst + " pertes de suite");
    Comment(s);
@@ -3397,9 +3477,10 @@ int OnInit()
    else
      {
       LoadState();
-      // contrôle du décalage horaire saisi
+      // contrôle du décalage horaire (détecté automatiquement, sinon saisi)
+      DetecterHeureServeur();
       long real = (long)(TimeTradeServer() - TimeGMT());
-      if(MathAbs(real - ServerOffsetSec(TimeTradeServer())) > 1800)
+      if(!gSrvBaseOk && TerminalInfoInteger(TERMINAL_CONNECTED) && MathAbs(real - ServerOffsetSec(TimeTradeServer())) > 1800)
          Alert(StringFormat("Strategy V11 : le serveur est à GMT%+.1f maintenant, les réglages donnent GMT%+.1f. Corrige « Décalage GMT du serveur » ou « Heure d'été », sinon les heures de New York seront fausses.",
                             real / 3600.0, ServerOffsetSec(TimeTradeServer()) / 3600.0));
       if(!gLegsOk)

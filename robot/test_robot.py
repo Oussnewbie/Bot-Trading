@@ -308,7 +308,7 @@ def test_regles_verrouillees_et_marches():
     """Verrou du 25/11/2026 : les règles ne sont plus des paramètres ; seuls le compte, l'heure du serveur, les FOMC, l'exécution, les
     notifications et l'affichage restent réglables. Nasdaq 100 et S&P 500 seulement, dans l'EA comme dans le script."""
     reglables = set(re.findall(r"^input\s+\S+\s+(Inp\w+)", EA, re.M))
-    assert reglables == {"InpRiskPct", "InpFixedLots", "InpUseUI", "InpSrvGMT", "InpSrvDST", "InpFomc", "InpMagic", "InpDeviation",
+    assert reglables == {"InpRiskPct", "InpFixedLots", "InpUseUI", "InpSrvAuto", "InpSrvGMT", "InpSrvDST", "InpFomc", "InpMagic", "InpDeviation",
                          "InpComment", "InpPush", "InpWhatsApp", "InpWaPhone", "InpWaKey", "InpTelegram", "InpTgToken", "InpTgChat",
                          "InpDraw", "InpPanel"}, reglables
     for nom, valeur in (("InpUseB", "true"), ("InpUseD", "true"), ("InpUseC", "false"), ("InpStopMult", "3.0"), ("InpNoiseFloor", "false")):
@@ -614,3 +614,26 @@ def test_v11_stop_des_continuations_a_l_entree_de_a_pine():
     assert "strategy.exit(\"X\" + g.id, from_entry = g.id, stop = slOrdre," in PINE
     assert "(v8.dir == 1 ? high > cur.entry : low < cur.entry)" in PINE
     assert "g.risk  := math.abs(ep - nz(g.rsl, g.sl))" in PINE
+
+
+def test_heure_du_serveur_detectee_automatiquement():
+    """Automatisme du 26/11/2026 : hors testeur, le décalage du serveur se déduit de TimeTradeServer() - TimeGMT() ; les
+    réglages ne servent plus que dans le testeur (où TimeGMT() vaut l'heure du serveur) ou si la détection est coupée."""
+    assert "input bool         InpSrvAuto   = true;" in EA
+    det = fonction("void DetecterHeureServeur()")
+    assert "MQLInfoInteger(MQL_TESTER)" in det and "MathRound((double)brut / 3600.0) * 3600" in det and "MathAbs(brut - reel) > 600" in det
+    assert "long     base = gSrvBaseOk ? gSrvBaseSec : (long)InpSrvGMT * 3600;" in EA
+    assert "DetecterHeureServeur();" in fonction("void CheckClock()")
+
+
+def test_fomc_lus_dans_le_calendrier_au_dela_de_la_liste():
+    """Automatisme du 26/11/2026 : après le dernier jour codé, les décisions de la Fed viennent du calendrier de MetaTrader."""
+    cal = fonction("bool FomcCalendrier(int ymd)")
+    assert '"fed-interest-rate-decision"' in cal and "MQLInfoInteger(MQL_TESTER)" in cal
+    assert "return ymd > FOMC_DATES[ArraySize(FOMC_DATES) - 1] && FomcCalendrier(ymd);" in fonction("bool IsFomc(int ymd)")
+
+
+def test_etiquettes_v11():
+    """26/11/2026 : la version, l'état lu par Étrave, la raison des trades et le panneau disaient encore « V10 »."""
+    for texte in ('#property version     "11.00"', 'Kv(h, "ea", "11.00");', 'string w = "V11 " + g.nom', '"Entrées V11 : "'):
+        assert texte in EA, texte

@@ -3,3 +3,7 @@
 *.cmd text eol=crlf
 *.ini text eol=crlf
 *.set text eol=crlf
+*.chr binary
+*.wnd binary
+# Lanceur Mac (sh) : fins de ligne Unix.
+*.command text eol=lf

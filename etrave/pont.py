@@ -20,6 +20,7 @@ Règles reprises de Vigie :
 import glob
 import os
 import re
+import sys
 import threading
 import time
 
@@ -55,14 +56,23 @@ class Refus(Exception):
     """Une demande refusée : le message est fait pour être montré tel quel, et ne répète jamais une valeur secrète."""
 
 
-def dossier_commun(env=None):
-    """Le dossier partagé avec l'EA. `ETRAVE_DOSSIER` passe avant tout (essais, MetaTrader installé ailleurs)."""
+def dossier_commun(env=None, systeme=sys.platform, existe=os.path.isdir):
+    """Le dossier partagé avec l'EA. `ETRAVE_DOSSIER` passe avant tout (essais, MetaTrader installé ailleurs).
+
+    Correctif du 26/11/2026 : sur Mac, MetaTrader 5 tourne dans le Wine de MetaQuotes et l'EA écrit dans le dossier commun de
+    ce Wine (drive_c/users/<utilisateur>/AppData/Roaming/…). Étrave lisait ~/.etrave : ses réglages n'atteignaient pas l'EA."""
     env = os.environ if env is None else env
     if env.get("ETRAVE_DOSSIER"):
         return env["ETRAVE_DOSSIER"]
     if env.get("APPDATA"):
         return os.path.join(env["APPDATA"], "MetaQuotes", "Terminal", "Common", "Files", SOUS_DOSSIER)
-    return os.path.join(os.path.expanduser("~"), ".etrave")
+    maison = env.get("HOME") or os.path.expanduser("~")
+    if systeme == "darwin" and env.get("USER"):
+        commun = os.path.join(maison, "Library", "Application Support", "net.metaquotes.wine.metatrader5", "drive_c", "users",
+                              env["USER"], "AppData", "Roaming", "MetaQuotes", "Terminal", "Common")
+        if existe(commun):
+            return os.path.join(commun, "Files", SOUS_DOSSIER)
+    return os.path.join(maison, ".etrave")
 
 
 # ───────────────────────── fichiers cle=valeur ─────────────────────────

@@ -193,12 +193,16 @@ def test_journal_des_trades(dossier):
 
 
 # ───────────────────────── risque et marge ─────────────────────────
-@pytest.mark.parametrize("pct, par_an, baisse", [(0.25, 19, 6), (0.5, 40, 11), (1.0, 88, 22)])
-def test_le_calcul_redonne_les_chiffres_connus_de_la_v6(pct, par_an, baisse):
+@pytest.mark.parametrize("pct, par_an, baisse, pire_jour", [(0.25, 11, 12, 1.5), (1.0, 41, 43, 6.0), (2.5, 73, 80, 15.0), (5.0, 24, 98, 29.9)])
+def test_le_calcul_redonne_les_chiffres_connus_de_la_v11(pct, par_an, baisse, pire_jour):
+    """26/11/2026 : la page Risque rejouait l'ancienne ORB v6 (Nasdaq seul, une position par jour). Elle rejoue la V11 sur le Nasdaq
+    et le S&P 500 (données du courtier 2019-2026, toutes les entrées) : mêmes chiffres que l'étude du risque en % de la recherche."""
     s = risque.simuler(pct)
-    assert s["trades"] == 1391 and s["unites"] == 15.0
-    assert round(s["parAnPct"]) == par_an and round(s["pireBaissePct"]) == baisse
-    assert s["reduitsPct"] == 0
+    assert s["trades"] == 1845 and s["jours"] == 1247 and s["unites"] == 15.0
+    assert round(s["parAnPct"]) == par_an and round(s["pireBaissePct"]) == baisse and round(s["pireJourPct"], 1) == pire_jour
+    assert s["reduitsPct"] == 0 and round(s["pireJourR"], 2) == 5.99
+    ref = risque.charger()
+    assert ref["source"].startswith("Strategy V11") and {t[1] for t in ref["trades"]} == {"nasdaq", "sp500"}
 
 
 def test_la_marge_reduit_la_taille_quand_le_levier_manque():
@@ -292,7 +296,8 @@ def test_lancement_avec_connexion_puis_effacement():
 
 def test_terminaux_trouves():
     programme = os.path.join(r"C:\MT5 Courtier", "terminal64.exe")
-    trouves = mt5.terminaux([{"terminal": r"C:\MT5 Courtier"}, {"terminal": r"C:\MT5 Courtier"}, {"terminal": r"C:\disparu"}], env={}, existe=lambda c: c == programme)
+    trouves = mt5.terminaux([{"terminal": r"C:\MT5 Courtier"}, {"terminal": r"C:\MT5 Courtier"}, {"terminal": r"C:\disparu"}], env={}, existe=lambda c: c == programme,
+                            systeme="win32")
     assert trouves == [programme]
     assert mt5.est_ouvert(systeme="linux") is None
 
@@ -323,17 +328,19 @@ def test_installation_de_l_ea_et_demarrage_avec_windows(tmp_path):
         mt5.installer_ea(exe, [exe], source, env=env, systeme="linux")
     with pytest.raises(pont.Refus):
         mt5.installer_ea(str(tmp_path / "autre.exe"), [exe], source, env=env, systeme="win32")
-    assert mt5.demarrage_windows(True, r"C:\Bot-Trading", env=env) is True
-    assert "Etrave.bat" in open(mt5.fichier_demarrage(env)).read()
-    assert mt5.demarrage_windows(False, r"C:\Bot-Trading", env=env) is False
-    with pytest.raises(pont.Refus):
-        mt5.demarrage_windows(True, "x", env={})
+    assert mt5.demarrage_windows(True, r"C:\Bot-Trading", env=env, systeme="win32") is True
+    assert "Etrave.bat" in open(mt5.fichier_demarrage(env, systeme="win32")).read()
+    assert mt5.demarrage_windows(False, r"C:\Bot-Trading", env=env, systeme="win32") is False
+    for systeme in ("win32", "darwin", "linux"):
+        with pytest.raises(pont.Refus):
+            mt5.demarrage_windows(True, "x", env={}, systeme=systeme)
 
 
 def test_ouverture_automatique_de_metatrader(dossier):
     lances = []
     exe = os.path.join(r"C:\MT5", "terminal64.exe")
-    app = etrave.Application(dossier, mt5_ouvert=lambda: False, mt5_lancer=lambda chemin, connus, ident, ouvert: lances.append(chemin))
+    app = etrave.Application(dossier, mt5_ouvert=lambda: False, mt5_lancer=lambda chemin, connus, ident, ouvert: lances.append(chemin),
+                             mt5_terminaux=lambda etats: [])
     assert app.ouvrir_mt5_si_demande() is False                      # option non cochée : rien
     pont.retenir_mt5(dossier, login="12345", serveur="Courtier-Demo", auto=True)
     publics = pont.reglages_publics(dossier)
@@ -345,7 +352,7 @@ def test_ouverture_automatique_de_metatrader(dossier):
 # ───────────────────────── serveur local ─────────────────────────
 @pytest.fixture()
 def serveur(dossier):
-    s = etrave.creer_serveur(dossier, 0, mt5_ouvert=lambda: False,
+    s = etrave.creer_serveur(dossier, 0, mt5_ouvert=lambda: False, mt5_terminaux=lambda etats: [],   # jamais le vrai MetaTrader
                              appel_telegram=lambda jeton, methode, corps: {"ok": True, "result": {"username": "etrave_bot"}})
     threading.Thread(target=s.serve_forever, daemon=True).start()
     yield s
@@ -634,8 +641,8 @@ def test_tasklist_illisible_ne_casse_pas_la_page():
 def test_demarrage_avec_windows_chemin_accentue(tmp_path):
     """ET-08 : le fichier de démarrage est en UTF-8 ; cmd.exe doit passer en UTF-8 avant de lire le chemin."""
     env = {"APPDATA": str(tmp_path)}
-    mt5.demarrage_windows(True, r"C:\Users\Jérôme\Bot-Trading\etrave", env=env)
-    texte = open(mt5.fichier_demarrage(env), encoding="utf-8").read()
+    mt5.demarrage_windows(True, r"C:\Users\Jérôme\Bot-Trading\etrave", env=env, systeme="win32")
+    texte = open(mt5.fichier_demarrage(env, systeme="win32"), encoding="utf-8").read()
     assert texte.index("chcp 65001") < texte.index("start ") and "Jérôme" in texte
 
 
@@ -670,3 +677,133 @@ def test_le_lanceur_essaie_python_avant_de_s_en_servir():
     bat = open(os.path.join(RACINE, "etrave", "Etrave.bat"), encoding="utf-8").read()
     assert 'if defined PY %PY% -c "import sys" >nul 2>nul || set PY=' in bat
     assert bat.index("|| set PY=") < bat.index("if not defined PY (")
+
+
+# ───────────────────────── tout en un double-clic (26/11/2026) ─────────────────────────
+def _metatrader_mac(tmp_path):
+    installation = tmp_path / "drive_c" / "Program Files" / "MetaTrader 5"
+    installation.mkdir(parents=True)
+    (installation / "metaeditor64.exe").write_bytes(b"")
+    return str(installation / "terminal64.exe")
+
+
+def test_mac_lancement_avec_le_profil_et_le_mac_eveille(tmp_path):
+    """Mac : MetaTrader s'ouvre par le Wine de MetaQuotes sur le profil « Etrave-demo » (deux graphiques, la V11 sur chacun),
+    trading automatique actif, dans une session à part (fermer le Terminal ne le ferme pas), et caffeinate le suit."""
+    exe = _metatrader_mac(tmp_path)
+    lances = []
+
+    class Processus:
+        pid = 4242
+
+    def demarrer(commande, **options):
+        lances.append((commande, options))
+        if commande[0] == mt5.WINE:
+            fichier = mt5.os.path.join("/", commande[-1][len("/config:Z:"):].replace("\\", "/").lstrip("/"))
+            lances[-1] = (commande, options, open(fichier, encoding="utf-16", newline="").read())
+        return Processus()
+    r = mt5.lancer(exe, [exe], systeme="darwin", demarrer=demarrer, minuterie=lambda d, a: type("M", (), {"start": lambda s: None, "daemon": True})())
+    assert r == {"lance": True, "connexion": False, "profil": "Etrave-demo"}
+    (commande, options, config), (caf, options_caf) = lances
+    assert commande[:2] == [mt5.WINE, r"C:\Program Files\MetaTrader 5\terminal64.exe"] or commande[0] == mt5.WINE
+    assert "[Common]" not in config and "ProfileLast=Etrave-demo" in config and "AllowLiveTrading=1" in config
+    assert options["start_new_session"] and options["env"]["WINEPREFIX"] == mt5.PREFIXE_WINE
+    assert caf == ["caffeinate", "-i", "-w", "4242"] and options_caf["start_new_session"]
+    profil = tmp_path / "drive_c" / "Program Files" / "MetaTrader 5" / "MQL5" / "Profiles" / "Charts" / "Etrave-demo"
+    for nom in ("chart01.chr", "chart02.chr"):
+        assert (profil / nom).read_bytes() == open(os.path.join(mt5.PROFIL_SOURCE, nom), "rb").read()
+
+
+def test_profil_du_depot_lots_fixes_a_zero_et_v11_sur_les_deux_graphiques():
+    for nom, symbole in (("chart01.chr", "NDX100"), ("chart02.chr", "SPX500")):
+        texte = open(os.path.join(mt5.PROFIL_SOURCE, nom), encoding="utf-16").read()
+        assert f"symbol={symbole}" in texte and "path=Experts\\Etrave\\Strategy-V11.ex5" in texte and "InpFixedLots=0.0" in texte
+
+
+def test_mac_installation_de_l_ea_et_du_profil(tmp_path):
+    exe = _metatrader_mac(tmp_path)
+    source = os.path.join(RACINE, "robot", "Strategy-V11.mq5")
+    vus = []
+
+    def compilateur(commande, **options):
+        vus.append((commande, options))
+        installation = options["cwd"]
+        open(os.path.join(installation, "MQL5", "Experts", "Etrave", "Strategy-V11.ex5"), "wb").close()
+        open(os.path.join(installation, "MQL5", "Experts", "Etrave", "Strategy-V11.log"), "w", encoding="utf-16").write("Result: 0 errors, 0 warnings\n")
+    r = mt5.installer_ea(exe, [exe], source, systeme="darwin", executer=compilateur, ouvert=False)
+    assert r["compile"] is True and r["profil"] and r["journal"] == ["Result: 0 errors, 0 warnings"]
+    commande, options = vus[0]
+    assert commande[0] == mt5.WINE and commande[2] == "/compile:MQL5\\Experts\\Etrave\\Strategy-V11.mq5"
+    assert mt5.ea_a_jour(os.path.dirname(exe), source)
+    assert mt5.installer_ea(exe, [exe], source, systeme="darwin", executer=compilateur, ouvert=True)["profil"] is None   # MetaTrader ouvert
+
+
+def test_mac_lancement_a_l_ouverture_de_session(tmp_path):
+    env = {"HOME": str(tmp_path)}
+    assert mt5.demarrage_windows(True, "/Users/x/Bot & Trading/etrave", env=env, systeme="darwin") is True
+    texte = open(mt5.fichier_demarrage(env, systeme="darwin"), encoding="utf-8").read()
+    assert "<string>/Users/x/Bot &amp; Trading/etrave/Etrave.command</string><string>--session</string>" in texte
+    assert mt5.fichier_demarrage(env, systeme="darwin").startswith(str(tmp_path))
+    assert mt5.demarrage_windows(False, "x", env=env, systeme="darwin") is False
+
+
+def test_dossier_commun_sur_mac_celui_du_wine_de_metatrader():
+    """Correctif du 26/11/2026 : sur Mac, l'EA écrit dans le dossier commun du Wine de MetaTrader, pas dans ~/.etrave."""
+    env = {"HOME": "/Users/x", "USER": "x"}
+    attendu = "/Users/x/Library/Application Support/net.metaquotes.wine.metatrader5/drive_c/users/x/AppData/Roaming/MetaQuotes/Terminal/Common/Files/Etrave"
+    assert pont.dossier_commun(env, systeme="darwin", existe=lambda d: True) == attendu
+    assert pont.dossier_commun(env, systeme="darwin", existe=lambda d: False) == "/Users/x/.etrave"
+    assert pont.dossier_commun({"APPDATA": r"C:\A", "HOME": "/Users/x"}, systeme="win32").endswith("Etrave")
+
+
+def test_fermer_metatrader_proprement_et_jamais_pendant_un_trade(serveur, dossier):
+    vus = []
+    assert mt5.fermer(systeme="darwin", executer=lambda c, **o: vus.append(c)) == {"ferme": True}
+    assert mt5.fermer(systeme="win32", executer=lambda c, **o: vus.append(c)) == {"ferme": True}
+    assert vus[0][1:] == ["taskkill", "/IM", "terminal64.exe"] and vus[1] == ["taskkill", "/IM", "terminal64.exe"]   # jamais /F
+    fermes = []
+    serveur.application._mt5_fermer = lambda: fermes.append(1) or {"ferme": True}
+    faux_etat(dossier, age=0, position="1")
+    code, brut, _ = appeler(serveur, "POST", "/api/mt5/fermer", {})
+    assert code == 409 and "Clôturer" in json.loads(brut)["error"] and fermes == []
+    faux_etat(dossier, age=0, position="0")
+    assert appeler(serveur, "POST", "/api/mt5/fermer", {})[0] == 200 and fermes == [1]
+
+
+def test_double_clic_ouvre_metatrader_et_met_l_ea_a_jour(dossier, monkeypatch):
+    lances, installes = [], []
+    exe = "/MT5/terminal64.exe"
+    app = etrave.Application(dossier, mt5_ouvert=lambda: False, mt5_terminaux=lambda etats: [exe],
+                             mt5_lancer=lambda chemin, connus, ident, ouvert: lances.append(chemin),
+                             mt5_installer=lambda chemin, connus, source, ouvert=None: installes.append(ouvert) or {"compile": True})
+    monkeypatch.setattr(mt5, "donnees_de", lambda chemin, *a, **k: "/MT5")
+    monkeypatch.setattr(mt5, "ea_a_jour", lambda donnees, source: False)
+    monkeypatch.setattr(mt5, "est_mac", lambda systeme=None: False)
+    assert app.ouvrir_mt5_si_demande() is False and lances == []                # sans la case ni le double-clic : rien
+    assert app.ouvrir_mt5_si_demande(forcer=True) is False and lances == []    # Windows, compte jamais connecté : la page d'abord
+    pont.retenir_mt5(dossier, login="12345", serveur="Courtier-Demo")
+    assert app.ouvrir_mt5_si_demande(forcer=True) is True and lances == [exe] and installes == [False]
+    monkeypatch.setattr(mt5, "est_mac", lambda systeme=None: True)
+    monkeypatch.setattr(mt5, "ea_a_jour", lambda donnees, source: True)
+    assert app.ouvrir_mt5_si_demande(forcer=True) is True and installes == [False]   # EA à jour : pas de recompilation
+
+
+def test_lanceurs_double_clic():
+    commande = os.path.join(RACINE, "etrave", "Etrave.command")
+    assert os.access(commande, os.X_OK) and b"\r" not in open(commande, "rb").read()
+    texte = open(commande, encoding="utf-8").read()
+    assert 'set -- --tout "$@"' in texte and 'exec "$PY" etrave/etrave.py "$@"' in texte
+    assert "etrave.py --tout %*" in open(os.path.join(RACINE, "etrave", "Etrave.bat"), encoding="utf-8").read()
+    assert "*.command text eol=lf" in open(os.path.join(RACINE, ".gitattributes"), encoding="utf-8").read()
+
+
+def test_se_connecter_installe_d_abord_l_ea_sur_un_vps_vierge(dossier, monkeypatch):
+    ordre = []
+    exe = r"C:\MT5\terminal64.exe"
+    app = etrave.Application(dossier, mt5_ouvert=lambda: False, mt5_terminaux=lambda etats: [exe],
+                             mt5_installer=lambda chemin, connus, source, ouvert=None: ordre.append(("installer", ouvert)) or {"compile": True},
+                             mt5_lancer=lambda chemin, connus, ident, ouvert: ordre.append(("lancer", ident[0])) or {"lance": True, "connexion": True})
+    monkeypatch.setattr(mt5, "donnees_de", lambda chemin, *a, **k: r"C:\Data")
+    monkeypatch.setattr(mt5, "ea_a_jour", lambda donnees, source: False)
+    app.traiter("POST", "/api/mt5/lancer", {}, {"connexion": True, "login": "12345", "motDePasse": "x", "serveur": "Courtier-Demo"})
+    assert ordre == [("installer", False), ("lancer", "12345")]

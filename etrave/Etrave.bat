@@ -1,5 +1,5 @@
 @echo off
-rem Etrave - interface de l EA Strategy V11 (Windows). Double-clic : demarre l interface et ouvre la page dans le navigateur.
+rem Etrave - interface de l EA Strategy V11 (Windows). Double-clic : met l EA et ses deux graphiques a jour, ouvre MetaTrader 5 et la page.
 chcp 65001 >nul
 title Etrave
 cd /d "%~dp0.."
@@ -16,5 +16,6 @@ if not defined PY (
   pause
   exit /b 1
 )
-%PY% etrave\etrave.py %*
+rem Double-clic : ouvre aussi MetaTrader 5 (V11 sur le Nasdaq et le S&P 500). Au demarrage de Windows (--sans-navigateur) : seulement si la case est cochee.
+if /i "%~1"=="--sans-navigateur" (%PY% etrave\etrave.py %*) else (%PY% etrave\etrave.py --tout %*)
 if errorlevel 1 pause

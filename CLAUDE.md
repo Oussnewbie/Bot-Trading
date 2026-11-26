@@ -15,8 +15,9 @@ chacun).
 - Le robot refuse tout autre symbole (`MarcheAutorise` dans l'EA, `runtime.error` dans le Pine). Le Dow est exclu.
 - **Règles verrouillées en constantes** dans l'EA et le Pine : toutes les entrées (A, B, D1-D3), stop à 3 ranges (A, B ; taille des
   D), stop posé des D à l'entrée de A (V11), plancher de bruit (H1) coupé, pyramide, mémoire. Profil V10 choisi par l'utilisateur comme le plus rentable (critère gain) ; V11 retenue le 26/11/2026 comme meilleur compromis gain / pire baisse. Seuls restent réglables le
-  compte (risque, lots fixes ; solde, taille de contrat et pas de lot dans le Pine), l'heure du serveur, les FOMC après janvier 2028,
-  l'exécution, les notifications et l'affichage. Ne rends pas une règle réglable sans que l'utilisateur le demande.
+  compte (risque, lots fixes ; solde, taille de contrat et pas de lot dans le Pine), l'heure du serveur (détectée seule hors
+  testeur, `InpSrvAuto`), les FOMC en plus, l'exécution, les notifications et l'affichage. Demande de l'utilisateur du 26/11/2026 :
+  « un double-clic, tout se met en place, je règle tout depuis Étrave ». Ne rends pas une règle réglable sans que l'utilisateur le demande.
 - Hors sujet : bitcoin, or, devises, DAX.
 
 ## Échanges
@@ -27,11 +28,12 @@ chacun).
 ## Arborescence et commandes
 ```
 robot/     Strategy-V11.mq5, Strategy-V11.pine, test_robot.py (contrôles du code de l'EA et du Pine),
-           mt5/ (demo.ini, demo_1000.set, testeur.ini)
-etrave/    interface web locale de l'EA (Python sans dépendance), export.py (export trimestriel) + test_interface.py, test_export.py
+           mt5/ (demo.ini, profil-Etrave-demo/, demo_1000.set, testeur.ini)
+etrave/    interface web locale de l'EA (Python sans dépendance), export.py (export trimestriel) + test_interface.py, test_export.py,
+           Etrave.bat (Windows) et Etrave.command (Mac) : double-clic = EA et profil à jour, MetaTrader ouvert, page ouverte
 video/     (branche communication/outil-video) vidéos TikTok : récap de séance et présentation, `python3 video/outil.py` ; README
 ```
-- Tests : `.venv/bin/python -m pytest robot etrave -q` (116 tests ; sur la branche `communication/outil-video`, ajouter `video`). Le `.venv` du dépôt tourne sous Python 3.15.
+- Tests : `.venv/bin/python -m pytest robot etrave -q` (129 tests ; sur la branche `communication/outil-video`, ajouter `video`). Le `.venv` du dépôt tourne sous Python 3.15.
 - Étrave en essai : `.venv/bin/python etrave/etrave.py --sans-navigateur --port 8799 --dossier <dossier jetable>`, puis
   `http://127.0.0.1:8799`. Pour voir la page avec des données, écrire de faux `etat-<symbole>.txt` (format dans
   `etrave/test_interface.py`, `faux_etat`) et un `trades-<symbole>.csv`, et les réécrire toutes les 2 secondes (au-delà de 15 s sans
@@ -57,7 +59,10 @@ video/     (branche communication/outil-video) vidéos TikTok : récap de séanc
 ## Ce qu'on ne peut pas vérifier sur ce Mac
 - **Le Pine** (pas de TradingView) : n'affirme jamais qu'un `.pine` modifié passe l'analyseur. La version du 21/11/2026 l'avait
   passé ; les modifications suivantes n'ont pas été analysées.
-- **Étrave sous Windows** (lancement de MetaTrader, installation de l'EA, démarrage avec Windows) et la police Bahnschrift.
+- **Étrave sous Windows** (lancement de MetaTrader avec le profil, installation de l'EA et du profil dans le dossier de données,
+  fermeture, démarrage avec Windows, `Etrave.bat --tout`) et la police Bahnschrift. Le même chemin est vérifié sur Mac en vrai
+  (26/11/2026 : double-clic sur `Etrave.command`, EA recompilé, profil posé, MetaTrader ouvert, deux EA `trading_auto=1`,
+  heure du serveur détectée GMT+2, fermeture propre depuis la page).
 - **Pas de `.ex5` dans le dépôt.** On compile sur ce Mac, ou l'utilisateur avec F7 dans MetaEditor, ou avec le bouton d'Étrave.
 - Les deux fichiers du robot sont la source : on les modifie directement, en gardant l'EA et le Pine d'accord.
   - `etrave/test_interface.py` vérifie l'accord entre Étrave et l'EA (clés, bornes, journal des trades, heures des règles) et le
@@ -72,11 +77,17 @@ video/     (branche communication/outil-video) vidéos TikTok : récap de séanc
    (mêmes entrées, même résultat au centime). Nasdaq + S&P : +3 405 $, 45 % de jours gagnants, pire jour −101 $, pire baisse −248 $
    (V10 : +3 951 $, 47 %, −110 $, −360 $).
 2. **Testeur V10 précédent** (NDX100, 20/11/2025 → 19/11/2026, 0,1 lot sur 1 000 $) : +1 885,09 $, 379 trades ; sert de repère.
-3. **Démo préparée, jamais lancée en séance.** À refaire pour la V11 : `robot/mt5/demo.ini` (Expert `Etrave\Strategy-V11`) n'attache
-   que NDX100 ; le S&P 500 demande un second graphique (à poser à la main ou par un profil). Relance : MetaTrader fermé, copier
-   `demo.ini` dans le dossier de la plateforme et `demo_1000.set` en UTF-16 dans `MQL5/Presets/StrategyV11_demo_1000.set`, puis
-   `terminal64.exe /config:"C:\Program Files\MetaTrader 5\demo.ini"` et `caffeinate -i -w <pid>`, avant 9:30 New York. But : mesurer
-   le **glissement réel** (entrées A, B, D et sortie de 15:50). Deux MetaTrader ne tournent pas ensemble : arrêter la démo pour un test.
+3. **Démo préparée pour la V11, jamais lancée en séance.** Profil MetaTrader « Etrave-demo » à deux graphiques M5 (NDX100 et
+   SPX500), la V11 attachée à chacun avec lots fixes à 0 (demande de l'utilisateur du 26/11/2026 : la taille vient du risque
+   d'Étrave ; compte démo de 10 000 $, 0,25 % ≈ 0,1 lot sur NDX100) (`robot/mt5/profil-Etrave-demo/`, fichiers UTF-16 générés puis relus par
+   MetaTrader ; vérifié le 26/11/2026 : les deux EA se chargent, `trading_auto=1`, `lots_fixes=0.00`). **Lancement : double-clic sur
+   `etrave/Etrave.command`** (ou `Étrave.command` du Bureau, qui l'appelle) avant 9:30 New York : `mt5.py` recompile l'EA si la
+   source est plus récente que le `.ex5`, pose le profil, lance `wine terminal64.exe /config:<fichier temporaire>` (`[Charts]
+   ProfileLast=Etrave-demo`, `[Experts] AllowLiveTrading=1`, sans `[Common]` : MetaTrader reprend le compte enregistré) dans une
+   session à part, et `caffeinate -i -w <pid>`. Fermer avec le bouton d'Étrave (`taskkill` sans `/F`, refusé pendant un trade)
+   pour que MetaTrader garde le profil. Un `[StartUp]` n'enregistre pas l'EA dans le profil. `robot/mt5/demo.ini` reste le modèle
+   manuel. But : mesurer le **glissement réel** (entrées A, B, D et sortie de 15:50). Deux MetaTrader
+   ne tournent pas ensemble : arrêter la démo pour un test.
 4. Interrupteur, sur 60 jours de trade : moins de 28 % de jours gagnants, un total pire que −40 R, ou une baisse de plus de 66 R. Non
    codé, calculé pour la V10 à 0,25 %, pour un marché : l'export le juge **marché par marché** (ET-16). En lots fixes sur 1 000 $,
    −40 R serait le compte entier.
@@ -102,14 +113,25 @@ video/     (branche communication/outil-video) vidéos TikTok : récap de séanc
 - La marge du stop de B (`B_BUF_PB` = 0,5 pb) et le coût du garde-fou (`COST_SLIP_PB` = 0,6 pb dans l'EA, `COST_BP` = 1,65 pb
   dans le Pine) sont en pb du prix, pour valoir sur les deux indices.
 - **FOMC** : jours de décision codés jusqu'au 26/01/2028 (calendrier révisé de la Fed du 12/11/2026, provisoire). Le 27/10/2027 n'y
-  est pas : pas de décision annoncée. Les suivants se saisissent dans `InpFomc` (EA) et `fomcExtra` (Pine). Si la Fed déplace une
-  date, corriger les deux listes (un test vérifie leur accord).
+  est pas : pas de décision annoncée. Après la liste, l'EA lit l'événement `fed-interest-rate-decision` du calendrier économique de
+  MetaTrader (`FomcCalendrier`, hors testeur ; vérifié le 26/11/2026 : mêmes dates de 2025 à 2027 sauf le 27/10/2027, que le calendrier de
+  MetaTrader garde encore, heures du serveur). Le Pine n'a pas
+  ce calendrier : `fomcExtra`. Si la Fed déplace une date, corriger les deux listes (un test vérifie leur accord).
+- **Heure du serveur** (26/11/2026) : `DetecterHeureServeur` (hors testeur, `InpSrvAuto`) déduit le décalage d'hiver de
+  `TimeTradeServer() - TimeGMT()` arrondi à l'heure (avertissement au-delà de 10 min d'écart), avec la règle `InpSrvDST` (US par défaut) ; `InpSrvGMT` ne sert plus
+  qu'au testeur, où `TimeGMT()` vaut l'heure du serveur. Dépend de l'horloge de l'ordinateur ; changement notifié.
 - Les numéros magiques 50930 à 50935 sont partagés avec d'anciennes versions (V9, ORB v6) ; le filet de sécurité et
   `EaPositions` surveillent 50930 à 50939. Préfixe d'état `StratV11_`. Compte
   **hedging** obligatoire.
 - Le risque réglé dans Étrave passe avant les 0,25 % de l'EA. Après une mise à jour depuis la v6, il peut encore valoir 0,5 %.
-- `etrave/reference.json` contient les trades de l'**ORB v6** : la page Risque simule donc la v6, avec la marge de la V10 (15 unités
-  réservées, position 3 fois plus petite). Le refaire à partir des trades V10 est un chantier ouvert.
+- `etrave/reference.json` (26/11/2026) : la V11 rejouée par le simulateur de la recherche sur les données M1 du courtier, Nasdaq +
+  S&P 500, 2019-03-28 → 2026-11-25, une ligne par marché et par jour (`date, marche, r, range_sur_prix`, R de toutes les jambes).
+  `risque.simuler` compose jour par jour (somme des deux marchés), marge par ligne (15 unités). Régénérer avec
+  `donnees/recherche-combinaisons-2026-11-26/reference_v11.py` (variables `GRILLE_SIM`, `BOT_TRADING_DONNEES`). Avant : ORB v6.
+- **Étrave sur Mac** : le dossier partagé est celui du Wine de MetaTrader 5 pour Mac
+  (`…/net.metaquotes.wine.metatrader5/drive_c/users/$USER/AppData/Roaming/MetaQuotes/Terminal/Common/Files/Etrave`). Avant le
+  26/11/2026, Étrave lisait `~/.etrave` : ses réglages n'atteignaient pas l'EA. Les tests n'utilisent jamais le vrai MetaTrader
+  (`mt5_terminaux` injecté) : un test qui l'oublie compile et installe pour de vrai sur ce Mac.
 - **Étrave en direct** : le détail (lots, stop) ne concerne que la cassure A. Pour B et D, la page affiche les lignes d'état `v8_b`
   et `v9_d` et leur résultat ouvert `v8_resultat`. La clé `jambes` garde le bouton « Clôturer » visible après la sortie de A ;
   `lots_fixes` dit à la page que le risque en % n'est pas utilisé ; `sortie_ny` donne l'heure de sortie du jour.

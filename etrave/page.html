@@ -282,7 +282,7 @@
     <details class="card" data-fold="tests">
       <summary><h2>Ce que disent les tests</h2></summary>
       <ul>
-        <li><b>Attention :</b> la simulation ci-dessus rejoue encore les trades de l’ancienne ORB v6 (une seule position à la fois), avec la marge de la V10. La V10 peut tenir jusqu’à 5 positions en même temps (A, B, D1 à D3) : ses chiffres sont ceux de cette liste.</li>
+        <li><b>La simulation ci-dessus</b> rejoue la V11 sur les données du courtier (Nasdaq + S&amp;P 500, mars 2019 → novembre 2026, spread réel + glissement) : +338R, pire baisse −52R, pire journée −6R. Un « R » est le risque réglé : la V11 peut tenir jusqu’à 5 positions par marché le même jour (A, B, D1 à D3), d’où des journées à plusieurs R.</li>
         <li><b>Strategy V10 (la V11 moins le stop des D à l’entrée de A), Nasdaq 2018 → novembre 2026</b> (spread réel + 1 point) : +477R, 47 % de trades gagnants, pire baisse −32R, pire journée −5,1R.</li>
         <li><b>Nasdaq 2010-2017</b>, coûts au poids d’aujourd’hui : +194R, 44 % de trades gagnants, pire baisse −53R. Avec les coûts au poids de 2018 : +23R seulement.</li>
         <li><b>S&amp;P 500 :</b> tradé avec le Nasdaq depuis le 25 novembre 2026. V11 au testeur MetaTrader, janvier 2025 → novembre 2026, 0,1 lot : +414 $ (Nasdaq : +2 991 $) ; il gagne nettement moins que le Nasdaq et dépend davantage des coûts. Le Dow Jones est exclu : testé tel quel, il ne gagne rien (−26R).</li>
@@ -860,13 +860,13 @@ function renderSim() {
   const a = account();
   const s = sim;
   $('sim-title').textContent = `${riskText(s.risquePct)} par trade${s.levier ? `, levier 1:${s.levier}` : ''}`;
-  $('sim-hint').textContent = `L’ancienne ORB v6 rejouée sur le Nasdaq du ${s.debut} au ${s.fin} (${s.trades} trades, ${String(s.annees).replace('.', ',')} ans), gains et pertes réinvestis.${s.levier ? '' : ' Sans levier saisi, la marge n’est pas prise en compte.'}`;
+  $('sim-hint').textContent = `La V11 rejouée sur le Nasdaq et le S&P 500 du ${s.debut} au ${s.fin} (${s.jours} jours de trade, ${String(s.annees).replace('.', ',')} ans, toutes les entrées du jour), gains et pertes réinvestis.${s.levier ? '' : ' Sans levier saisi, la marge n’est pas prise en compte.'}`;
   const gain = s.parAnPct > 100000 ? 'plus de 100 000 %' : pctSigned(s.parAnPct, s.parAnPct < 100 ? 1 : 0);
   const tiles = [
-    tile('Gain par an dans le test', gain, 'si les années à venir ressemblent à 2018-2026'),
-    tile('Pire baisse du test', `−${num(s.pireBaissePct, 1)} %`, 'du plus haut au plus bas, 2018-2026', s.pireBaissePct >= 30 ? 'alert' : ''),
-    tile(`${s.serie} pertes de suite`, `−${num(s.seriePct, 1)} %`, 'la pire série du test', s.seriePct >= 30 ? 'alert' : ''),
-    tile('Si 2015-2017 revenait', `au moins −${num(s.ancienTestPct, 0)} %`, `l’ancien test a baissé de ${s.ancienTestR}R`, s.ancienTestPct >= 30 ? 'alert' : ''),
+    tile('Gain par an dans le test', gain, 'si les années à venir ressemblent à 2019-2026'),
+    tile('Pire baisse du test', `−${num(s.pireBaissePct, 1)} %`, 'du plus haut au plus bas, 2019-2026', s.pireBaissePct >= 30 ? 'alert' : ''),
+    tile(`${s.serie} jours perdants de suite`, `−${num(s.seriePct, 1)} %`, 'la pire série du test', s.seriePct >= 30 ? 'alert' : ''),
+    tile('Pire journée du test', `−${num(s.pireJourPct, 1)} %`, `${num(s.pireJourR, 1)} fois le risque en un jour (A, B, D, deux marchés)`, s.pireJourPct >= 10 ? 'alert' : ''),
   ];
   if (s.levier) tiles.push(tile('Trades réduits par la marge', pct(s.reduitsPct), s.reduitsPct > 0 ? `risque réellement pris : ${riskText(Number(s.risqueMoyenPct.toFixed(2)))} en moyenne` : 'la marge suffit tous les jours du test', s.reduitsPct >= 50 ? 'alert' : ''));
   if (a && a.solde != null && !fixedLots()) tiles.push(tile('Sur ton solde', `${money((a.solde * s.risquePct) / 100, a.devise)}`, `risqués par trade, pour ${money(a.solde, a.devise)}`));
@@ -877,7 +877,7 @@ function renderSim() {
     notes.push(el('div', { class: `banner${s.reduitsPct >= 50 ? ' bad' : ''}` }, el('b', {}, 'La marge manque certains jours. '),
       `Avec un levier de 1:${s.levier}, ${pct(s.reduitsPct)} des trades du test n’auraient pas pu être ouverts à ${riskText(s.risquePct)} : l’EA réduit alors la taille pour garder la marge de toutes les entrées du jour et de leurs pyramides (${s.unites} unités en tout, 90 % de la marge libre au plus). Pour qu’un jour sur deux passe en entier, il faudrait environ 1:${needed}.`));
   }
-  if (s.risquePct > bounds().risqueAConfirmer) notes.push(el('div', { class: 'banner bad' }, el('b', {}, 'Au-delà de ce que le test rend raisonnable. '), `À ${riskText(s.risquePct)} par trade, la pire série du test (${s.serie} pertes) coûte ${num(s.seriePct, 0)} % du compte, et une période comme 2015-2017 au moins ${num(s.ancienTestPct, 0)} %. Le gain par an affiché suppose qu’aucune de ces séries n’arrive plus tôt ou plus fort que dans le test.`));
+  if (s.risquePct > bounds().risqueAConfirmer) notes.push(el('div', { class: 'banner bad' }, el('b', {}, 'Au-delà de ce que le test rend raisonnable. '), `À ${riskText(s.risquePct)} par trade, la pire baisse du test coûte ${num(s.pireBaissePct, 0)} % du compte et la pire journée ${num(s.pireJourPct, 0)} %. Le gain par an affiché suppose qu’aucune de ces baisses n’arrive plus tôt ou plus fort que dans le test : le Nasdaq n’a jamais été réglé que sur le passé.`));
   $('sim-notes').replaceChildren(...notes);
 }
 async function saveRisk(confirmation) {
@@ -1006,14 +1006,18 @@ function renderConnections() {
   login.value = c.mt5Login || (a && a.compte_login) || '';
   server.value = c.mt5Serveur || (a && a.compte_serveur) || '';
   const pick = m.terminaux.length > 1 ? el('select', { id: 'k-terminal', 'aria-label': 'MetaTrader 5 à lancer' }, ...m.terminaux.map((t) => el('option', { value: String(t.id) }, t.dossier))) : null;
-  const canLaunch = m.windows && !m.ouvert && m.terminaux.length > 0;
-  const why = !m.windows ? 'MetaTrader 5 ne se lance que sous Windows : ouvre cette page sur l’ordinateur ou le VPS où il est installé.'
+  const canLaunch = m.pilotable && !m.ouvert && m.terminaux.length > 0;
+  const why = !m.pilotable ? (m.mac ? 'MetaTrader 5 pour Mac est introuvable : installe-le depuis le site de MetaQuotes, ouvre-le une fois, puis reviens ici.' : 'MetaTrader 5 ne se lance que sous Windows ou sur Mac : ouvre cette page sur l’ordinateur ou le VPS où il est installé.')
     : m.ouvert ? 'MetaTrader 5 est ouvert. Pour changer de compte, ferme-le d’abord toi-même (vérifie qu’aucun trade n’est en cours), puis reviens ici.'
     : m.terminaux.length === 0 ? 'MetaTrader 5 n’a pas été trouvé sur cet ordinateur : ouvre-le une première fois à la main et pose l’EA sur un graphique.' : '';
   const launch = async (withAccount) => {
     const body = { terminal: pick ? Number(pick.value) : 0, connexion: withAccount };
     if (withAccount) Object.assign(body, { login: login.value, motDePasse: password.value, serveur: server.value });
-    try { await api('/api/mt5/lancer', body); password.value = ''; toast(withAccount ? 'MetaTrader 5 se lance et se connecte au compte.' : 'MetaTrader 5 se lance.'); }
+    try { await api('/api/mt5/lancer', body); password.value = ''; toast((withAccount ? 'MetaTrader 5 se lance et se connecte au compte.' : 'MetaTrader 5 se lance.') + ' Nasdaq et S&P 500 s’ouvrent avec la V11.'); }
+    catch (error) { toast(error.message); }
+  };
+  const shutdown = async () => {
+    try { await api('/api/mt5/fermer', {}); toast('MetaTrader 5 se ferme. Il gardera ses graphiques pour la prochaine fois.'); }
     catch (error) { toast(error.message); }
   };
   const install = async () => {
@@ -1034,11 +1038,11 @@ function renderConnections() {
     else if (r.error) installed.append(el('div', { class: 'banner bad' }, r.error));
     else installed.append(el('div', { class: `banner ${r.compile ? 'ok' : 'bad'}` },
       el('b', {}, r.compile ? 'EA installé et compilé. ' : r.compile === false ? 'EA copié, mais la compilation a échoué. ' : 'EA copié, pas compilé. '),
-      r.compile ? `Il est dans ${r.emplacement} : glisse-le sur le graphique (une seule fois), MetaTrader s’en souviendra.` : 'Envoie les lignes ci-dessous pour correction :',
+      r.compile ? `Il est dans ${r.emplacement}${r.profil ? ', avec les deux graphiques (Nasdaq et S&P 500) prêts' : ' ; ferme MetaTrader puis recommence pour remettre aussi les deux graphiques'}. Les boutons « Lancer » les ouvrent avec la V11.` : 'Envoie les lignes ci-dessous pour correction :',
       r.journal.length ? el('ul', { style: 'margin:8px 0 0' }, ...r.journal.map((line) => el('li', {}, line))) : null));
   }
   const mt5 = fold('mt5', 'Compte MetaTrader 5', true, a && a.en_marche ? `${a.compte_type === 'reel' ? 'RÉEL' : 'démo'} ${a.compte_login}` : 'arrêté',
-    el('div', { class: 'hint' }, 'Lance MetaTrader 5 et le connecte au compte de ton courtier. Le mot de passe n’est jamais gardé par cette page : MetaTrader le retient lui-même.'),
+    el('div', { class: 'hint' }, 'Lance MetaTrader 5 et le connecte au compte de ton courtier, avec la V11 sur le Nasdaq et le S&P 500 et le trading automatique actif. Le mot de passe n’est jamais gardé par cette page : MetaTrader le retient lui-même.'),
     statusLine(a && a.en_marche, a ? (a.en_marche ? `Connecté au compte ${a.compte_type === 'reel' ? 'RÉEL' : 'démo'} ${a.compte_login}, serveur ${a.compte_serveur}` : `MetaTrader arrêté (dernier compte vu : ${a.compte_login}, serveur ${a.compte_serveur})`) : 'Aucun EA vu pour l’instant'),
     why ? el('p', {}, why) : null,
     el('div', { class: 'form' },
@@ -1049,12 +1053,13 @@ function renderConnections() {
     el('div', { class: 'secret-row' },
       el('button', { class: 'btn primary', disabled: !canLaunch, onclick: () => launch(true) }, 'Lancer MetaTrader 5 et se connecter'),
       el('button', { class: 'btn', disabled: !canLaunch, onclick: () => launch(false) }, 'Ouvrir MetaTrader 5 tel quel'),
-      el('button', { class: 'btn', disabled: !m.windows || m.terminaux.length === 0, onclick: install }, 'Installer ou mettre à jour l’EA')),
+      el('button', { class: 'btn', disabled: !m.pilotable || m.terminaux.length === 0, onclick: install }, 'Installer ou mettre à jour l’EA'),
+      el('button', { class: 'btn', disabled: !m.pilotable || !m.ouvert, onclick: shutdown }, 'Fermer MetaTrader 5')),
     installed,
     el('div', { class: 'checks' },
       el('label', { class: 'switch' }, el('input', { type: 'checkbox', checked: c.mt5Auto, onchange: (event) => option({ auto: event.target.checked }) }), 'Ouvrir MetaTrader 5 tout seul quand Étrave démarre'),
-      el('label', { class: 'switch' }, el('input', { type: 'checkbox', checked: m.demarrageWindows, disabled: !m.windows, onchange: (event) => option({ demarrageWindows: event.target.checked }) }), 'Lancer Étrave à l’ouverture de la session Windows')),
-    el('p', { style: 'margin-top:10px' }, 'Avec ces deux cases, un VPS qui redémarre relance tout seul Étrave puis MetaTrader, qui se reconnecte au compte et retrouve l’EA sur son graphique (si Windows ouvre la session automatiquement).'),
+      el('label', { class: 'switch' }, el('input', { type: 'checkbox', checked: m.demarrageWindows, disabled: !m.windows && !m.mac, onchange: (event) => option({ demarrageWindows: event.target.checked }) }), m.mac ? 'Lancer Étrave à l’ouverture de la session du Mac' : 'Lancer Étrave à l’ouverture de la session Windows')),
+    el('p', { style: 'margin-top:10px' }, m.mac ? 'Avec ces deux cases, le Mac relance tout seul Étrave puis MetaTrader à l’ouverture de ta session : le Nasdaq et le S&P 500 s’ouvrent avec la V11, et le Mac reste éveillé tant que MetaTrader tourne. Le double-clic sur Étrave fait la même chose.' : 'Avec ces deux cases, un VPS qui redémarre relance tout seul Étrave puis MetaTrader, qui se reconnecte au compte et retrouve l’EA sur son graphique (si Windows ouvre la session automatiquement).'),
     el('p', {}, 'Après un changement de compte, vérifie dans MetaTrader que l’EA est toujours sur son graphique et que le bouton « Trading algo » est actif : cette page te le dit en haut.'));
 
   const note = fold('note', 'Où vont ces réglages', false, '',

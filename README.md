@@ -29,7 +29,8 @@ Ce dépôt n'est pas un conseil en investissement.
 Les règles sont fixées dans le code, à l'identique dans l'EA et dans le script : toutes les entrées, stop à 3 ranges, pyramide,
 mémoire, et stop des continuations D au prix d'entrée de A (V11). La V10 était la configuration la plus rentable des deux marchés
 réunis ; la V11 gagne environ 15 % de moins avec une pire baisse environ 30 % plus faible (choix du 26 novembre 2026). Restent réglables : le risque ou les lots
-fixes, l'heure du serveur, les dates FOMC après janvier 2028, le numéro magique, les notifications et l'affichage. Changer une règle
+fixes, le numéro magique, les notifications et l'affichage. L'heure du serveur et les jours de la Fed se trouvent seuls (voir plus
+bas). Changer une règle
 demande de modifier le code et de recompiler.
 
 **Cassure (A)**
@@ -55,7 +56,8 @@ demande de modifier le code et de recompiler.
   +1 R), et ne risquent jamais plus que la cassure. Elles restent ouvertes si la cassure sort avant elles. Jusqu'à 5 positions
   peuvent être ouvertes ensemble, toutes dans le même sens.
 
-**Jours sans trade** : décisions de la Fed (FOMC, codées jusqu'au 26 janvier 2028), jours fériés américains et demi-séances. Aucun
+**Jours sans trade** : décisions de la Fed (FOMC, codées jusqu'au 26 janvier 2028, puis lues dans le calendrier économique de
+MetaTrader), jours fériés américains et demi-séances. Aucun
 ordre non plus si le spread plus deux glissements pèse plus de 25 % du risque du jour.
 
 **Taille** : 0,25 % du solde par trade par défaut. Sur un petit compte, le lot minimum du courtier dépasse ce risque : le réglage
@@ -87,16 +89,37 @@ feront.
   nettement moins que le Nasdaq et dépend davantage des coûts. Le Dow Jones est exclu : testé tel quel, il ne gagne rien.
 - Le capital peut stagner longtemps : jusqu'à 20 mois sans nouveau plus haut dans les tests 2018-2026.
 
-## Installer l'EA dans MetaTrader 5
+## Installer et lancer : un double-clic
 
-1. Hors séance et sans trade ouvert, retire tout ancien robot du graphique (en particulier Strategy-V10 : la V11 est un nouveau
-   fichier, l'ancien reste dans la liste des Expert Advisors de MetaTrader).
-2. Copie `robot/Strategy-V11.mq5` dans `MQL5\Experts\Etrave`, ouvre-le dans MetaEditor et compile (F7) : tu dois lire « 0 errors ».
-   Le bouton « Installer ou mettre à jour l'EA » d'Étrave fait la même chose.
-3. Glisse Strategy-V11 sur le graphique **M5** du Nasdaq (NDX100 chez TradinGlobal) et sur celui du S&P 500 (SPX500), avec les mêmes
-   réglages, et coche « Autoriser le trading algorithmique ».
-4. Vérifie l'heure de New York affichée par le panneau. Si elle est fausse, corrige « Décalage GMT du serveur » et « Heure d'été du
-   serveur ».
+Une fois MetaTrader 5 installé, **Étrave installe et lance tout**. Elle compile l'EA, pose le profil « Etrave-demo » : deux
+graphiques M5, NDX100 et SPX500 (noms de TradinGlobal), la V11 sur chacun, lots fixes à 0. Puis elle ouvre MetaTrader sur ce profil,
+trading automatique actif. Le reste se règle dans la page : risque, marchés, Telegram, compte.
+
+**Sur un Mac** (MetaTrader 5 pour Mac) : double-clique sur `etrave/Etrave.command`. MetaTrader s'ouvre avec les deux graphiques,
+le Mac reste éveillé tant qu'il tourne, et la page d'Étrave s'ouvre. L'EA est recompilé si le dépôt a changé depuis le dernier
+lancement.
+
+**Sur un VPS Windows vierge** :
+1. Installe MetaTrader 5 depuis le site de ton courtier et ouvre-le une fois.
+2. Installe Python 3 ([python.org](https://www.python.org/downloads/), coche « Add python.exe to PATH »).
+3. Récupère le dépôt (`git clone`, ou « Code > Download ZIP » sur GitHub, puis décompresse).
+4. Double-clique sur `etrave/Etrave.bat`. Dans l'onglet Connexions, saisis le numéro de compte, le mot de passe et le serveur, puis
+   « Lancer MetaTrader 5 et se connecter ». Si MetaTrader est resté ouvert après son installation, ferme-le d'abord avec le bouton
+   « Fermer MetaTrader 5 ».
+5. Coche « Ouvrir MetaTrader 5 tout seul quand Étrave démarre » et « Lancer Étrave à l'ouverture de la session Windows ». Pour qu'un
+   VPS redémarré reparte seul, active aussi l'ouverture de session automatique de Windows.
+
+Ce chemin Windows n'a pas encore été essayé sur un vrai Windows (il est développé et vérifié sur Mac) : au premier lancement,
+vérifie que les deux graphiques portent la V11 et que le bouton « Trading algo » est vert.
+
+**À la main** : copie `robot/Strategy-V11.mq5` dans `MQL5\Experts\Etrave`, compile-le dans MetaEditor (F7, « 0 errors »), puis
+glisse Strategy-V11 sur le graphique **M5** du Nasdaq et sur celui du S&P 500. Coche « Autoriser le trading algorithmique ». Retire
+d'abord tout ancien robot (Strategy-V10 en particulier).
+
+**Heure du serveur** : l'EA la déduit tout seul de l'horloge de l'ordinateur, à l'heure près (heure d'été américaine, comme
+TradinGlobal ; avertissement si l'horloge semble décalée de plus de 10 minutes), et le panneau affiche l'heure de New York. Garde l'heure de l'ordinateur en réglage automatique. Les réglages « Décalage GMT du
+serveur » et « Heure d'été du serveur » ne servent plus qu'au testeur, ou si tu coupes « Heure du serveur détectée
+automatiquement ».
 
 À savoir :
 - **Compte « hedging » obligatoire.** Sur un compte « netting », B et D sont coupées.
@@ -105,9 +128,13 @@ feront.
 - **Telegram** : dans Outils > Options > Expert Advisors, autorise `https://api.telegram.org` pour WebRequest.
 - **Où le faire tourner** : un ordinateur sans mise en veille pour la démo, un VPS Windows pour le réel. MetaTrader doit rester ouvert
   de 9:30 à 15:50.
-- **Dates FOMC** : après le 26 janvier 2028, saisis les jours de décision dans « Jours FOMC en plus » (format aaaa.mm.jj, séparés par
-  des virgules) dès que la Fed les publie. Sinon le robot trade ces jours-là.
-- `robot/mt5/` contient la configuration de la démo (`demo.ini`, `demo_1000.set`) et un modèle pour le testeur de stratégie
+- **Dates FOMC** : après le 26 janvier 2028, l'EA lit les décisions de la Fed dans le calendrier économique de MetaTrader. Ce
+  calendrier a les mêmes dates que la liste codée pour 2025-2027, sauf le 27/10/2027, qu'il garde alors que la Fed l'a retiré
+  (vérifié le 26/11/2026) : il peut donc contenir une date périmée. « Jours FOMC en plus »
+  (aaaa.mm.jj, séparés par des virgules) reste là si le calendrier manquait une date. Le testeur n'a pas ce calendrier.
+- `robot/mt5/` contient la configuration de la démo (`demo.ini`, qui ouvre le profil `profil-Etrave-demo` : deux graphiques M5, Nasdaq
+  et S&P 500, la V11 sur chacun, lots fixes à 0 : la taille vient du risque réglé dans
+  Étrave ; `demo_1000.set`, l'ancien réglage à 0,1 lot) et un modèle pour le testeur de stratégie
   (`testeur.ini`).
 
 **Contrôle dans le testeur de stratégie** (Expert `Etrave\Strategy-V11`, M5, « Chaque tick basé sur des ticks réels », compte
@@ -144,16 +171,17 @@ pas (l'EA saute alors l'entrée).
 ## Étrave, l'interface de l'EA
 
 1. Installe Python 3 ([python.org](https://www.python.org/downloads/), coche « Add python.exe to PATH »). Rien d'autre n'est nécessaire.
-2. Double-clique sur `etrave/Etrave.bat`. La page s'ouvre sur `http://127.0.0.1:8788` (ailleurs que sous Windows :
-   `python etrave/etrave.py`).
+2. Double-clique sur `etrave/Etrave.bat` (Windows) ou `etrave/Etrave.command` (Mac) : MetaTrader s'ouvre s'il est fermé (voir plus
+   haut), puis la page sur `http://127.0.0.1:8788`. Ailleurs : `python etrave/etrave.py`.
 
 | Onglet | Contenu |
 |---|---|
 | Séance | La frise du jour (range, cassure, entrées D, repli B, sortie) avec l'heure de New York, une ligne par marché (ce que fait l'EA, résultat ouvert, bouton « Clôturer »), les chiffres du compte, la courbe, la liste des trades et les exports trimestriels. Une case par marché arrête les nouveaux trades. |
-| Risque | Risque par trade (de 0,05 % à 20 % ; au-delà de 1 %, il faut taper RISQUE) et levier du courtier. La simulation rejoue encore les trades de l'ancienne ORB v6. |
-| Connexions | Telegram, connexion à un compte MetaTrader, installation de l'EA, lancement automatique. |
+| Risque | Risque par trade (de 0,05 % à 20 % ; au-delà de 1 %, il faut taper RISQUE) et levier du courtier. La simulation rejoue la V11 sur le Nasdaq et le S&P 500 (données du courtier 2019-2026, toutes les entrées) : gain par an, pire baisse, pire série et pire journée à ce risque. |
+| Connexions | Telegram, connexion à un compte MetaTrader, installation de l'EA et des deux graphiques, ouverture et fermeture de MetaTrader, lancement automatique. |
 
-L'interface et l'EA se parlent par des fichiers du dossier commun de MetaTrader (`…\MetaQuotes\Terminal\Common\Files\Etrave`).
+L'interface et l'EA se parlent par des fichiers du dossier commun de MetaTrader (`…\MetaQuotes\Terminal\Common\Files\Etrave` ;
+sur Mac, le même dossier dans le Wine de MetaTrader 5 pour Mac).
 L'interface ne passe aucun ordre : la fermer ne change rien à l'EA. Elle n'écoute que sur 127.0.0.1, avec un jeton tiré au hasard à
 chaque lancement ; n'ouvre jamais son port sur internet.
 
@@ -188,7 +216,8 @@ pire que −40 R, ou une baisse de plus de 66 R depuis le dernier plus haut. Ces
 - **Ordres en attente** : ne supprime pas à la main les ordres stop de l'EA ; 10 secondes après leur disparition, il renonce au trade.
 - **EA lancé en retard** : après 9:35, si le prix a déjà franchi le niveau, l'EA entre au marché, avec plus de glissement, et renonce si
   le risque réel dépasserait 1,25 R.
-- **Heure du serveur** : si elle ne correspond plus aux réglages, l'EA ne pose aucun ordre ce jour-là et le signale.
+- **Heure du serveur** : détectée par l'EA à partir de l'horloge de l'ordinateur. Une horloge ou un fuseau faux décalerait le range :
+  laisse l'ordinateur régler son heure tout seul. Le panneau affiche l'heure de New York à vérifier.
 - **Un seul MetaTrader avec l'EA par ordinateur** : deux terminaux partagent les réglages d'Étrave, et un « Clôturer » fermerait les deux.
 - **Fermetures exceptionnelles** de la Bourse (deuil national, panne) : absentes du calendrier, la position passerait la fermeture.
 - **Arrêt brutal** : après un plantage, un ordre stop peut rester chez le courtier jusqu'à son expiration (9:45, ou la fin de la
