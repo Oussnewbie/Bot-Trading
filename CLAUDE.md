@@ -71,14 +71,10 @@ video/     (branche communication/outil-video) vidéos TikTok : récap de séanc
   - `robot/test_robot.py` relit le code pour vérifier chaque correctif. Un nouveau correctif ajoute son contrôle.
 
 ## État au 26 novembre 2026 et prochaine action
-1. **V11 validée au testeur MT5** (copie d'essai dans `MQL5/Experts/Essais/`, ticks réels, 01/01/2025 → 25/11/2026, 0,1 lot, dépôt
-   10 000 $) contre le simulateur de la recherche (variante « stopA_D ») : NDX100 +2 991,22 $ contre +3 015,72 $ (237 jours, même
-   signe 99,2 %) ; SPX500 +413,92 $ contre +309,14 $ (même signe 96,3 %, simulateur prudent comme pour la V10). Entrées A et B
-   identiques à la V10 du même testeur ; 36 (NDX) et 33 (SPX) D de moins. Les corrections EX-1 à EX-7 ne changent aucun trade
-   (mêmes entrées, même résultat au centime). Nasdaq + S&P : +3 405 $, 45 % de jours gagnants, pire jour −101 $, pire baisse −248 $
-   (V10 : +3 951 $, 47 %, −110 $, −360 $).
-2. **Testeur V10 précédent** (NDX100, 20/11/2025 → 19/11/2026, 0,1 lot sur 1 000 $) : +1 885,09 $, 379 trades ; sert de repère.
-3. **Démo préparée pour la V11, jamais lancée en séance.** Profil MetaTrader « Etrave-demo » à deux graphiques M5 (NDX100 et
+1. **V11 validée au testeur MT5** (ticks réels, 01/01/2025 → 25/11/2026, 0,1 lot, dépôt 10 000 $) : NDX100 +2 991,22 $, SPX500
+   +413,92 $ ; Nasdaq + S&P : +3 405 $, 45 % de jours gagnants, pire jour −101 $, pire baisse −248 $ (V10 : +3 951 $, 47 %, −110 $,
+   −360 $). Les corrections EX-1 à EX-7 ne changent aucun trade (mêmes entrées, même résultat au centime).
+2. **Démo préparée pour la V11, jamais lancée en séance.** Profil MetaTrader « Etrave-demo » à deux graphiques M5 (NDX100 et
    SPX500), la V11 attachée à chacun avec lots fixes à 0 (demande de l'utilisateur du 26/11/2026 : la taille vient du risque
    d'Étrave ; compte démo de 10 000 $, 0,25 % ≈ 0,1 lot sur NDX100) (`robot/mt5/profil-Etrave-demo/`, fichiers UTF-16 générés puis relus par
    MetaTrader ; vérifié le 26/11/2026 : les deux EA se chargent, `trading_auto=1`, `lots_fixes=0.00`). **Lancement : double-clic sur
@@ -89,17 +85,16 @@ video/     (branche communication/outil-video) vidéos TikTok : récap de séanc
    pour que MetaTrader garde le profil. Un `[StartUp]` n'enregistre pas l'EA dans le profil. `robot/mt5/demo.ini` reste le modèle
    manuel. But : mesurer le **glissement réel** (entrées A, B, D et sortie de 15:50). Deux MetaTrader
    ne tournent pas ensemble : arrêter la démo pour un test.
-4. Interrupteur, sur 60 jours de trade, **par marché** (AUD-09, 27/11/2026 ; `export.SEUILS_INTERRUPTEUR`, recalculés depuis
+3. Interrupteur, sur 60 jours de trade, **par marché** (AUD-09, 27/11/2026 ; `export.SEUILS_INTERRUPTEUR`, recalculés depuis
    `reference.json` : pire fenêtre de 60 jours × 1,25 pour le total et la baisse, pire part de jours gagnants − 5 points ; données
    déjà vues, pas une preuve) : Nasdaq < 26,67 % de jours gagnants, total < −14,54 R ou baisse > 23,88 R ; S&P 500 < 18,33 %,
    < −44,83 R ou > 48,64 R. Avant : 28 %, −40 R, 66 R, calculés pour la V10 et un seul marché. Étrave le vérifie toutes les 10 min,
    l'affiche dans l'onglet Séance et envoie un Telegram une fois par franchissement (`interrupteur.txt`), à 60 jours complets. Il
    n'arrête pas l'EA : c'est à l'utilisateur de décider.
-5. Le risque par trade se décide une fois le glissement réel connu. C'est la décision de l'utilisateur.
-6. **Recherche du 26/11/2026** (hors dépôt, `donnees/`) : protections contre les retournements, coupes CHoCH M1 à M15, dojis,
-   confirmations M5/M15, filtres de tendance H1/H4/jour, range de 15/30 min, largeur du stop, carte de 26 critères à 9:35, deux grilles
-   de 219 744 et 2 636 928 combinaisons à 1 et 3 points, relues par des relecteurs indépendants : rien ne bat la V10 de façon solide ;
-   la V11 a été choisie comme meilleur compromis gain / pire baisse. Ne pas refaire ces tests ; la prochaine donnée neuve est la démo.
+4. Le risque par trade se décide une fois le glissement réel connu. C'est la décision de l'utilisateur.
+5. Les variantes testées jusqu'au 26/11/2026 (protections contre les retournements, coupes, filtres de tendance, confirmations,
+   largeur du stop, grilles de combinaisons) n'ont rien donné de mieux que la V10 ; la V11 est le compromis gain / pire baisse
+   retenu. Ne pas les refaire : la prochaine donnée neuve est la démo.
 
 ## Discipline
 - **Ne règle plus rien sur le Nasdaq à partir du backtest** : tout l'historique 2010 → 18/11/2026 a servi à la mise au point
@@ -139,10 +134,10 @@ video/     (branche communication/outil-video) vidéos TikTok : récap de séanc
   `EaPositions` surveillent 50930 à 50939. Préfixe d'état `StratV11_`. Compte
   **hedging** obligatoire.
 - Le risque réglé dans Étrave passe avant les 0,25 % de l'EA. Après une mise à jour depuis la v6, il peut encore valoir 0,5 %.
-- `etrave/reference.json` (26/11/2026) : la V11 rejouée par le simulateur de la recherche sur les données M1 du courtier, Nasdaq +
-  S&P 500, 2019-03-28 → 2026-11-25, une ligne par marché et par jour (`date, marche, r, range_sur_prix`, R de toutes les jambes).
-  `risque.simuler` compose jour par jour (somme des deux marchés), marge par ligne (15 unités). Régénérer avec
-  `donnees/recherche-combinaisons-2026-11-26/reference_v11.py` (variables `GRILLE_SIM`, `BOT_TRADING_DONNEES`). Avant : ORB v6.
+- `etrave/reference.json` (26/11/2026) : la V11 rejouée par le simulateur sur les données M1 du courtier, Nasdaq + S&P 500,
+  2019-03-28 → 2026-11-25, une ligne par marché et par jour (`date, marche, r, range_sur_prix`, R de toutes les jambes).
+  `risque.simuler` compose jour par jour (somme des deux marchés), marge par ligne (15 unités). Recalculer avec
+  `donnees/reference-v11/regenerer.sh` (hors dépôt, voir « Données hors dépôt »).
 - **Étrave sur Mac** : le dossier partagé est celui du Wine de MetaTrader 5 pour Mac
   (`…/net.metaquotes.wine.metatrader5/drive_c/users/$USER/AppData/Roaming/MetaQuotes/Terminal/Common/Files/Etrave`). Avant le
   26/11/2026, Étrave lisait `~/.etrave` : ses réglages n'atteignaient pas l'EA. Les tests n'utilisent jamais le vrai MetaTrader
@@ -237,23 +232,22 @@ video/     (branche communication/outil-video) vidéos TikTok : récap de séanc
       26/11/2026 : l'interrupteur est jugé marché par marché (ET-16) ;
     - Vidéo, à décider avec l'utilisateur : le trait « Jusqu'à +106 pts » est vert et l'épingle des photos rouge, alors que vert et
       rouge sont réservés au résultat ; sur Mac, la capture de MetaTrader n'est pas contrôlée (écran verrouillé).
-- Test des stops (25/11/2026, pré-enregistré, historique déjà vu) : fermer B/D au stop de A ≈ neutre ; B/D à l'entrée dès +0,5R,
-  stop à +0,5R au lieu de l'entrée, A à l'entrée quand une jambe part : moins bons. Le 26/11/2026, le stop posé des D seules à
-  l'entrée de A a été retenu (V11) comme compromis : environ 15 % de gain en moins, environ 30 % de pire baisse en moins.
+- Stops : fermer B/D au stop de A, B/D à l'entrée dès +0,5R, stop à +0,5R, A à l'entrée quand une jambe part ont été testés et
+  rejetés (25/11/2026) ; ne pas les refaire.
 
-## Données et archives (hors dépôt)
-- **Sauvegarde complète de l'ancien dépôt** (recherche, rapports, simulateur, toutes les branches et étiquettes, avant le nouveau
-  départ du 25/11/2026) : `~/Desktop/Bot-Trading-sauvegarde-2026-11-25.bundle`. Pour la consulter :
-  `git clone ~/Desktop/Bot-Trading-sauvegarde-2026-11-25.bundle <dossier>`.
-- Archive de la recherche : `~/Desktop/Strategy v10.zip`. Nasdaq M1 Dukascopy 2018 → 18/11/2026 : `~/Desktop/Nasdaq 8 ans/`.
-- `donnees/` (ignoré par git) : données de travail locales.
+## Données hors dépôt
+- `donnees/` (ignoré par git, dans le clone `~/Documents/GitHub/Bot-Trading`) ne contient que `reference-v11/` : le calcul de
+  `etrave/reference.json` (scripts, simulateur, données M1 du courtier, `regenerer.sh`, notice `LISEZMOI.md`). Vérifié le
+  27/11/2026 : il redonne le fichier de `main` à l'octet près. **Seule copie : ne pas le supprimer.**
+- La recherche (ancien dépôt, archives, données Dukascopy, études du 24 au 26/11/2026) a été supprimée le 27/11/2026 à la demande
+  de l'utilisateur. Ne pas la reconstituer.
 
 ## Git
 - Le dépôt GitHub est **public**. Aucune donnée personnelle dans le code (chat ID, numéro de compte réel, jetons).
 - Historique repris à zéro le 25/11/2026 à la demande de l'utilisateur : `main` ne contient que la version finale.
 - Ne mettre sur `main` que le robot, Étrave et ce qui les sert. Pas de dossier de recherche.
-- `communication/roadmap-tiktok` : logo d'Étrave et roadmap TikTok de l'utilisateur, hors `main` à sa demande (PR #1 fermée sans
-  fusion le 25/11/2026). Elle part d'un ancien `main` (70a7576) : ses fichiers du robot sont périmés.
+- Logo d'Étrave et roadmap TikTok : hors dépôt, dans `~/Documents/Etrave-communication/` (la branche
+  `communication/roadmap-tiktok` a été supprimée le 27/11/2026).
 - `.gitattributes` : fins de ligne Windows pour `.bat`, `.cmd`, `.ini` et `.set` (à l'extraction et dans le zip de GitHub).
 - Le jeton `gh` n'a pas la portée `workflow` : pousser un fichier `.github/workflows` est refusé.
 - Pousser sur `main` ne déploie rien.
