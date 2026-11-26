@@ -31,6 +31,7 @@ robot/     Strategy-V11.mq5, Strategy-V11.pine, test_robot.py (contrôles du cod
            mt5/ (demo.ini, profil-Etrave-demo/, demo_1000.set, testeur.ini)
 etrave/    interface web locale de l'EA (Python sans dépendance), export.py (export trimestriel) + test_interface.py, test_export.py,
            Etrave.bat (Windows) et Etrave.command (Mac) : double-clic = EA et profil à jour, MetaTrader ouvert, page ouverte
+.claude/   commands/audit.md (/audit) et agents/auditeur.md (auditeur adapté au robot) ; rapports dans audits/ (ignoré)
 video/     (branche communication/outil-video) vidéos TikTok : récap de séance et présentation, `python3 video/outil.py` ; README
 ```
 - Tests : `.venv/bin/python -m pytest robot etrave -q` (129 tests ; sur la branche `communication/outil-video`, ajouter `video`). Le `.venv` du dépôt tourne sous Python 3.15.
@@ -224,3 +225,26 @@ video/     (branche communication/outil-video) vidéos TikTok : récap de séanc
 - `.gitattributes` : fins de ligne Windows pour `.bat`, `.cmd`, `.ini` et `.set` (à l'extraction et dans le zip de GitHub).
 - Le jeton `gh` n'a pas la portée `workflow` : pousser un fichier `.github/workflows` est refusé.
 - Pousser sur `main` ne déploie rien.
+
+## Qualité, sécurité et audits
+Les règles communes de l'utilisateur (méthode, tests, sécurité, design, audits) sont dans `~/.claude/CLAUDE.md` sur son Mac. Pour
+une session qui ne les voit pas (cloud, VPS), l'essentiel :
+- plan court et validation avant toute modification de plus d'un fichier ou d'une règle métier ; une tâche à la fois ;
+- jamais « fini », « ça marche » ou « corrigé » sans avoir lancé les tests et le robot (testeur MetaTrader ou Étrave sur un dossier jetable), sortie réelle à l'appui ; ce qui n'a pas pu
+  être vérifié va dans une section « Non vérifié » ;
+- jamais de test supprimé, désactivé ou affaibli pour passer ; un bug corrigé = un test qui le reproduisait, écrit avant ;
+- aucune donnée inventée, aucun secret dans le dépôt, pas de nouvelle dépendance sans le dire ;
+- audits : `/audit [périmètre]` lance l'agent `auditeur` (`.claude/agents/auditeur.md`, adapté à ce projet) ; rapport complet dans
+  `audits/` (ignoré par git : le dépôt est public) ; rien n'est corrigé avant que l'utilisateur ait choisi quoi traiter.
+- argent réel : aucune action sur un compte réel sans confirmation explicite de l'utilisateur ; mise en production dans l'ordre
+  testeur MetaTrader → démo → réel.
+
+Si une règle commune contredit ce fichier, ce fichier tient (décision de l'utilisateur du 26/11/2026) : signale la contradiction,
+ne change pas le code pour elle. Contradictions connues :
+- **Perte journalière maximale** : absente de la V11. Le plafond de −2R par jour a été testé le 26/11/2026 et rejeté (gain −11 % sur
+  le Nasdaq, −23 % sur le S&P). Ne l'ajoute pas sans demande.
+- **Secrets** : pas de `.env`. Le jeton Telegram est dans `reglages.txt` d'Étrave (dossier commun de MetaTrader, hors dépôt) ou dans
+  les entrées de l'EA.
+- **Heure de New York** : l'EA la calcule depuis l'heure du serveur et la règle d'heure d'été américaine (MQL5 n'a pas de base de
+  fuseaux horaires).
+- **Période de test séparée** : il n'en reste plus sur le Nasdaq (voir « Discipline ») ; la seule donnée neuve est la démo.
