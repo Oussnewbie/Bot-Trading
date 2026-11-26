@@ -1,4 +1,4 @@
-"""Contrôles statiques de l'EA Strategy V10 : `python -m pytest robot`.
+"""Contrôles statiques de l'EA Strategy V11 : `python -m pytest robot`.
 
 Ce ne sont pas des tests de compilation (impossible sans MetaEditor) : ils vérifient, dans le texte du code, que les
 correctifs d'exécution sont en place et que les calculs recopiés ici donnent le bon résultat.
@@ -8,7 +8,7 @@ import os
 import re
 
 ICI = os.path.dirname(os.path.abspath(__file__))
-EA = open(os.path.join(ICI, "Strategy-V10.mq5"), encoding="utf-8-sig").read()
+EA = open(os.path.join(ICI, "Strategy-V11.mq5"), encoding="utf-8-sig").read()
 
 
 def vol_digits(step):
@@ -121,7 +121,7 @@ def test_les_deux_pyramides_ont_le_plancher():
     assert "mkt - gDir * InpPyrGap * gRisk" not in EA and "mkt - g.dir * InpPyrGap * g.risk" not in EA
 
 
-PINE = open(os.path.join(ICI, "Strategy-V10.pine"), encoding="utf-8").read()
+PINE = open(os.path.join(ICI, "Strategy-V11.pine"), encoding="utf-8").read()
 
 
 def test_l_alerte_tradingview_donne_le_stop_elargi():
@@ -227,7 +227,7 @@ def test_le_script_compte_la_bougie_de_cassure_pour_le_bord_oppose():
 def test_chaque_sortie_du_script_ferme_sa_propre_position():
     """PINE-04 : sans close_entries_rule = "ANY", TradingView ferme la plus ancienne position (FIFO) : le stop d'une continuation
     fermait la cassure A, et le script suivait le mauvais trade (résultat, règle mémoire, stop à l'entrée)."""
-    entete = PINE[PINE.index("strategy(\"Strategy V10"):]
+    entete = PINE[PINE.index("strategy(\"Strategy V11"):]
     entete = entete[:entete.index(")\n")]
     assert 'close_entries_rule = "ANY"' in entete
     # le script retrouve chaque sortie par le nom de son entrée : c'est ce que « ANY » rend juste
@@ -320,7 +320,7 @@ def test_regles_verrouillees_et_marches():
     assert entrees_pine <= {"riskPct", "qtyStepIn", "showLots", "lotSize", "lotStep", "lotBal", "fomcExtra", "tgChat", "showOrders",
                             "showZones", "showPre", "showBlocked", "showVwap", "showZoneB", "showGuide", "keepEmpty", "showTable",
                             "tblPosIn"} | {n for n in entrees_pine if n.startswith(("show", "tbl", "col", "txt"))}, entrees_pine
-    assert "runtime.error(\"Strategy V10 : ce script ne trade que le Nasdaq 100 et le S&P 500" in PINE
+    assert "runtime.error(\"Strategy V11 : ce script ne trade que le Nasdaq 100 et le S&P 500" in PINE
     assert "useB      = true" in PINE and "useD      = true" in PINE and "stopMultIn = 3.0" in PINE
 
 
@@ -517,7 +517,7 @@ def test_en_tete_a_jour():
 def test_alertes_du_pine_pour_trader_a_la_main():
     """PINE-06 à PINE-08 : annulation d'une D guettée annoncée (avec son niveau dès l'alerte « GUETTÉE »), alerte à la sortie de
     15:50, lot de l'ajout des jambes chez le courtier. Non passé par l'analyseur de TradingView."""
-    pine = open(os.path.join(ICI, "Strategy-V10.pine"), encoding="utf-8").read()
+    pine = open(os.path.join(ICI, "Strategy-V11.pine"), encoding="utf-8").read()
     assert "Annule l'ordre si le prix touche \" + fmt(nz(inval, stop))" in pine
     annule = pine.index('notify(g.name + " ANNULÉE : supprime l\'ordre stop "')
     assert pine.rindex('strategy.cancel(g.id)', 0, annule) > pine.rindex("if g.pend\n", 0, annule)
@@ -527,8 +527,8 @@ def test_alertes_du_pine_pour_trader_a_la_main():
 
 
 def test_en_tete_du_pine_a_jour():
-    pine = open(os.path.join(ICI, "Strategy-V10.pine"), encoding="utf-8").read()
-    entete = pine[:pine.index('strategy("Strategy V10')]
+    pine = open(os.path.join(ICI, "Strategy-V11.pine"), encoding="utf-8").read()
+    entete = pine[:pine.index('strategy("Strategy V11')]
     assert entete.startswith("//@version=6\n")
     for ancien in ("NASDAQ UNIQUEMENT", "(NAS100) uniquement", "Version non passée", "+0,05R", "Stop     : de l'autre côté du range"):
         assert ancien not in entete, ancien
@@ -552,7 +552,65 @@ def noms_de_prop_firm(texte):
 def test_aucune_prop_firm_nommee_dans_le_depot_public():
     """Le dépôt est public : les infobulles du Pine disent « prop firm » sans nommer d'entreprise (choix de l'utilisateur, 25/11/2026)."""
     racine = os.path.dirname(ICI)
-    for chemin in ("robot/Strategy-V10.pine", "robot/Strategy-V10.mq5", "README.md", "CLAUDE.md"):
+    for chemin in ("robot/Strategy-V11.pine", "robot/Strategy-V11.mq5", "README.md", "CLAUDE.md"):
         assert not noms_de_prop_firm(open(os.path.join(racine, chemin), encoding="utf-8-sig").read()), chemin
     assert noms_de_prop_firm("un certificat " + "Funding" + "Pips") and not noms_de_prop_firm("une prop firm")
     assert "chez une prop firm" in PINE and "compte de prop firm" in PINE
+
+
+def test_v11_stop_des_continuations_a_l_entree_de_a_ea():
+    """V11 (choix de l'utilisateur, 26/11/2026) : le stop posé d'une continuation D est le prix d'entrée de A ; sa taille et ses
+    seuils (+1,5 R, +2 R) restent ceux de la V10 ; une D dont le niveau n'est pas au-delà de l'entrée de A n'est pas armée."""
+    arm = fonction("void V9ArmD(MqlRates &r[])")
+    assert "V11" in arm and "trigD - sprD <= gEntry + gapD" in arm and "trigD + sprD >= gEntry - gapD" in arm
+    corps = fonction("bool LegOpen(SLeg &g, int dir, double stop, string quoi, double ref = 0)")
+    assert "double slV10 = sl;" in corps
+    assert "sl = NormalizeDouble(gEntry, _Digits);" in corps
+    assert "g.risk = MathAbs(g.entry - (estD ? slV10 : sl));" in corps
+
+
+def test_ex1_stop_d_controle_contre_le_bon_prix():
+    """EX-1 (audit du 26/11/2026) : le stop d'un achat est contrôlé contre le bid, celui d'une vente contre l'ask, avec la distance
+    minimale et le gel du courtier ; une D trop près de l'entrée de A n'est pas armée (un spread de marge)."""
+    corps = fonction("bool LegOpen(SLeg &g, int dir, double stop, string quoi, double ref = 0)")
+    assert "double refQ = dir == 1 ? bid : ask;" in corps and "(refQ - gEntry) * dir <= gapD" in corps
+    assert "SYMBOL_TRADE_FREEZE_LEVEL" in corps
+    arm = fonction("void V9ArmD(MqlRates &r[])")
+    assert "SYMBOL_ASK) - SymbolInfoDouble(_Symbol, SYMBOL_BID)" in arm and "SYMBOL_TRADE_FREEZE_LEVEL" in arm
+
+
+def test_ex2_risque_reel_d_plafonne():
+    """EX-2 : le risque réel d'une D (jusqu'à l'entrée de A) ne dépasse pas celui de la cassure, et la notification l'affiche."""
+    corps = fonction("bool LegOpen(SLeg &g, int dir, double stop, string quoi, double ref = 0)")
+    assert "MathAbs(px - gEntry) / ts * tv" in corps
+    assert "double capR = MathFloor(gV8RiskMoney / perLotReal / step + 0.000001) * step;" in corps
+    assert "Money(-lots * (estD && perLotReal > 0 ? perLotReal : perLot))" in corps
+
+
+def test_ex3_journal_version_2():
+    """EX-3 : le journal d'exécution passe en version 2 (le stop initial d'une D est l'entrée de A)."""
+    assert '#define JOURNAL_VERSION "2"' in EA
+
+
+def test_ex5_envois_differes_pendant_les_entrees_surveillees():
+    """EX-5 : pas d'envoi WhatsApp / Telegram (bloquant) pendant qu'une D est guettée ou qu'un côté de la cassure est surveillé."""
+    corps = fonction("void FlushNotifs()")
+    assert "n == 0 || EnvoiDiffere()" in corps
+    diff = fonction("bool EnvoiDiffere()")
+    assert "gD[k].arm" in diff and "!gSrvL" in diff and "!gSrvS" in diff
+
+
+def test_ex7_glissement_de_la_sortie_de_fin_de_journee():
+    """EX-7 : la sortie de 15:50 a un prix de référence (bid ou ask au moment de la décision) pour mesurer son glissement."""
+    assert EA.count("FlatRef();") == 2
+    ligne = fonction("void ExecRow(long posId, string type, int dirHint, double plan, double vstop, string why, double riskMoney, double rangeJour, double smultJour, int dayJour)")
+    assert "finJ && !stopExit ? (refF - outPx) * dir : (ref - outPx) * dir" in ligne
+
+
+def test_v11_stop_des_continuations_a_l_entree_de_a_pine():
+    """V11 dans le Pine : même règle que l'EA."""
+    assert "float  rsl" in PINE
+    assert "openLegStop(string nm, int d, float trig, float stop, float inval, float q, bool pyrOk, int nBars, float slOrdre) =>" in PINE
+    assert "strategy.exit(\"X\" + g.id, from_entry = g.id, stop = slOrdre," in PINE
+    assert "(v8.dir == 1 ? high > cur.entry : low < cur.entry)" in PINE
+    assert "g.risk  := math.abs(ep - nz(g.rsl, g.sl))" in PINE

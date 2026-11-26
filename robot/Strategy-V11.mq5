@@ -1,7 +1,7 @@
 ﻿//+------------------------------------------------------------------+
-//| Strategy-V10.mq5 — cassure du range d'ouverture de New York (M5),|
+//| Strategy-V11.mq5 — cassure du range d'ouverture de New York (M5),|
 //| repli sur le VWAP et continuations, stop à 3 ranges.             |
-//| Version de référence ; mêmes règles que Strategy-V10.pine.       |
+//| Version de référence ; mêmes règles que Strategy-V11.pine.       |
 //+------------------------------------------------------------------+
 //
 // Marchés : Nasdaq 100 et S&P 500 seulement (MarcheAutorise : tout autre symbole est refusé au lancement), un graphique M5 chacun.
@@ -34,11 +34,15 @@
 //                 bougies (marge B_BUF_PB = 0,5 pb du prix), écart multiplié par 3.
 //  9. D1 à D3, continuations : à la clôture des bougies de 9:35, 9:40 et 9:45, tant que A est ouverte et que l'autre bord du range
 //                 n'a pas été touché depuis la cassure, l'EA guette 10 minutes le dépassement de l'extrême de la bougie (aucun ordre
-//                 chez le courtier) et entre au marché. Guet annulé si le prix touche d'abord l'autre extrême de la bougie. Stop à
-//                 cet autre extrême, écart multiplié par 3 et compté depuis le déclenchement (X-13).
+//                 chez le courtier) et entre au marché. Guet annulé si le prix touche d'abord l'autre extrême de la bougie.
+//                 V11 : le stop POSÉ d'une D est le prix d'entrée de A. Une bougie dont l'extrême n'est pas au-delà de l'entrée de A
+//                 (d'au moins un spread et de la distance minimale des stops du courtier, EX-1) ne donne pas de D. Le stop de la V10
+//                 (l'autre extrême, écart multiplié par 3 et compté depuis le déclenchement, X-13) ne sert plus qu'à la taille et au
+//                 1R de la D.
 // 10. B et D suivent la gestion de A dans leur propre R (stop à l'entrée à +1,5R, pyramide à +2R), ne prennent jamais plus de
-//                 lots ni plus de risque que A (en lots fixes, une jambe au stop plus large que A est donc sautée) et restent
-//                 ouvertes si A sort avant elles. Jusqu'à 5 positions ensemble, toutes dans le même sens.
+//                 lots ni plus de risque que A (en lots fixes, une jambe au stop plus large que A est donc sautée ; pour une D, le
+//                 stop de la V10 compte pour la taille et le risque réel jusqu'à l'entrée de A est plafonné à celui de A, EX-2) et
+//                 restent ouvertes si A sort avant elles. Jusqu'à 5 positions ensemble, toutes dans le même sens.
 //
 // JOURS SANS TRADE : décisions de la Fed (FOMC, codées jusqu'au 26/01/2028, puis InpFomc), jours fériés américains et
 // demi-séances, et garde-fou coût : aucun ordre si le spread plus deux
@@ -48,7 +52,8 @@
 // Présents dans le code mais coupés : entrée C de 10:00, plancher de bruit (H1), tendance H4, SAR, sortie au temps.
 //
 // HISTOIRE : v7 (cassure, pyramide, mémoire, FOMC et fériés), V8 (+ B et C), V9 (+ D, C coupée, garde-fou coût), V10 (stop à
-// 3 ranges, mémoire à +1R, D armées tant que l'autre bord n'est pas touché, Nasdaq et S&P 500 ensemble). Chiffres des tests et
+// 3 ranges, mémoire à +1R, D armées tant que l'autre bord n'est pas touché, Nasdaq et S&P 500 ensemble), V11 (26/11/2026 : stop des
+// D au prix d'entrée de A, corrections de l'audit d'exécution EX-1 à EX-7). Chiffres des tests et
 // limites : README.md. Les tests ont servi à la mise au point : ils disent ce que les règles auraient fait, pas ce qu'elles feront.
 //
 // INTERFACE ÉTRAVE (etrave/) : toutes les 2 secondes, l'EA lit Etrave\reglages.txt dans le dossier commun de MetaTrader (risque,
@@ -67,7 +72,7 @@
 // chaque minute toute position restée après la sortie ; messages envoyés un par un.
 #property copyright   "Bot-Trading"
 #property version     "10.00"
-#property description "Strategy V10 : cassure du range de 9:30 New York (stop à 3 ranges, pyramide, mémoire, jours FOMC et fériés exclus), repli sur le VWAP et 3 continuations. Nasdaq 100 et S&P 500, compte hedging. Règles verrouillées."
+#property description "Strategy V11 : cassure du range de 9:30 New York (stop à 3 ranges, pyramide, mémoire, jours FOMC et fériés exclus), repli sur le VWAP et 3 continuations. Nasdaq 100 et S&P 500, compte hedging. Règles verrouillées."
 
 #include <Trade\Trade.mqh>
 
@@ -145,8 +150,8 @@ input string       InpFomc      = "";           // Jours FOMC en plus (codés ju
 
 input group "Exécution"
 input ulong        InpMagic     = 50930;        // Numéro magique
-input int          InpDeviation = 30;           // Glissement maximal (points)
-input string       InpComment   = "Strategy V10";     // Commentaire des ordres
+input int          InpDeviation = 30;           // Écart de prix accepté, en points du symbole (30 = 0,30 sur NDX100) ; sans effet en exécution au marché
+input string       InpComment   = "Strategy V11";     // Commentaire des ordres
 // Correctif X-14 (25/11/2026) : le même commentaire pour tous les ordres. Il disait « B », « D1 »… et « pyramide », visibles dans
 // l'onglet Historique de MetaTrader, donc sur la photo de l'historique en fin de vidéo récap : le type d'entrée reste secret.
 // Le commentaire ne sert à rien d'autre : chaque jambe se reconnaît à son numéro magique.
@@ -282,6 +287,8 @@ string   gRiskSrc   = "mt5";    // d'où il vient : "interface" ou "mt5"
 double   gLever     = 0;        // levier du courtier saisi dans l'interface (0 = non saisi)
 bool     gActive    = true;     // faux = case de l'instrument décochée : plus de nouveau trade
 string   gInstr     = "autre";  // "nasdaq" ou "sp500" (commandé par sa case de l'interface), d'après le nom du symbole
+double   gFlatBid   = 0, gFlatAsk = 0;   // EX-7 : bid et ask au moment où l'EA décide la sortie de fin de journée
+int      gFlatDay   = 0;
 string   gSymFile   = "";       // nom du symbole, réduit aux caractères sûrs (nom des fichiers, demandes de l'interface)
 bool     gUiLoaded  = false;    // les réglages ont été lus au moins une fois
 bool     gTgOn      = false;    // Telegram actif
@@ -603,10 +610,22 @@ void Notify(string msg)
 // Correctif X-08 (revue du 17/11/2026) : un envoi bloque l'EA jusqu'à la réponse du serveur. Avant, toute la file partait d'un
 // coup (jusqu'à 5 s par message et par canal) pendant que les sorties attendaient. Désormais : un seul message par appel
 // (le suivant à la cotation ou au passage du minuteur suivants), avec une attente de 3 s au plus par canal.
+// Correctif EX-5 (audit du 26/11/2026) : un envoi bloque l'EA jusqu'à 3 s par canal. Pendant qu'une entrée D est guettée ou qu'un
+// côté de la cassure est surveillé par l'EA (entrée au marché), les messages attendent : chaque cotation compte.
+bool EnvoiDiffere()
+  {
+   if(gPend && ((gPendDir != -1 && !gSrvL) || (gPendDir != 1 && !gSrvS)))
+      return true;
+   for(int k = 0; k < D_MAX; k++)
+      if(gD[k].arm)
+         return true;
+   return false;
+  }
+
 void FlushNotifs()
   {
    int n = ArraySize(gQueue);
-   if(n == 0)
+   if(n == 0 || EnvoiDiffere())
       return;
    bool wa = InpWhatsApp && InpWaPhone != "" && InpWaKey != "";
    string msg = gQueue[0];
@@ -1851,6 +1870,11 @@ bool LegOpen(SLeg &g, int dir, double stop, string quoi, double ref = 0)
    double perLot = (ts > 0 && tv > 0) ? dist / ts * tv : 0;
    double lots   = 0;
    double sl     = NormalizeDouble(stop, _Digits);
+   // V11 : pour une continuation D, ce stop de la V10 sert seulement à la taille et au 1R de la jambe (+1,5 R, +2 R) ;
+   // le stop posé chez le courtier est le prix d'entrée de A (voir plus bas).
+   double slV10 = sl;
+   bool   estD  = StringSubstr(g.nom, 0, 1) == "D";
+   double perLotReal = (estD && gEntry > 0 && ts > 0 && tv > 0) ? MathAbs(px - gEntry) / ts * tv : 0;   // risque réel d'un lot (EX-2)
    double fill   = 0;
    ulong  deal   = 0;
    if(pxOld > 0)
@@ -1888,6 +1912,34 @@ bool LegOpen(SLeg &g, int dir, double stop, string quoi, double ref = 0)
          LegSave(g);
          return false;
         }
+      // V11 (26/11/2026) : stop de la continuation au prix d'entrée de A. Pas d'entrée si le prix n'est plus au-delà de l'entrée
+      // de A, ou trop près d'elle pour le courtier (distance minimale des stops).
+      if(estD)
+        {
+         // Correctif EX-1 : contrôle contre le prix qui servira au courtier (bid pour un achat, ask pour une vente)
+         double gapD = MathMax(lvl, SymbolInfoInteger(_Symbol, SYMBOL_TRADE_FREEZE_LEVEL) * _Point);
+         double refQ = dir == 1 ? bid : ask;
+         if(gEntry <= 0 || (refQ - gEntry) * dir <= gapD)
+           {
+            Notify(I_NONE + "PAS D'ENTRÉE " + g.nom + " (" + g.titre + ")\nLe prix (" + Px(refQ) + ") n'est plus assez au-delà de l'entrée de A (" + Px(gEntry) + ")");
+            LegSave(g);
+            return false;
+           }
+         // Correctif EX-2 : le risque réel (jusqu'à l'entrée de A) ne dépasse pas celui de la cassure
+         if(perLotReal > 0)
+           {
+            double capR = MathFloor(gV8RiskMoney / perLotReal / step + 0.000001) * step;
+            if(capR < lots)
+               lots = NormalizeDouble(MathMax(capR, 0), vd);
+            if(lots < vmin)
+              {
+               Notify(I_NONE + "PAS D'ENTRÉE " + g.nom + " (" + g.titre + ")\nTrop loin de l'entrée de A : le risque réel dépasserait celui de la cassure");
+               LegSave(g);
+               return false;
+              }
+           }
+         sl = NormalizeDouble(gEntry, _Digits);
+        }
       trade.SetExpertMagicNumber(g.magic);
       bool   ok   = dir == 1 ? trade.Buy(lots, _Symbol, 0, sl, 0, InpComment) : trade.Sell(lots, _Symbol, 0, sl, 0, InpComment);
       uint   rc   = trade.ResultRetcode();
@@ -1914,7 +1966,7 @@ bool LegOpen(SLeg &g, int dir, double stop, string quoi, double ref = 0)
          Notify(I_WARN + "ENTRÉE " + g.nom + " : réponse du courtier perdue (" + rcTx + "), la position ouverte est reprise par l'EA");
         }
      }
-   g.enPos = true; g.dir = dir; g.entry = fill > 0 ? fill : px; g.sl = sl; g.risk = MathAbs(g.entry - sl);
+   g.enPos = true; g.dir = dir; g.entry = fill > 0 ? fill : px; g.sl = sl; g.risk = MathAbs(g.entry - (estD ? slV10 : sl));
    if(g.risk <= 0)
       g.risk = dist;
    g.lots = lots; g.vstop = 0; g.riskMoney = gV8RiskMoney; g.balStart = AccountInfoDouble(ACCOUNT_BALANCE);
@@ -1930,8 +1982,8 @@ bool LegOpen(SLeg &g, int dir, double stop, string quoi, double ref = 0)
    if(g.id == 0)
       LegIds(g);
    Notify((dir == 1 ? I_BUY + "ACHAT " : I_SELL + "VENTE ") + g.nom + " exécuté(e) : " + quoi +
-          "\nEntrée : " + Px(g.entry) + " · stop : " + Px(sl) + " (" + Pts(g.risk) + ")" +
-          "\nTaille : " + DoubleToString(lots, vd) + " lot · risque " + Money(-lots * perLot) + " (au plus celui de la cassure : " + Money(-gV8RiskMoney) + ")" +
+          "\nEntrée : " + Px(g.entry) + " · stop : " + Px(sl) + (estD ? " (entrée de A, " + Pts(MathAbs(g.entry - sl)) + ")" : " (" + Pts(g.risk) + ")") +
+          "\nTaille : " + DoubleToString(lots, vd) + " lot · risque " + Money(-lots * (estD && perLotReal > 0 ? perLotReal : perLot)) + " (au plus celui de la cassure : " + Money(-gV8RiskMoney) + ")" +
           (InpBeR > 0 ? "\nStop au prix d'entrée dès " + Px(g.entry + dir * InpBeR * g.risk) : "") +
           ((g.pyrOk && InpUsePyr) ? "\nPyramide si une bougie clôture à " + Px(g.entry + dir * InpPyrR * g.risk) : "") +
           "\nSortie à " + InpFlat + " NY");
@@ -2141,7 +2193,22 @@ void LegOnTick(SLeg &g)
       LegClose(g, g.pyr ? "Stop remonté" : "Stop à l'entrée");
    datetime ny = ToNY(TimeCurrent());
    if(NYMin(ny) >= FlatMin(ny) || NYDate(ny) != g.day)
+     {
+      FlatRef();
       LegClose(g, "Fin de journée");
+     }
+  }
+
+// Correctif EX-7 (audit du 26/11/2026) : prix de référence de la sortie de fin de journée (le premier du jour), pour mesurer son
+// glissement dans le journal d'exécution.
+void FlatRef()
+  {
+   int d = NYDate(ToNY(TimeCurrent()));
+   if(gFlatDay == d)
+      return;
+   gFlatDay = d;
+   gFlatBid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+   gFlatAsk = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
   }
 
 // Prix moyen de la séance pondéré par le volume (VWAP), de la bougie du range (9:30) jusqu'à « fin » exclu, calculé sur
@@ -2252,6 +2319,20 @@ void V9ArmD(MqlRates &r[])
       return;
    if(r[1].time < gV8BreakBar || gD[k].done || gD[k].enPos || gD[k].arm || r[1].high - r[1].low <= 0)
       return;
+   // V11 (26/11/2026) : le stop d'une continuation est le prix d'entrée de A. Une bougie dont l'extrême n'est pas au-delà de
+   // l'entrée de A (le prix est revenu) ne donne pas de continuation.
+   double trigD = gV8Dir == 1 ? r[1].high : r[1].low;
+   // Correctif EX-1 (audit du 26/11/2026) : le courtier contrôle le stop d'un achat contre le bid et celui d'une vente contre l'ask ;
+   // le niveau doit dépasser l'entrée de A d'au moins un spread et de la distance minimale des stops, sinon l'ordre serait refusé.
+   double sprD = SymbolInfoDouble(_Symbol, SYMBOL_ASK) - SymbolInfoDouble(_Symbol, SYMBOL_BID);
+   double gapD = MathMax(SymbolInfoInteger(_Symbol, SYMBOL_TRADE_STOPS_LEVEL), SymbolInfoInteger(_Symbol, SYMBOL_TRADE_FREEZE_LEVEL)) * _Point;
+   if(gEntry <= 0 || (gV8Dir == 1 ? trigD - sprD <= gEntry + gapD : trigD + sprD >= gEntry - gapD))
+     {
+      gD[k].done = true;
+      LegSave(gD[k]);
+      Print(BOT + " · " + _Symbol + " · entrée " + gD[k].nom + " non armée : " + Px(trigD) + " n'est pas au-delà de l'entrée de A (" + Px(gEntry) + ")");
+      return;
+     }
    gD[k].arm  = true;
    gD[k].trig = gV8Dir == 1 ? r[1].high : r[1].low;
    gD[k].stp  = gV8Dir == 1 ? r[1].low : r[1].high;
@@ -2259,7 +2340,8 @@ void V9ArmD(MqlRates &r[])
    LegSave(gD[k]);
    Seg(GV + "trg" + gD[k].nom + "_" + (string)gV8Day, r[0].time, gD[k].exp, gD[k].trig, clrTeal, STYLE_DASH, 1);
    Print(BOT + " · " + _Symbol + " · entrée " + gD[k].nom + " guettée " + (string)InpDValid + " min : " +
-         (gV8Dir == 1 ? "achat si l'ask atteint " : "vente si le bid atteint ") + Px(gD[k].trig) + ", stop " + Px(gD[k].stp));
+         (gV8Dir == 1 ? "achat si l'ask atteint " : "vente si le bid atteint ") + Px(gD[k].trig) + ", annulée si le prix touche " + Px(gD[k].stp) +
+         " avant, stop à l'entrée de A " + Px(gEntry));
   }
 
 // À chaque cotation : un guet D se déclenche, expire, ou est annulé parce que le prix a touché son stop d'abord
@@ -2837,7 +2919,7 @@ void TradesWrite(string line)
 // En-tête en première ligne, séparateur « ; », point décimal, prix dans l'unité du symbole. Dans le testeur, les fichiers vont dans
 // Etrave\testeur\ (vidé au lancement) : jamais mêlés à ceux du compte. Un journal ne doit jamais gêner le trading : aucune erreur
 // ici n'arrête l'EA, et une valeur inconnue reste vide (jamais calculée contre 0). Étrave en fait un export par trimestre.
-#define JOURNAL_VERSION "1"
+#define JOURNAL_VERSION "2"   // 2 (V11, 26/11/2026) : le stop initial d'une D est l'entrée de A (risque_prix, mfe_r, mae_r des D)
 #define EXEC_COLONNES   "version;source;id_position;jour_ny;symbole;entree;sens;lots;entree_utc_ms;entree_ny;prix_vise;prix_entree;glissement_entree;spread_entree;stop_initial;risque_prix;sortie_utc_ms;sortie_ny;stop_en_place;stop_virtuel;prix_sortie;glissement_sortie;raison;raison_courtier;mfe_prix;mae_prix;mfe_r;mae_r;excursion;frais;swap;resultat_net;r;range_prix;stop_mult;devise;complet"
 #define SEANCE_COLONNES "version;source;jour_ny;symbole;moment;heure_ny;range_bas;range_haut;range_prix;stop_mult;spread;cout_r;filtres;etat"
 // bougies-<symbole>.csv : les bougies M5 de la séance (de 30 min avant le range jusqu'à la sortie), heure de New York, écrites une
@@ -3032,6 +3114,8 @@ void ExecRow(long posId, string type, int dirHint, double plan, double vstop, st
    double ref = rsn == DEAL_REASON_SL ? outSl : (vstop > 0 ? vstop : outSl);
    int    day = inMsc > 0 ? NYDate(ToNY((datetime)(inMsc / 1000))) : NYDate(ToNY(TimeCurrent()));
    bool   sameDay = day == dayJour && rangeJour > 0;
+   bool   finJ = StringFind(why, "Fin de journée") == 0 && gFlatDay == day && gFlatBid > 0 && gFlatAsk > 0;   // EX-7
+   double refF = dir == 1 ? gFlatBid : gFlatAsk;
    string line = JOURNAL_VERSION + ";" + SourceTxt() + ";" + IntegerToString(posId) + ";" + JourTxt(day) + ";" + gSymFile + ";" + Champ(type) + ";" +
                  IntegerToString(dir) + ";" + DoubleToString(inVol, 2) + ";" +
                  UtcMs(inMsc) + ";" + NyTxt((datetime)(inMsc / 1000)) + ";" +
@@ -3039,7 +3123,7 @@ void ExecRow(long posId, string type, int dirHint, double plan, double vstop, st
                  NumOpt(spr, spr >= 0, _Digits) + ";" + NumOpt(inSl, inSl > 0, _Digits) + ";" + NumOpt(risk, risk > 0, _Digits) + ";" +
                  UtcMs(outMsc) + ";" + NyTxt((datetime)(outMsc / 1000)) + ";" +
                  NumOpt(outSl, outSl > 0, _Digits) + ";" + NumOpt(vstop, vstop > 0, _Digits) + ";" + NumOpt(outPx, outPx > 0, _Digits) + ";" +
-                 NumOpt((ref - outPx) * dir, complet && stopExit && ref > 0, _Digits) + ";" + Champ(why) + ";" + RaisonCourtier(rsn) + ";" +
+                 NumOpt(finJ && !stopExit ? (refF - outPx) * dir : (ref - outPx) * dir, complet && ((stopExit && ref > 0) || finJ), _Digits) + ";" + Champ(why) + ";" + RaisonCourtier(rsn) + ";" +
                  NumOpt(mfe, exc, _Digits) + ";" + NumOpt(mae, exc, _Digits) + ";" + NumOpt(risk > 0 ? mfe / risk : 0, exc && risk > 0, 3) + ";" +
                  NumOpt(risk > 0 ? mae / risk : 0, exc && risk > 0, 3) + ";" + src + ";" +
                  DoubleToString(fees, 2) + ";" + DoubleToString(swp, 2) + ";" + DoubleToString(net, 2) + ";" +
@@ -3204,7 +3288,7 @@ void Panel()
    string live = "";
    if(gIn && gRiskMoney > 0)
       live = (gDir == 1 ? "Achat" : "Vente") + " en cours · " + RTxt(OpenProfit() / gRiskMoney) + (gPyr ? " · pyramide, stop à " + Px(gVStop) : gBE ? " · stop à l'entrée" : "");
-   string s = BOT + " · Strategy V10 · " + _Symbol + " · " +
+   string s = BOT + " · Strategy V11 · " + _Symbol + " · " +
               (InpFixedLots > 0 ? DoubleToString(InpFixedLots, 2) + " lot fixe par cassure (le risque en % suit le stop)" :
                RiskTxt(gRiskPct) + " par trade (" + (gRiskSrc == "interface" ? "interface" : "MetaTrader") + ")") +
               (gActive ? "" : " · DÉSACTIVÉ dans l'interface") + "\n" +
@@ -3230,7 +3314,7 @@ int OnInit()
   {
    if(!MarcheAutorise(_Symbol))
      {
-      Alert("Strategy V10 : ce robot ne trade que le Nasdaq 100 et le S&P 500 (" + _Symbol + " refusé). Place-le sur ces deux graphiques en M5.");
+      Alert("Strategy V11 : ce robot ne trade que le Nasdaq 100 et le S&P 500 (" + _Symbol + " refusé). Place-le sur ces deux graphiques en M5.");
       return INIT_FAILED;
      }
    mOR = ParseHM(InpOR);
@@ -3239,12 +3323,12 @@ int OnInit()
    mFlatShort = ParseHM(InpFlatShort);
    if(mOR < 0 || mPre < 0 || mFlat < 0 || mPre >= mOR || mFlat <= mOR || mFlatShort <= mOR || mFlatShort > mFlat)
      {
-      Alert("Strategy V10 : heures invalides (format HH:MM, début de l'élan < range < sortie des jours fériés <= sortie).");
+      Alert("Strategy V11 : heures invalides (format HH:MM, début de l'élan < range < sortie des jours fériés <= sortie).");
       return INIT_PARAMETERS_INCORRECT;
      }
    if(InpUsePyr && (InpPyrGap <= 0 || InpPyrGap > InpPyrR || InpPyrSize <= 0))
      {
-      Alert("Strategy V10 : pyramide invalide (la distance du stop doit être positive et ne pas dépasser le seuil d'ajout).");
+      Alert("Strategy V11 : pyramide invalide (la distance du stop doit être positive et ne pas dépasser le seuil d'ajout).");
       return INIT_PARAMETERS_INCORRECT;
      }
    trade.SetExpertMagicNumber(InpMagic);
@@ -3269,10 +3353,10 @@ int OnInit()
    mTimeAt = ParseHM(InpTimeAt);
    if(InpUseTime && (mTimeAt <= mOR || mTimeAt >= mFlat))
      {
-      Alert("Strategy V10 : heure de la sortie au temps invalide (format HH:MM, entre le range et la sortie de fin de journée).");
+      Alert("Strategy V11 : heure de la sortie au temps invalide (format HH:MM, entre le range et la sortie de fin de journée).");
       return INIT_PARAMETERS_INCORRECT;
      }
-   GV = "StratV10_" + _Symbol + "_" + (string)InpMagic + "_";
+   GV = "StratV11_" + _Symbol + "_" + (string)InpMagic + "_";
    // V8 : entrées B (repli sur le VWAP) et C (heure fixe)
    gB.nom = "B"; gB.titre = "repli sur le VWAP"; gB.magic = InpMagic + 1; gB.pyrOk = true;
    gC.nom = "C"; gC.titre = "entrée de " + InpCAt; gC.magic = InpMagic + 2; gC.pyrOk = false;
@@ -3285,26 +3369,26 @@ int OnInit()
      }
    if((InpUseD && (InpDCount < 1 || InpDCount > D_MAX || InpDValid < 1)) || InpMaxCostR < 0 || InpStopMult < 1.0 || InpStopMult > 10.0)
      {
-      Alert("Strategy V10 : réglages des entrées D, du garde-fou coût ou de la largeur du stop invalides (1 à 7 bougies, validité d'au moins 1 minute, valeurs positives, largeur du stop entre 1 et 10).");
+      Alert("Strategy V11 : réglages des entrées D, du garde-fou coût ou de la largeur du stop invalides (1 à 7 bougies, validité d'au moins 1 minute, valeurs positives, largeur du stop entre 1 et 10).");
       return INIT_PARAMETERS_INCORRECT;
      }
    // Plancher de la pyramide (PyrLock) : entrée + (taille × écart - 1) R. Il doit rester sous le niveau de l'ajout, sinon toutes
    // les pyramides seraient abandonnées.
    if(InpUsePyr && InpPyrSize * InpPyrGap - 1.0 > InpPyrR - 0.1 - 1e-9)
      {
-      Alert("Strategy V10 : pyramide impossible avec ces réglages : taille × écart de l'ajout doit rester sous le seuil de la pyramide + 0,9 (valeurs du test : 2 × 1 et +2R).");
+      Alert("Strategy V11 : pyramide impossible avec ces réglages : taille × écart de l'ajout doit rester sous le seuil de la pyramide + 0,9 (valeurs du test : 2 × 1 et +2R).");
       return INIT_PARAMETERS_INCORRECT;
      }
    mBEnd = ParseHM(InpBEnd);
    mCAt  = ParseHM(InpCAt);
    if((InpUseB && (mBEnd <= mOR || mBEnd > mFlat || InpBTol < 0)) || (InpUseC && (mCAt <= mOR + 5 || mCAt >= mFlat)))
      {
-      Alert("Strategy V10 : réglages des entrées B ou C invalides (heures au format HH:MM, entre le range et la sortie ; tolérance et marge positives).");
+      Alert("Strategy V11 : réglages des entrées B ou C invalides (heures au format HH:MM, entre le range et la sortie ; tolérance et marge positives).");
       return INIT_PARAMETERS_INCORRECT;
      }
    gLegsOk = (ENUM_ACCOUNT_MARGIN_MODE)AccountInfoInteger(ACCOUNT_MARGIN_MODE) == ACCOUNT_MARGIN_MODE_RETAIL_HEDGING;
    if(!gLegsOk && (InpUseB || InpUseC || InpUseD))
-      Alert("Strategy V10 : compte en mode netting. Les entrées B, C et D demandent un compte « hedging » : elles sont coupées, seul le trade de cassure est pris.");
+      Alert("Strategy V11 : compte en mode netting. Les entrées B, C et D demandent un compte « hedging » : elles sont coupées, seul le trade de cassure est pris.");
    gInstr   = InstrumentOf(_Symbol);
    gSymFile = SafeName(_Symbol);
    gRiskPct = InpRiskPct;
@@ -3316,10 +3400,10 @@ int OnInit()
       // contrôle du décalage horaire saisi
       long real = (long)(TimeTradeServer() - TimeGMT());
       if(MathAbs(real - ServerOffsetSec(TimeTradeServer())) > 1800)
-         Alert(StringFormat("Strategy V10 : le serveur est à GMT%+.1f maintenant, les réglages donnent GMT%+.1f. Corrige « Décalage GMT du serveur » ou « Heure d'été », sinon les heures de New York seront fausses.",
+         Alert(StringFormat("Strategy V11 : le serveur est à GMT%+.1f maintenant, les réglages donnent GMT%+.1f. Corrige « Décalage GMT du serveur » ou « Heure d'été », sinon les heures de New York seront fausses.",
                             real / 3600.0, ServerOffsetSec(TimeTradeServer()) / 3600.0));
       if(!gLegsOk)
-         Print("Strategy V10 : compte en mode netting. L'EA ne prend que le trade de cassure et n'ouvre rien d'autre sur ce symbole en même temps.");
+         Print("Strategy V11 : compte en mode netting. L'EA ne prend que le trade de cassure et n'ouvre rien d'autre sur ce symbole en même temps.");
      }
    gLastBar = 0;   // la première bougie est contrôlée tout de suite (EA lancé à 9:35 : le range du jour est pris)
    ReadSettings();
@@ -3444,7 +3528,10 @@ void OnTick()
          SaveState();
         }
       if(gIn && (NYMin(ny) >= FlatMin(ny) || NYDate(ny) != gPosDay))
+        {
+         FlatRef();
          ClosePos("Fin de journée");
+        }
      }
    // V8. entrées B et C : sorties, stops surveillés, fin de journée, entrée C à l'heure dite
    V8OnTick();

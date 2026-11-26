@@ -1,15 +1,16 @@
-# Strategy V10
+# Strategy V11
 
 Robot de trading intrajournalier sur la cassure de l'ouverture de New York, pour le **Nasdaq 100** et le **S&P 500**.
 
 | Version | Fichier | Rôle |
 |---|---|---|
-| MetaTrader 5 | `robot/Strategy-V10.mq5` | L'Expert Advisor. Version de référence : il voit le bid et l'ask et passe les ordres. |
-| TradingView | `robot/Strategy-V10.pine` | Le même jeu de règles en Pine v6, avec alertes et calcul du lot à passer chez le courtier. |
+| MetaTrader 5 | `robot/Strategy-V11.mq5` | L'Expert Advisor. Version de référence : il voit le bid et l'ask et passe les ordres. |
+| TradingView | `robot/Strategy-V11.pine` | Le même jeu de règles en Pine v6, avec alertes et calcul du lot à passer chez le courtier. |
 | Étrave | `etrave/` | Page web locale qui règle et surveille l'EA : séance du jour, risque, Telegram, clôture, lancement de MetaTrader. |
 
-État au 25 novembre 2026 : l'EA compile sans erreur ni avertissement et a tourné 12 mois dans le testeur de MetaTrader. Il n'a pas
-encore tourné en démo ni en réel. Toutes les heures sont celles de New York (9:30 à New York = 15:30 à Paris la plupart de l'année).
+État au 26 novembre 2026 : la V11 (la V10 avec le stop des continuations D au prix d'entrée de la cassure A, plus les corrections
+d'un audit d'exécution) compile sans erreur ni avertissement et a tourné de janvier 2025 à novembre 2026 dans le testeur de
+MetaTrader, sur le Nasdaq et le S&P 500. Elle n'a pas encore tourné en démo ni en réel. Toutes les heures sont celles de New York (9:30 à New York = 15:30 à Paris la plupart de l'année).
 Ce dépôt n'est pas un conseil en investissement.
 
 ## Sommaire
@@ -26,7 +27,8 @@ Ce dépôt n'est pas un conseil en investissement.
 ## Les règles
 
 Les règles sont fixées dans le code, à l'identique dans l'EA et dans le script : toutes les entrées, stop à 3 ranges, pyramide,
-mémoire. C'est la configuration la plus rentable des deux marchés réunis dans les tests. Restent réglables : le risque ou les lots
+mémoire, et stop des continuations D au prix d'entrée de A (V11). La V10 était la configuration la plus rentable des deux marchés
+réunis ; la V11 gagne environ 15 % de moins avec une pire baisse environ 30 % plus faible (choix du 26 novembre 2026). Restent réglables : le risque ou les lots
 fixes, l'heure du serveur, les dates FOMC après janvier 2028, le numéro magique, les notifications et l'affichage. Changer une règle
 demande de modifier le code et de recompiler.
 
@@ -46,11 +48,12 @@ demande de modifier le code et de recompiler.
   multiplié par 3.
 - **D1, D2, D3, continuations** : à la clôture des bougies de 9:35, 9:40 et 9:45, le dépassement de l'extrême de la bougie est guetté
   pendant 10 minutes. L'EA surveille ce niveau et entre au marché ; aucun ordre n'apparaît chez le courtier. Elles ne sont armées que
-  tant que la cassure est ouverte et que l'autre bord du range n'a pas été touché depuis. Stop à l'autre extrême de la bougie, écart
-  multiplié par 3.
+  tant que la cassure est ouverte et que l'autre bord du range n'a pas été touché depuis. **V11 : le stop d'une D est le prix
+  d'entrée de la cassure A.** Une bougie dont l'extrême n'est pas au-delà de l'entrée de A (d'au moins un spread) ne donne pas de D.
+  La taille et le R d'une D se calculent encore sur le stop de la V10 (l'autre extrême de la bougie, écart multiplié par 3).
 - B et D suivent la gestion de A, chacune dans son propre R (stop à l'entrée à +1,5 R, pyramide à +2 R avec un stop d'au moins
-  +1 R), et ne risquent jamais plus de 1 R chacune. Elles restent ouvertes si la cassure sort avant elles. Jusqu'à 5 positions peuvent
-  être ouvertes ensemble, toutes dans le même sens.
+  +1 R), et ne risquent jamais plus que la cassure. Elles restent ouvertes si la cassure sort avant elles. Jusqu'à 5 positions
+  peuvent être ouvertes ensemble, toutes dans le même sens.
 
 **Jours sans trade** : décisions de la Fed (FOMC, codées jusqu'au 26 janvier 2028), jours fériés américains et demi-séances. Aucun
 ordre non plus si le spread plus deux glissements pèse plus de 25 % du risque du jour.
@@ -69,10 +72,16 @@ feront.
 |---|---|
 | Nasdaq 2018-2026, spread réel + 1 point de glissement | +477 R, 47 % de trades gagnants, pire baisse −32 R, pire journée −5,1 R |
 | Nasdaq 2010-2017, coûts au poids d'aujourd'hui | +194 R, 44 % de trades gagnants, pire baisse −53 R ; avec les coûts au poids de 2018, +23 R seulement |
-| Nasdaq + S&P 500, 2019-2026, 0,1 lot sur 1 000 $, prix d'aujourd'hui | environ +9 200 $, 43 % de trades gagnants, pire journée −322 $, pire baisse −643 $ |
-| Testeur MetaTrader, NDX100, 20/11/2025 → 19/11/2026, 0,1 lot sur 1 000 $ | +1 885 $, 379 trades, 53 % de jours gagnants, pire jour −91 $, pire baisse −321 $ |
+| V10, Nasdaq + S&P 500, 2019-2026, 0,1 lot sur 1 000 $, historique ramené aux prix d'aujourd'hui | environ +9 200 $, 43 % de trades gagnants, pire journée −322 $, pire baisse −643 $ |
+| Testeur MetaTrader, NDX100, 20/11/2025 → 19/11/2026, 0,1 lot sur 1 000 $ (V10) | +1 885 $, 379 trades, 53 % de jours gagnants, pire jour −91 $, pire baisse −321 $ |
+| **V11**, testeur MetaTrader, NDX100 + SPX500, 01/01/2025 → 25/11/2026, 0,1 lot (deux passages de 10 000 $ additionnés) | **+3 405 $, 45 % de jours gagnants, pire jour −101 $, pire baisse −248 $** (V10 : +3 951 $, 47 %, −110 $, −360 $) |
+| V11, simulateur, Nasdaq + S&P 500, 2019 → 25/11/2026, 0,1 lot, prix du courtier à chaque date (pas ramenés à aujourd'hui) | +5 343 $, 42 % de jours gagnants, pire jour −101 $, pire baisse −252 $ (V10 : +6 414 $, 42 %, −126 $, −360 $) |
 
-- La dernière ligne est une bonne année (+76 R, contre environ +51 R pour une année médiane).
+- La ligne V10 du testeur est une bonne année (+76 R, contre environ +51 R pour une année médiane).
+- La V11 gagne environ 15 % de moins que la V10 et sa pire baisse est environ 30 % plus faible : à 0,1 lot, le stop « 3 ranges »
+  ne peut pas être compensé par des lots divisés par 3, et le stop des D à l'entrée de A limite la perte des jours qui se retournent.
+  Le testeur et le simulateur concordent (Nasdaq : +2 991 $ contre +3 016 $, même signe 99 % des jours ; S&P : le simulateur est
+  plus prudent, +309 $ contre +414 $).
 - Le glissement réel compte beaucoup : avec 3 points par exécution au lieu de 1, le gain baisse d'environ 37 % et la pire baisse double.
 - Le S&P 500 a été testé avec ces règles (prix du courtier 2019-2026, données déjà vues, et 12 mois dans le testeur) : il gagne
   nettement moins que le Nasdaq et dépend davantage des coûts. Le Dow Jones est exclu : testé tel quel, il ne gagne rien.
@@ -80,10 +89,11 @@ feront.
 
 ## Installer l'EA dans MetaTrader 5
 
-1. Hors séance et sans trade ouvert, retire tout ancien robot du graphique.
-2. Copie `robot/Strategy-V10.mq5` dans `MQL5\Experts\Etrave`, ouvre-le dans MetaEditor et compile (F7) : tu dois lire « 0 errors ».
+1. Hors séance et sans trade ouvert, retire tout ancien robot du graphique (en particulier Strategy-V10 : la V11 est un nouveau
+   fichier, l'ancien reste dans la liste des Expert Advisors de MetaTrader).
+2. Copie `robot/Strategy-V11.mq5` dans `MQL5\Experts\Etrave`, ouvre-le dans MetaEditor et compile (F7) : tu dois lire « 0 errors ».
    Le bouton « Installer ou mettre à jour l'EA » d'Étrave fait la même chose.
-3. Glisse Strategy-V10 sur le graphique **M5** du Nasdaq (NDX100 chez TradinGlobal) et sur celui du S&P 500 (SPX500), avec les mêmes
+3. Glisse Strategy-V11 sur le graphique **M5** du Nasdaq (NDX100 chez TradinGlobal) et sur celui du S&P 500 (SPX500), avec les mêmes
    réglages, et coche « Autoriser le trading algorithmique ».
 4. Vérifie l'heure de New York affichée par le panneau. Si elle est fausse, corrige « Décalage GMT du serveur » et « Heure d'été du
    serveur ».
@@ -100,15 +110,15 @@ feront.
 - `robot/mt5/` contient la configuration de la démo (`demo.ini`, `demo_1000.set`) et un modèle pour le testeur de stratégie
   (`testeur.ini`).
 
-**Contrôle dans le testeur de stratégie** (Expert `Etrave\Strategy-V10`, M5, « Chaque tick basé sur des ticks réels », compte
-hedging, modèle `robot/mt5/testeur.ini`) : du 20/11/2025 au 19/11/2026, la simulation donnait environ 410 trades sur 122 jours de
-trade, 54 % de gagnants et +76 R (sur les prix du courtier : 413 trades sur 123 jours, les mêmes jours que le testeur) ; le testeur
-doit en être proche. Sur une autre période, avec nettement moins de trades, moins de 35 %
+**Contrôle dans le testeur de stratégie** (Expert `Etrave\Strategy-V11`, M5, « Chaque tick basé sur des ticks réels », compte
+hedging, modèle `robot/mt5/testeur.ini` : 0,1 lot, dépôt de 10 000 $ pour ne pas être limité par la marge) : du 01/01/2025 au 25/11/2026 (date de fin 2026.11.26 : MetaTrader l'exclut), la V11
+donnait sur NDX100 +2 991 $ sur 237 jours de trade et 48 % de jours gagnants, et sur SPX500 +414 $ sur 221 jours ; le testeur doit
+en être proche. Sur une autre période, avec nettement moins de trades, moins de 35 %
 de gagnants ou un résultat négatif, ne passe pas en réel.
 
 ## Utiliser le script TradingView
 
-1. Ouvre un graphique **M5** du Nasdaq ou du S&P 500, avec les bougies hors séance. Colle `robot/Strategy-V10.pine` dans l'éditeur
+1. Ouvre un graphique **M5** du Nasdaq ou du S&P 500, avec les bougies hors séance. Colle `robot/Strategy-V11.pine` dans l'éditeur
    Pine, puis « Ajouter au graphique ». Dans « Propriétés », ajoute une commission égale au spread de ton courtier.
 2. Crée une alerte « Appels de la fonction alert() uniquement ». Pour Telegram, webhook
    `https://api.telegram.org/bot<TOKEN>/sendMessage` et ton Chat ID dans les réglages du script. Après chaque mise à jour du script,
@@ -166,7 +176,14 @@ pire que −40 R, ou une baisse de plus de 66 R depuis le dernier plus haut. Ces
 
 ## Limites connues
 
-- **Glissement** : les tests supposent 1 point par exécution. Relève le glissement que l'EA annonce dans le message « exécuté ».
+- **Glissement** : les tests supposent 1 point par exécution. Relève le glissement que l'EA annonce dans le message « exécuté ». Le
+  journal d'exécution le mesure aussi pour la sortie de 15:50 (depuis la version 2 du journal, V11).
+- **Petit compte** : à 0,1 lot, une D dont le stop de la V10 est plus large que celui de la cassure est sautée (environ 1 D sur 4
+  dans le testeur 2025-2026), même si son stop réel, l'entrée de A, serait plus proche. C'est la règle testée ; la changer
+  demande un nouveau test. Avec environ 1 000 $, vérifie aussi que la marge libre suffit : l'EA réserve la marge de 15 unités
+  (cassure, B, D et leurs ajouts) et ne prend pas le trade sinon.
+- **Notifications** : les messages Telegram et WhatsApp attendent pendant qu'une D est guettée ou qu'un côté de la cassure est
+  surveillé par l'EA (un envoi bloque l'EA jusqu'à 3 secondes).
 - **EA en marche obligatoire** : sorties, stop au prix d'entrée et filet de sécurité ne fonctionnent que si l'EA tourne, d'où le VPS.
 - **Ordres en attente** : ne supprime pas à la main les ordres stop de l'EA ; 10 secondes après leur disparition, il renonce au trade.
 - **EA lancé en retard** : après 9:35, si le prix a déjà franchi le niveau, l'EA entre au marché, avec plus de glissement, et renonce si
@@ -183,8 +200,8 @@ pire que −40 R, ou une baisse de plus de 66 R depuis le dernier plus haut. Ces
 
 ```
 robot/
-  Strategy-V10.mq5     Expert Advisor MetaTrader 5
-  Strategy-V10.pine    script TradingView
+  Strategy-V11.mq5     Expert Advisor MetaTrader 5
+  Strategy-V11.pine    script TradingView
   test_robot.py        contrôles du code de l'EA et du script
   mt5/                 configuration de la démo et modèle du testeur de stratégie
 etrave/

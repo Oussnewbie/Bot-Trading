@@ -344,7 +344,7 @@ def _liste(elements, n=10):
 
 def resume_lisible(r):
     t, j = r["trades"], r["jours"]
-    lignes = [f"# Strategy V10, {r['trimestre']} ({r['debut']} au {r['fin']}{', en cours' if r['en_cours'] else ''})", "",
+    lignes = [f"# Strategy V11, {r['trimestre']} ({r['debut']} au {r['fin']}{', en cours' if r['en_cours'] else ''})", "",
               f"Généré le {r['genere_le']}. Sources : {', '.join(r['sources']) or '—'}. Symboles : {', '.join(r['symboles']) or '—'}.", "",
               "## Résultats", "",
               f"- Trades : {t['n']}, dont {_pct(t['gagnants_pct'])} gagnants ; total {_txt(t['total_r'], ' R', True)}, {_txt(t['total_net'], ' $', True)}.",

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Étrave : l'interface de l'EA Strategy V10 (indices US) — une page web servie sur cet ordinateur uniquement.
+"""Étrave : l'interface de l'EA Strategy V11 (indices US) — une page web servie sur cet ordinateur uniquement.
 
     python etrave/etrave.py                 démarre et ouvre la page dans le navigateur
     python etrave/etrave.py --port 8790     autre port (8788 par défaut)
@@ -41,7 +41,7 @@ import telegram  # noqa: E402
 PAGE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "page.html")
 ICI = os.path.dirname(os.path.abspath(__file__))            # le dossier etrave/ (avec Etrave.bat)
 RACINE = os.path.dirname(ICI)
-SOURCE_EA = os.path.join(RACINE, "robot", "Strategy-V10.mq5")
+SOURCE_EA = os.path.join(RACINE, "robot", "Strategy-V11.mq5")
 PORT = 8788
 CORPS_MAX = 64 * 1024
 EN_TETE_JETON = "x-etrave-jeton"
@@ -324,7 +324,7 @@ def reprendre_ancienne_organisation():
 
 
 def main(arguments=None):
-    lecteur = argparse.ArgumentParser(description=f"{pont.NOM} : l'interface de l'EA Strategy V10")
+    lecteur = argparse.ArgumentParser(description=f"{pont.NOM} : l'interface de l'EA Strategy V11")
     lecteur.add_argument("--port", type=int, default=int(os.environ.get("ETRAVE_PORT", PORT)))
     lecteur.add_argument("--dossier", default=None, help="dossier partagé avec l'EA (par défaut : dossier commun de MetaTrader)")
     lecteur.add_argument("--sans-navigateur", action="store_true")
@@ -347,7 +347,7 @@ def main(arguments=None):
             return 0
         print(f"Le port {options.port} est pris par un autre programme. Essaie : python etrave/etrave.py --port {options.port + 1}")
         return 1
-    print(f"{pont.NOM} — l'EA Strategy V10 (indices US)")
+    print(f"{pont.NOM} — l'EA Strategy V11 (indices US)")
     print(f"  page     : {serveur.url}   (cet ordinateur uniquement)")
     print(f"  dossier  : {dossier}")
     print("  Laisse cette fenêtre ouverte tant que tu utilises la page. La fermer n'arrête ni l'EA ni ses alertes.")

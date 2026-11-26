@@ -1,17 +1,20 @@
-# CLAUDE.md — Strategy V10
+# CLAUDE.md — Strategy V11
 
 ## Le projet
-Un seul robot, **Strategy V10** : cassure du range M5 de 9:30 New York (A), repli VWAP (B), continuations D1 à D3, stop à 3 ranges et
-lots divisés par 3, risque par défaut de 0,25 % par trade. Deux versions qui suivent les mêmes règles :
-- l'EA MetaTrader 5, `robot/Strategy-V10.mq5`, version de référence ;
-- le script TradingView, `robot/Strategy-V10.pine`.
+Un seul robot, **Strategy V11** : cassure du range M5 de 9:30 New York (A), repli VWAP (B), continuations D1 à D3, stop à 3 ranges et
+lots divisés par 3, risque par défaut de 0,25 % par trade. **V11 (26/11/2026, choix de l'utilisateur) = V10 + stop posé des D au prix
+d'entrée de A** (taille et seuils +1,5 R / +2 R des D toujours sur le stop de la V10 ; pas de D si son niveau n'est pas au-delà de
+l'entrée de A d'au moins un spread et de la distance minimale des stops), plus les corrections EX-1 à EX-7 de l'audit d'exécution. Deux versions qui suivent les mêmes règles :
+- l'EA MetaTrader 5, `robot/Strategy-V11.mq5`, version de référence ;
+- le script TradingView, `robot/Strategy-V11.pine`.
 
 Les règles, l'installation et les chiffres des tests sont dans `README.md`.
 
-**Périmètre (verrou du 25/11/2026, choix de l'utilisateur) : le Nasdaq 100 et le S&P 500, tradés ensemble** (un graphique M5 chacun).
+**Périmètre (verrou du 25/11/2026, reconduit en V11 le 26/11/2026) : le Nasdaq 100 et le S&P 500, tradés ensemble** (un graphique M5
+chacun).
 - Le robot refuse tout autre symbole (`MarcheAutorise` dans l'EA, `runtime.error` dans le Pine). Le Dow est exclu.
-- **Règles verrouillées en constantes** dans l'EA et le Pine : toutes les entrées (A, B, D1-D3), stop à 3 ranges, plancher de bruit
-  (H1) coupé, pyramide, mémoire. Profil choisi par l'utilisateur comme le plus rentable (critère gain). Seuls restent réglables le
+- **Règles verrouillées en constantes** dans l'EA et le Pine : toutes les entrées (A, B, D1-D3), stop à 3 ranges (A, B ; taille des
+  D), stop posé des D à l'entrée de A (V11), plancher de bruit (H1) coupé, pyramide, mémoire. Profil V10 choisi par l'utilisateur comme le plus rentable (critère gain) ; V11 retenue le 26/11/2026 comme meilleur compromis gain / pire baisse. Seuls restent réglables le
   compte (risque, lots fixes ; solde, taille de contrat et pas de lot dans le Pine), l'heure du serveur, les FOMC après janvier 2028,
   l'exécution, les notifications et l'affichage. Ne rends pas une règle réglable sans que l'utilisateur le demande.
 - Hors sujet : bitcoin, or, devises, DAX.
@@ -23,12 +26,12 @@ Les règles, l'installation et les chiffres des tests sont dans `README.md`.
 
 ## Arborescence et commandes
 ```
-robot/     Strategy-V10.mq5, Strategy-V10.pine, test_robot.py (contrôles du code de l'EA et du Pine),
+robot/     Strategy-V11.mq5, Strategy-V11.pine, test_robot.py (contrôles du code de l'EA et du Pine),
            mt5/ (demo.ini, demo_1000.set, testeur.ini)
 etrave/    interface web locale de l'EA (Python sans dépendance), export.py (export trimestriel) + test_interface.py, test_export.py
 video/     (branche communication/outil-video) vidéos TikTok : récap de séance et présentation, `python3 video/outil.py` ; README
 ```
-- Tests : `.venv/bin/python -m pytest robot etrave -q` (109 tests ; sur la branche `communication/outil-video`, ajouter `video`). Le `.venv` du dépôt tourne sous Python 3.15.
+- Tests : `.venv/bin/python -m pytest robot etrave -q` (116 tests ; sur la branche `communication/outil-video`, ajouter `video`). Le `.venv` du dépôt tourne sous Python 3.15.
 - Étrave en essai : `.venv/bin/python etrave/etrave.py --sans-navigateur --port 8799 --dossier <dossier jetable>`, puis
   `http://127.0.0.1:8799`. Pour voir la page avec des données, écrire de faux `etat-<symbole>.txt` (format dans
   `etrave/test_interface.py`, `faux_etat`) et un `trades-<symbole>.csv`, et les réécrire toutes les 2 secondes (au-delà de 15 s sans
@@ -37,8 +40,8 @@ video/     (branche communication/outil-video) vidéos TikTok : récap de séanc
 ## MetaTrader 5 sur ce Mac
 - **MetaTrader 5 pour Mac** (`/Applications/MetaTrader 5.app`, Wine fourni) et Rosetta 2 sont installés. Préfixe Wine :
   `~/Library/Application Support/net.metaquotes.wine.metatrader5`, plateforme dans `drive_c/Program Files/MetaTrader 5`.
-- **Compiler** (depuis le dossier de la plateforme, après avoir copié `robot/Strategy-V10.mq5` dans `MQL5/Experts/Etrave/`) :
-  `WINEPREFIX=<préfixe> WINEDEBUG=-all "/Applications/MetaTrader 5.app/Contents/SharedSupport/wine/bin/wine" "C:\Program Files\MetaTrader 5\metaeditor64.exe" /compile:"MQL5\Experts\Etrave\Strategy-V10.mq5" /log:"MQL5\Experts\Etrave\compile.log"`,
+- **Compiler** (depuis le dossier de la plateforme, après avoir copié `robot/Strategy-V11.mq5` dans `MQL5/Experts/Etrave/`) :
+  `WINEPREFIX=<préfixe> WINEDEBUG=-all "/Applications/MetaTrader 5.app/Contents/SharedSupport/wine/bin/wine" "C:\Program Files\MetaTrader 5\metaeditor64.exe" /compile:"MQL5\Experts\Etrave\Strategy-V11.mq5" /log:"MQL5\Experts\Etrave\compile.log"`,
   puis lire la ligne `Result:` du journal (UTF-16 : `iconv -f UTF-16LE -t UTF-8`). Après toute modification du `.mq5`, compile et
   rapporte la ligne `Result:` ; ne dis jamais « ça compile » sans l'avoir lue. Pour compiler une version qui n'est pas encore sur
   `main` sans toucher à l'EA installé, utilise un autre dossier de `MQL5/Experts/`, puis supprime-le.
@@ -61,23 +64,27 @@ video/     (branche communication/outil-video) vidéos TikTok : récap de séanc
     calendrier des fériés entre l'EA et le Pine.
   - `robot/test_robot.py` relit le code pour vérifier chaque correctif. Un nouveau correctif ajoute son contrôle.
 
-## État au 25 novembre 2026 et prochaine action
-1. **Testeur MT5** (NDX100 TradinGlobal, 20/11/2025 → 19/11/2026, ticks réels) : mêmes 123 jours de trade que le simulateur de la
-   recherche, du même signe chaque jour. Ajouts de pyramide de plus de 20 lots refusés par le courtier : l'ajout est désormais borné à
-   20 lots (passages suivants à 300 000 $ : aucun refus de volume ; sans effet à 0,1 lot).
-2. **Testeur, 12 mois, 0,1 lot fixe sur 1 000 $** (`InpFixedLots = 0.1`), code du 25/11/2026 au soir (après X-13 et l'audit) :
-   +1 885,09 $, 379 trades, 123 jours de trade, 53 % de jours gagnants, pire jour −91 $, pire baisse −321 $ (jour par jour ; −330 $
-   sur le solde). Avant le verrouillage des règles : +1 886,96 $. Une bonne année (+76 R contre environ +51 R pour une année
-   médiane). Les correctifs de l'audit ne changent aucun trade dans le testeur : mêmes transactions que `main` d'avant l'audit à
-   0,1 lot sur 1 000 $, et mêmes 449 trades et +65 324,88 $ qu'après X-13 à 0,25 % sur 300 000 $.
-3. **Démo préparée, jamais lancée en séance.** Relance : MetaTrader fermé, copier `robot/mt5/demo.ini` dans le dossier de la
-   plateforme et `robot/mt5/demo_1000.set` en UTF-16 dans `MQL5/Presets/StrategyV10_demo_1000.set`, puis
+## État au 26 novembre 2026 et prochaine action
+1. **V11 validée au testeur MT5** (copie d'essai dans `MQL5/Experts/Essais/`, ticks réels, 01/01/2025 → 25/11/2026, 0,1 lot, dépôt
+   10 000 $) contre le simulateur de la recherche (variante « stopA_D ») : NDX100 +2 991,22 $ contre +3 015,72 $ (237 jours, même
+   signe 99,2 %) ; SPX500 +413,92 $ contre +309,14 $ (même signe 96,3 %, simulateur prudent comme pour la V10). Entrées A et B
+   identiques à la V10 du même testeur ; 36 (NDX) et 33 (SPX) D de moins. Les corrections EX-1 à EX-7 ne changent aucun trade
+   (mêmes entrées, même résultat au centime). Nasdaq + S&P : +3 405 $, 45 % de jours gagnants, pire jour −101 $, pire baisse −248 $
+   (V10 : +3 951 $, 47 %, −110 $, −360 $).
+2. **Testeur V10 précédent** (NDX100, 20/11/2025 → 19/11/2026, 0,1 lot sur 1 000 $) : +1 885,09 $, 379 trades ; sert de repère.
+3. **Démo préparée, jamais lancée en séance.** À refaire pour la V11 : `robot/mt5/demo.ini` (Expert `Etrave\Strategy-V11`) n'attache
+   que NDX100 ; le S&P 500 demande un second graphique (à poser à la main ou par un profil). Relance : MetaTrader fermé, copier
+   `demo.ini` dans le dossier de la plateforme et `demo_1000.set` en UTF-16 dans `MQL5/Presets/StrategyV11_demo_1000.set`, puis
    `terminal64.exe /config:"C:\Program Files\MetaTrader 5\demo.ini"` et `caffeinate -i -w <pid>`, avant 9:30 New York. But : mesurer
-   le **glissement réel** (les tests supposent 1 point). Deux MetaTrader ne tournent pas ensemble : arrêter la démo pour un test.
+   le **glissement réel** (entrées A, B, D et sortie de 15:50). Deux MetaTrader ne tournent pas ensemble : arrêter la démo pour un test.
 4. Interrupteur, sur 60 jours de trade : moins de 28 % de jours gagnants, un total pire que −40 R, ou une baisse de plus de 66 R. Non
-   codé, calculé pour toutes les entrées à 0,25 %, pour un marché : l'export le juge **marché par marché** (ET-16, choix de
-   l'utilisateur du 26/11/2026). En lots fixes sur 1 000 $, −40 R serait le compte entier.
+   codé, calculé pour la V10 à 0,25 %, pour un marché : l'export le juge **marché par marché** (ET-16). En lots fixes sur 1 000 $,
+   −40 R serait le compte entier.
 5. Le risque par trade se décide une fois le glissement réel connu. C'est la décision de l'utilisateur.
+6. **Recherche du 26/11/2026** (hors dépôt, `donnees/`) : protections contre les retournements, coupes CHoCH M1 à M15, dojis,
+   confirmations M5/M15, filtres de tendance H1/H4/jour, range de 15/30 min, largeur du stop, carte de 26 critères à 9:35, deux grilles
+   de 219 744 et 2 636 928 combinaisons à 1 et 3 points, relues par des relecteurs indépendants : rien ne bat la V10 de façon solide ;
+   la V11 a été choisie comme meilleur compromis gain / pire baisse. Ne pas refaire ces tests ; la prochaine donnée neuve est la démo.
 
 ## Discipline
 - **Ne règle plus rien sur le Nasdaq à partir du backtest** : tout l'historique 2010 → 18/11/2026 a servi à la mise au point
@@ -98,7 +105,7 @@ video/     (branche communication/outil-video) vidéos TikTok : récap de séanc
   est pas : pas de décision annoncée. Les suivants se saisissent dans `InpFomc` (EA) et `fomcExtra` (Pine). Si la Fed déplace une
   date, corriger les deux listes (un test vérifie leur accord).
 - Les numéros magiques 50930 à 50935 sont partagés avec d'anciennes versions (V9, ORB v6) ; le filet de sécurité et
-  `EaPositions` surveillent 50930 à 50939. Préfixe d'état `StratV10_`. Compte
+  `EaPositions` surveillent 50930 à 50939. Préfixe d'état `StratV11_`. Compte
   **hedging** obligatoire.
 - Le risque réglé dans Étrave passe avant les 0,25 % de l'EA. Après une mise à jour depuis la v6, il peut encore valoir 0,5 %.
 - `etrave/reference.json` contient les trades de l'**ORB v6** : la page Risque simule donc la v6, avec la marge de la V10 (15 unités
@@ -106,7 +113,9 @@ video/     (branche communication/outil-video) vidéos TikTok : récap de séanc
 - **Étrave en direct** : le détail (lots, stop) ne concerne que la cassure A. Pour B et D, la page affiche les lignes d'état `v8_b`
   et `v9_d` et leur résultat ouvert `v8_resultat`. La clé `jambes` garde le bouton « Clôturer » visible après la sortie de A ;
   `lots_fixes` dit à la page que le risque en % n'est pas utilisé ; `sortie_ny` donne l'heure de sortie du jour.
-- Les entrées D ne posent aucun ordre chez le courtier : l'EA guette le niveau et entre au marché.
+- Les entrées D ne posent aucun ordre chez le courtier : l'EA guette le niveau et entre au marché. V11 : stop posé = `gEntry` (prix
+  d'entrée de A) ; `g.risk` reste la distance au stop de la V10 (`slV10`) pour +1,5 R et +2 R ; risque réel plafonné à celui de A
+  (EX-2). Dans le Pine : champ `rsl` de `Leg` (stop de la V10) et paramètre `slOrdre` de `openLegStop`.
 - **Journaux d'exécution et des séances (25/11/2026)** : `execution-<symbole>.csv` (une ligne par position fermée : mise en file par
   `ExecQueue` après la comptabilité de `RecordClose` / `LegRecord`, écrite par `JournalFlush` → `ExecRow` seulement hors de la séance
   (après la sortie de fin de journée ou avant 8:55 New York), sans position ni ordre, et à l'arrêt de l'EA : lire les ticks d'une
@@ -149,6 +158,15 @@ video/     (branche communication/outil-video) vidéos TikTok : récap de séanc
     port sous Windows, aucun risque imposé par la page, dates de New York, export unique, encodages Windows), VID-01 à VID-17 (outil
     vidéo, sur sa branche : rendu et fuseaux sous Windows, jamais de vidéo muette ni de photo après 17:00 New York, semaines
     complètes). En-têtes de l'EA et du Pine réécrits (ils disaient « Nasdaq uniquement »).
+  - **Audit d'exécution V11 du 26/11/2026, corrigés** : EX-1 (stop d'une D contrôlé contre le bid pour un achat et l'ask pour une
+    vente, avec la distance minimale et le gel du courtier ; D pas armée à moins d'un spread de l'entrée de A), EX-2 (risque réel
+    d'une D plafonné à celui de A, affiché tel quel), EX-3 (journal d'exécution version 2, textes et en-têtes, `InpDeviation`
+    décrit), EX-5 (envois WhatsApp / Telegram différés pendant une D guettée ou un côté de A surveillé par l'EA), EX-7 (glissement de
+    la sortie de 15:50 mesuré dans le journal, depuis `FlatRef`). Ouverts : EX-4 (à 0,1 lot, environ 1 D sur 4 sautée car son stop
+    de la V10 est plus large que celui de A, alors que le stop posé serait plus proche : décision de l'utilisateur, à tester avant
+    de changer), EX-6 (D en ordres stop chez le courtier si la démo montre un glissement des D nettement pire que celui de A),
+    EX-8 (marge : 15 unités réservées, à vérifier avec le levier réel du compte ; démo sur deux graphiques). Pine V11 non vérifié sur
+    TradingView.
   - **Encore ouverts** :
     - X-11 / ET-04 : deux terminaux sur un même ordinateur partagent `reglages.txt` et les clôtures (règle d'usage dans le README) ;
     - X-02 : les sorties et le stop virtuel exigent un EA en marche (VPS) ;
@@ -165,7 +183,8 @@ video/     (branche communication/outil-video) vidéos TikTok : récap de séanc
     - Vidéo, à décider avec l'utilisateur : le trait « Jusqu'à +106 pts » est vert et l'épingle des photos rouge, alors que vert et
       rouge sont réservés au résultat ; sur Mac, la capture de MetaTrader n'est pas contrôlée (écran verrouillé).
 - Test des stops (25/11/2026, pré-enregistré, historique déjà vu) : fermer B/D au stop de A ≈ neutre ; B/D à l'entrée dès +0,5R,
-  stop à +0,5R au lieu de l'entrée, A à l'entrée quand une jambe part : moins bons. Les stops restent tels quels.
+  stop à +0,5R au lieu de l'entrée, A à l'entrée quand une jambe part : moins bons. Le 26/11/2026, le stop posé des D seules à
+  l'entrée de A a été retenu (V11) comme compromis : environ 15 % de gain en moins, environ 30 % de pire baisse en moins.
 
 ## Données et archives (hors dépôt)
 - **Sauvegarde complète de l'ancien dépôt** (recherche, rapports, simulateur, toutes les branches et étiquettes, avant le nouveau

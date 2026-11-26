@@ -1,5 +1,5 @@
 @echo off
-rem Etrave - interface de l EA Strategy V10 (Windows). Double-clic : demarre l interface et ouvre la page dans le navigateur.
+rem Etrave - interface de l EA Strategy V11 (Windows). Double-clic : demarre l interface et ouvre la page dans le navigateur.
 chcp 65001 >nul
 title Etrave
 cd /d "%~dp0.."

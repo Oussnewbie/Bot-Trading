@@ -8,7 +8,7 @@ L'EA et l'interface ne se parlent que par des fichiers texte rangés dans le dos
     trades-<symbole>.csv  une ligne par trade clôturé, ajoutée par l'EA
 
 Format : une ligne `cle=valeur` par réglage. Une clé absente de reglages.txt laisse à l'EA la valeur saisie dans
-MetaTrader ; les noms de clés sont les mêmes dans robot/Strategy-V10.mq5 (etrave/test_interface.py vérifie l'accord).
+MetaTrader ; les noms de clés sont les mêmes dans robot/Strategy-V11.mq5 (etrave/test_interface.py vérifie l'accord).
 
 Règles reprises de Vigie :
  - tout est validé AVANT d'écrire quoi que ce soit ;
@@ -35,7 +35,7 @@ RISQUE_A_CONFIRMER = 1.0
 LEVIER_MAX = 2000.0
 # L'EA réécrit son état toutes les 2 secondes : passé ce délai sans nouvelle, il est arrêté (ou MT5 fermé).
 EA_MUET_S = 15.0
-# Les deux marchés de la V10 (verrou du 25/11/2026), une case chacun : l'EA classe son symbole « nasdaq » ou « sp500 »
+# Les deux marchés de la V11 (verrou du 25/11/2026, reconduit en V11 le 26/11/2026), une case chacun : l'EA classe son symbole « nasdaq » ou « sp500 »
 # (InstrumentOf) et ne lit que sa case. Décochée, l'EA ne prend plus de nouveau trade.
 INSTRUMENTS = {"nasdaq": True, "sp500": True}
 MOTS = {"risque": "RISQUE", "cloturer": "CLOTURER"}

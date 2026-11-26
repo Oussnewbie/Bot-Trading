@@ -283,9 +283,9 @@
       <summary><h2>Ce que disent les tests</h2></summary>
       <ul>
         <li><b>Attention :</b> la simulation ci-dessus rejoue encore les trades de l’ancienne ORB v6 (une seule position à la fois), avec la marge de la V10. La V10 peut tenir jusqu’à 5 positions en même temps (A, B, D1 à D3) : ses chiffres sont ceux de cette liste.</li>
-        <li><b>Strategy V10, profil Confort, Nasdaq 2018 → novembre 2026</b> (spread réel + 1 point) : +477R, 47 % de trades gagnants, pire baisse −32R, pire journée −5,1R.</li>
+        <li><b>Strategy V10 (la V11 moins le stop des D à l’entrée de A), Nasdaq 2018 → novembre 2026</b> (spread réel + 1 point) : +477R, 47 % de trades gagnants, pire baisse −32R, pire journée −5,1R.</li>
         <li><b>Nasdaq 2010-2017</b>, coûts au poids d’aujourd’hui : +194R, 44 % de trades gagnants, pire baisse −53R. Avec les coûts au poids de 2018 : +23R seulement.</li>
-        <li><b>S&amp;P 500 :</b> tradé avec le Nasdaq depuis le 25 novembre 2026, mais seule la version précédente (V9) y a été contrôlée. Le Dow Jones est exclu : testé tel quel, il ne gagne rien (−26R).</li>
+        <li><b>S&amp;P 500 :</b> tradé avec le Nasdaq depuis le 25 novembre 2026. V11 au testeur MetaTrader, janvier 2025 → novembre 2026, 0,1 lot : +414 $ (Nasdaq : +2 991 $) ; il gagne nettement moins que le Nasdaq et dépend davantage des coûts. Le Dow Jones est exclu : testé tel quel, il ne gagne rien (−26R).</li>
         <li><b>Testeur de MetaTrader</b>, NDX100, 12 mois, 0,1 lot fixe : +1 887 $, 52 % de jours gagnants, pire baisse −323 $. Une bonne année : rien ne dit que la suivante fera pareil.</li>
         <li>Le passé ne garantit rien : choisis le risque en regardant la pire baisse, pas le gain par an. Le robot n’a pas encore tourné en démo ni en réel.</li>
       </ul>
@@ -446,7 +446,7 @@ function renderHeader() {
   if (!state) return;
 
   const banners = [];
-  if (state.eas.length === 0) banners.push(el('div', { class: 'banner' }, el('b', {}, 'Aucun EA vu pour l’instant. '), 'Ouvre MetaTrader 5, pose l’EA Strategy-V10 sur un graphique M5 du Nasdaq et sur un du S&P 500, et autorise le trading algorithmique. Tes réglages d’ici seront pris dès qu’il démarre.'));
+  if (state.eas.length === 0) banners.push(el('div', { class: 'banner' }, el('b', {}, 'Aucun EA vu pour l’instant. '), 'Ouvre MetaTrader 5, pose l’EA Strategy-V11 sur un graphique M5 du Nasdaq et sur un du S&P 500, et autorise le trading algorithmique. Tes réglages d’ici seront pris dès qu’il démarre.'));
   else if (live.length === 0) banners.push(el('div', { class: 'banner bad' }, el('b', {}, 'L’EA ne répond plus. '), 'MetaTrader 5 est fermé, ou l’EA a été retiré du graphique. Tant qu’il est arrêté, seuls les stops posés chez le courtier protègent un trade ouvert.'));
   for (const e of live) {
     if (!e.connecte) banners.push(el('div', { class: 'banner bad' }, el('b', {}, `${e.symbole} : `), 'MetaTrader 5 n’est pas connecté au courtier.'));
@@ -509,7 +509,7 @@ function instrumentRow(key, label, e, checked) {
   const row = el('div', { class: 'inst' }, who);
   if (!e) {
     who.append(el('span', { class: 'ea' }, el('span', { class: 'dot' }), 'aucun EA'));
-    row.append(el('div', { class: 'vide' }, checked ? `Pose Strategy-V10 sur un graphique M5 du ${label} dans MetaTrader 5.` : 'En pause.'));
+    row.append(el('div', { class: 'vide' }, checked ? `Pose Strategy-V11 sur un graphique M5 du ${label} dans MetaTrader 5.` : 'En pause.'));
     return row;
   }
   who.append(el('span', { class: 'tag' }, e.symbole),
@@ -555,7 +555,7 @@ function renderInstruments() {
 
 // ---------------------------------------------------------------- la séance : titre, phase et frise des règles
 // Heures des règles de l'EA, à New York (InpPre, InpOR, InpLiveBars, InpDCount et InpDValid, InpBEnd, InpFlat, InpFlatShort).
-// etrave/test_interface.py vérifie l'accord avec robot/Strategy-V10.mq5. L'heure de sortie du jour vient de l'EA (sortie_ny).
+// etrave/test_interface.py vérifie l'accord avec robot/Strategy-V11.mq5. L'heure de sortie du jour vient de l'EA (sortie_ny).
 const REGLES_NY = { elan: '09:00', range: '09:30', cassure: '09:35', finOrdres: '09:45', debutD: '09:40', finD: '10:00', finB: '14:00', sortie: '15:50', sortieCourte: '12:45' };
 const hm = (t) => { const [h, m] = String(t).split(':').map(Number); return h * 60 + m; };
 const hmTxt = (m) => `${Math.floor(m / 60)}:${String(m % 60).padStart(2, '0')}`;

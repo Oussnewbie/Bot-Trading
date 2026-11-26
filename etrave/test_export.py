@@ -14,7 +14,7 @@ sys.path.insert(0, ICI)
 import etrave  # noqa: E402
 import export  # noqa: E402
 
-EA = open(os.path.join(os.path.dirname(ICI), "robot", "Strategy-V10.mq5"), encoding="utf-8-sig").read()
+EA = open(os.path.join(os.path.dirname(ICI), "robot", "Strategy-V11.mq5"), encoding="utf-8-sig").read()
 EXEC = re.search(r'#define EXEC_COLONNES\s+"([^"]+)"', EA).group(1).split(";")
 SEANCE = re.search(r'#define SEANCE_COLONNES\s+"([^"]+)"', EA).group(1).split(";")
 
