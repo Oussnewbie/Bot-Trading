@@ -4,3 +4,6 @@ __pycache__/
 .pytest_cache/
 .DS_Store
 donnees/
+
+# Rapports de /audit : gardés sur l'ordinateur (le dépôt est public)
+audits/

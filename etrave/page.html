@@ -147,6 +147,8 @@
   .inst .res .fig { font: 600 22px/1.1 var(--f-num); }
   .inst .vide { grid-column: 2 / -1; color: var(--muted); }
   .marches-note { color: var(--muted); font-size: 13px; margin: 10px 0 34px; }
+  #interrupteur { margin-top: 14px; } #interrupteur .banner { margin-bottom: 8px; }
+  .interrupteur { color: var(--ink-2); font-size: 14px; margin: 0 0 8px; max-width: 80ch; } .interrupteur b { color: var(--ink); }
   @media (max-width: 760px) { .inst { grid-template-columns: minmax(0, 1fr) auto; } .inst dl { grid-column: 1 / -1; grid-row: 2; grid-template-columns: 110px minmax(0, 1fr); } }
 
   .bloc { margin: 0 0 34px; }
@@ -205,6 +207,7 @@
       <div><div class="name">__NOM__</div><div class="tagline" id="tagline">__SLOGAN__</div></div>
     </div>
     <dl class="etat" id="etat" aria-live="polite"></dl>
+    <button class="btn danger small" id="btn-urgence" type="button">Arrêt d’urgence</button>
     <button class="btn ghost" id="btn-theme" type="button">Mode nuit</button>
   </header>
 
@@ -224,6 +227,7 @@
 
     <div class="marches-head"><h2>Marchés</h2><span class="sum" id="sum-instruments"></span></div>
     <div id="instruments"></div>
+    <div id="interrupteur" aria-live="polite"></div>
     <p class="marches-note">Case décochée : l’EA ne prend plus de nouveau trade sur ce marché. Une position déjà ouverte reste gérée jusqu’à sa sortie.</p>
 
     <div class="bloc">
@@ -260,7 +264,7 @@
       <div class="hint">La part du solde perdue quand le stop est touché (1R). C’est le seul réglage : tout le reste garde les valeurs du test.</div>
       <div class="status" id="risk-status"><span class="dot"></span><span></span></div>
       <div class="risk-row">
-        <div class="big"><input type="number" id="risk-input" min="0.05" max="20" step="0.05" inputmode="decimal" aria-label="Risque par trade, en pourcentage du solde"><span>% du solde</span></div>
+        <div class="big"><input type="number" id="risk-input" min="0.05" max="1" step="0.05" inputmode="decimal" aria-label="Risque par trade, en pourcentage du solde"><span>% du solde</span></div>
         <input type="range" id="risk-slider" min="0" max="1000" step="1" aria-label="Risque par trade">
       </div>
       <div class="chips" id="risk-presets" role="group" aria-label="Valeurs courantes"></div>
@@ -282,11 +286,11 @@
     <details class="card" data-fold="tests">
       <summary><h2>Ce que disent les tests</h2></summary>
       <ul>
-        <li><b>Attention :</b> la simulation ci-dessus rejoue encore les trades de l’ancienne ORB v6 (une seule position à la fois), avec la marge de la V10. La V10 peut tenir jusqu’à 5 positions en même temps (A, B, D1 à D3) : ses chiffres sont ceux de cette liste.</li>
-        <li><b>Strategy V10, profil Confort, Nasdaq 2018 → novembre 2026</b> (spread réel + 1 point) : +477R, 47 % de trades gagnants, pire baisse −32R, pire journée −5,1R.</li>
+        <li><b>La simulation ci-dessus</b> rejoue la V11 sur les données du courtier (Nasdaq + S&amp;P 500, mars 2019 → novembre 2026, spread réel + glissement) : +338R, pire baisse −52R, pire journée −6R. Un « R » est le risque réglé : la V11 peut tenir jusqu’à 5 positions par marché le même jour (A, B, D1 à D3), d’où des journées à plusieurs R.</li>
+        <li><b>Strategy V10 (la V11 moins le stop des D à l’entrée de A), Nasdaq 2018 → novembre 2026</b> (spread réel + 1 point) : +477R, 47 % de trades gagnants, pire baisse −32R, pire journée −5,1R.</li>
         <li><b>Nasdaq 2010-2017</b>, coûts au poids d’aujourd’hui : +194R, 44 % de trades gagnants, pire baisse −53R. Avec les coûts au poids de 2018 : +23R seulement.</li>
-        <li><b>S&amp;P 500 :</b> tradé avec le Nasdaq depuis le 25 novembre 2026, mais seule la version précédente (V9) y a été contrôlée. Le Dow Jones est exclu : testé tel quel, il ne gagne rien (−26R).</li>
-        <li><b>Testeur de MetaTrader</b>, NDX100, 12 mois, 0,1 lot fixe : +1 887 $, 52 % de jours gagnants, pire baisse −323 $. Une bonne année : rien ne dit que la suivante fera pareil.</li>
+        <li><b>S&amp;P 500 :</b> tradé avec le Nasdaq depuis le 25 novembre 2026. V11 au testeur MetaTrader, janvier 2025 → novembre 2026, 0,1 lot : +414 $ (Nasdaq : +2 991 $) ; il gagne nettement moins que le Nasdaq et dépend davantage des coûts. Le Dow Jones est exclu : testé tel quel, il ne gagne rien (−26R).</li>
+        <li><b>Testeur de MetaTrader, V10</b>, NDX100, 20/11/2025 → 19/11/2026, 0,1 lot fixe sur 1 000 $ : +1 885 $, 53 % de jours gagnants, pire baisse −321 $. Une bonne année : rien ne dit que la suivante fera pareil.</li>
         <li>Le passé ne garantit rien : choisis le risque en regardant la pire baisse, pas le gain par an. Le robot n’a pas encore tourné en démo ni en réel.</li>
       </ul>
     </details>
@@ -362,6 +366,23 @@ function toast(message) {
   clearTimeout(toast.timer);
   toast.timer = setTimeout(() => (node.style.display = 'none'), 4600);
 }
+
+// ---------------------------------------------------------------- confirmation par un mot tapé (dialogue dlg-mot)
+// AUD-01 (REEL), AUD-10 (ARRET), AUD-19 (FERMER) : un seul dialogue ; rien n'est envoyé tant que le mot exact n'est pas tapé.
+let motAction = null;
+function askWord({ titre, texte, mot, bouton, action }) {
+  motAction = { mot, action };
+  $('mot-titre').textContent = titre;
+  $('mot-texte').textContent = texte;
+  $('mot-attendu').textContent = mot;
+  $('mot-saisie').value = '';
+  $('mot-ok').textContent = bouton;
+  $('mot-ok').disabled = true;
+  $('dlg-mot').showModal();
+}
+$('mot-saisie').addEventListener('input', () => ($('mot-ok').disabled = !motAction || $('mot-saisie').value.trim().toUpperCase() !== motAction.mot));
+$('mot-annuler').addEventListener('click', () => { motAction = null; $('dlg-mot').close(); });
+$('mot-ok').addEventListener('click', () => { const m = motAction; motAction = null; $('dlg-mot').close(); if (m) m.action(m.mot); });
 
 // ---------------------------------------------------------------- blocs repliables
 function foldOpen(key, byDefault) {
@@ -441,20 +462,74 @@ function renderHeader() {
         el('dd', {}, real ? el('span', { class: 'reel' }, 'RÉEL') : a.compte_type === 'demo' ? 'démo' : 'concours', el('span', { class: 'num' }, a.compte_login || ''))));
     }
     if (live.length) items.push(etatItem('New York', live[0].horloge_ok ? null : el('span', { class: 'dot bad' }), el('span', { class: 'num' }, String(live[0].heure_ny || '').slice(-5)), live[0].horloge_ok ? null : 'heure fausse'));
+    // AUD-22 (audit du 26/11/2026) : la version compilée de l'EA (date de compilation), pour voir qu'il a bien été recompilé
+    const builds = [...new Set((live.length ? live : state.eas).map((e) => e.ea_build).filter(Boolean))];
+    if (builds.length) items.push(etatItem('EA compilé le', el('span', { class: 'num' }, builds.map((b) => `${dateFr(b)} ${String(b).slice(11, 16)}`).join(' et '))));
   }
   $('etat').replaceChildren(...items);
-  if (!state) return;
 
   const banners = [];
-  if (state.eas.length === 0) banners.push(el('div', { class: 'banner' }, el('b', {}, 'Aucun EA vu pour l’instant. '), 'Ouvre MetaTrader 5, pose l’EA Strategy-V10 sur un graphique M5 du Nasdaq et sur un du S&P 500, et autorise le trading algorithmique. Tes réglages d’ici seront pris dès qu’il démarre.'));
+  // AUD-10 : le résultat de l'arrêt d'urgence reste en tête jusqu'à ce qu'on le masque, même interface arrêtée (un échec doit se voir)
+  if (urgence) banners.push(el('div', { class: `banner ${urgence.error ? 'bad' : 'ok'}` }, el('b', {}, urgence.error ? 'Arrêt d’urgence pas envoyé. ' : 'Arrêt d’urgence envoyé. '),
+    `${urgence.error || urgence.message} `, el('button', { class: 'btn small', type: 'button', onclick: (event) => { urgence = null; event.target.closest('.banner').remove(); renderHeader(); } }, 'Masquer')));
+  if (!state) {
+    if (urgence) $('banner').replaceChildren(...banners);
+    return;
+  }
+  // AUD-22 : au double-clic, MetaTrader n'a pas été ouvert parce que l'EA n'a pas pu être compilé
+  if (state.lancement) banners.push(el('div', { class: 'banner bad' }, el('b', {}, state.lancement.quand ? `${new Date(state.lancement.quand * 1000).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })} : ` : ''), state.lancement.message));
+  if (state.eas.length === 0) banners.push(el('div', { class: 'banner' }, el('b', {}, 'Aucun EA vu pour l’instant. '), 'Ouvre MetaTrader 5, pose l’EA Strategy-V11 sur un graphique M5 du Nasdaq et sur un du S&P 500, et autorise le trading algorithmique. Tes réglages d’ici seront pris dès qu’il démarre.'));
   else if (live.length === 0) banners.push(el('div', { class: 'banner bad' }, el('b', {}, 'L’EA ne répond plus. '), 'MetaTrader 5 est fermé, ou l’EA a été retiré du graphique. Tant qu’il est arrêté, seuls les stops posés chez le courtier protègent un trade ouvert.'));
   for (const e of live) {
     if (!e.connecte) banners.push(el('div', { class: 'banner bad' }, el('b', {}, `${e.symbole} : `), 'MetaTrader 5 n’est pas connecté au courtier.'));
     else if (!e.trading_auto) banners.push(el('div', { class: 'banner bad' }, el('b', {}, `${e.symbole} : trading automatique coupé. `), 'Dans MetaTrader 5, active le bouton « Trading algo » et coche « Autoriser le trading algorithmique » dans les réglages de l’EA.'));
-    if (!e.horloge_ok) banners.push(el('div', { class: 'banner bad' }, el('b', {}, `${e.symbole} : heure du serveur mal réglée. `), 'L’heure de New York calculée par l’EA est fausse : corrige « Décalage GMT du serveur » ou « Heure d’été du serveur » dans les réglages de l’EA, sinon le range sera pris sur la mauvaise bougie.'));
+    // AUD-25 (audit du 26/11/2026) : en détection automatique de l'heure (réglage par défaut), l'EA déduit l'heure du courtier de
+    // l'horloge de l'ordinateur ; « Décalage GMT » et « Heure d'été » ne servent qu'au testeur ou si la détection est coupée.
+    if (!e.horloge_ok) banners.push(el('div', { class: 'banner bad' }, el('b', {}, `${e.symbole} : heure du serveur mal réglée. `), 'L’heure de New York calculée par l’EA est fausse, et le range serait pris sur la mauvaise bougie. Vérifie d’abord que l’horloge de cet ordinateur est réglée à l’heure automatique : l’EA s’en sert pour trouver l’heure du courtier. Si elle l’est, c’est le courtier qui n’est plus à l’heure attendue (GMT+2 en hiver) : règle « Décalage GMT du serveur » dans les réglages de l’EA, dans MetaTrader.'));
     if (!e.regles_test) banners.push(el('div', { class: 'banner' }, el('b', {}, `${e.symbole} : `), 'un réglage de la stratégie saisi dans MetaTrader diffère des valeurs du test. Les chiffres de l’onglet Risque ne valent que pour les valeurs d’origine.'));
   }
+  // AUD-01 (audit du 26/11/2026) : sur un compte réel, l'EA ne prend aucun trade tant que ce compte n'est pas autorisé ici (mot
+  // REEL). Une fois autorisé, une ligne le rappelle, avec de quoi retirer l'autorisation.
+  const autorise = state.reglages.reelAutorise;
+  const nonAutorises = new Map(live.filter((e) => e.compte_type === 'reel' && e.compte_autorise === false).map((e) => [e.compte_login, e]));
+  for (const login of nonAutorises.keys()) {
+    // autorisation écrite, l'EA (qui relit ses réglages toutes les 2 secondes) dit encore 0 : ni « aucun trade » ni « autorisé »
+    if (login === autorise) banners.push(el('div', { class: 'banner' }, el('b', {}, `Compte réel n° ${login} : `), 'autorisation enregistrée, l’EA ne l’a pas encore prise (il relit ses réglages toutes les 2 secondes).'));
+    else banners.push(el('div', { class: 'banner bad' }, el('b', {}, `Compte réel n° ${login} : `), 'le robot ne prend aucun trade tant que tu ne l’as pas autorisé. ',
+      el('button', { class: 'btn small danger', type: 'button', onclick: () => askRealAccount(login) }, 'Autoriser ce compte réel')));
+  }
+  if (autorise && live.some((e) => e.compte_type === 'reel' && e.compte_login === autorise && e.compte_autorise !== false)) banners.push(el('div', { class: 'banner ok' }, el('b', {}, 'Compte réel autorisé. '),
+    `Le robot trade avec de l’argent réel sur le compte n° ${autorise}. `, el('button', { class: 'btn small', type: 'button', onclick: () => revokeRealAccount() }, 'Retirer l’autorisation')));
   $('banner').replaceChildren(...banners);
+}
+
+// AUD-10 (audit du 26/11/2026) : arrêt d'urgence, toujours visible dans l'en-tête. Le réarmement = recocher les cases des marchés.
+let urgence = null;   // dernier résultat de /api/arret-urgence
+$('btn-urgence').addEventListener('click', () => askWord({ titre: 'Arrêt d’urgence', mot: 'ARRET', bouton: 'Tout arrêter',
+  texte: 'Les deux marchés sont décochés (plus aucun nouveau trade), et chaque EA en marche ferme au marché ses positions et annule ses ordres, au prix du moment. Pour repartir ensuite, recoche les cases des marchés dans l’onglet Séance.',
+  action: async (mot) => {
+    try { urgence = await api('/api/arret-urgence', { confirmation: mot }); if (state) state.reglages = urgence.reglages; }
+    catch (error) { urgence = { error: error.message }; toast(`Arrêt d’urgence pas envoyé : ${error.message}`); }
+    renderHeader();
+    if (state && !$('tab-overview').hidden) renderOverview();
+  } }));
+
+/** AUD-01 : autoriser le compte réel vu par l'EA, après le mot REEL. */
+function askRealAccount(login) {
+  askWord({ titre: 'Autoriser le compte réel', mot: 'REEL', bouton: 'Autoriser ce compte',
+    texte: `Le robot va prendre des trades avec de l’argent réel sur le compte n° ${login}, ${fixedLots() ? 'en lots fixes réglés dans MetaTrader' : `à ${riskText(currentRisk())} du solde par trade`}. Tu pourras retirer cette autorisation à tout moment ici.`,
+    action: async (mot) => {
+      try { const result = await api('/api/compte/autoriser', { login, confirmation: mot }); state.reglages = result.reglages; toast('Compte réel autorisé : l’EA le prend dans les 2 secondes.'); }
+      catch (error) { toast(error.message); }
+      renderHeader();
+      if (!$('tab-connections').hidden) { renderConnections.drawn = false; renderConnections(); }
+    } });
+}
+async function revokeRealAccount() {
+  try { const result = await api('/api/compte/autoriser', { retirer: true }); state.reglages = result.reglages; toast('Autorisation retirée : plus de nouveau trade sur le compte réel.'); }
+  catch (error) { toast(error.message); }
+  renderHeader();
+  if (!$('tab-connections').hidden) { renderConnections.drawn = false; renderConnections(); }
 }
 
 // ---------------------------------------------------------------- vue d'ensemble
@@ -496,6 +571,7 @@ function renderOverview() {
   $('sum-trades').textContent = sum.n ? `${moneySigned(sum.argent, devise)}, ${pctSigned(sum.pct)}, ${rSigned(sum.r)}` : '';
   renderSeance();
   renderInstruments();
+  renderInterrupteur();
   renderCurve();
   renderTrades(devise);
 }
@@ -509,7 +585,7 @@ function instrumentRow(key, label, e, checked) {
   const row = el('div', { class: 'inst' }, who);
   if (!e) {
     who.append(el('span', { class: 'ea' }, el('span', { class: 'dot' }), 'aucun EA'));
-    row.append(el('div', { class: 'vide' }, checked ? `Pose Strategy-V10 sur un graphique M5 du ${label} dans MetaTrader 5.` : 'En pause.'));
+    row.append(el('div', { class: 'vide' }, checked ? `Pose Strategy-V11 sur un graphique M5 du ${label} dans MetaTrader 5.` : 'En pause.'));
     return row;
   }
   who.append(el('span', { class: 'tag' }, e.symbole),
@@ -553,9 +629,29 @@ function renderInstruments() {
   host.replaceChildren(...rows);
 }
 
+// AUD-09 (audit du 26/11/2026) : l'interrupteur, marché par marché, sur les 60 derniers jours de trade. Étrave le vérifie toutes
+// les 10 minutes avec les seuils du marché (export.py) et prévient sur Telegram au premier franchissement.
+function renderInterrupteur() {
+  const host = $('interrupteur');
+  const info = state.interrupteur;
+  if (!info) return host.replaceChildren(el('p', { class: 'interrupteur' }, el('b', {}, 'Interrupteur : pas encore vérifié. '), 'Étrave le vérifie quelques secondes après son démarrage, puis toutes les 10 minutes.'));
+  const lignes = Object.entries(info.marches || {}).filter(([, i]) => i.jours);
+  if (!lignes.length) return host.replaceChildren(el('p', { class: 'interrupteur' }, el('b', {}, 'Interrupteur : rien à signaler. '), 'Aucun trade clôturé pour l’instant.'));
+  host.replaceChildren(...lignes.map(([symbole, i]) => {
+    const s = i.seuils;
+    const nom = `${INSTRUMENTS[i.marche] || 'marché inconnu'} (${symbole})`;
+    const mesures = `${pct(i.jours_gagnants_pct, 1)} de jours gagnants${s ? ` (seuil ${pct(s.jours_gagnants_min_pct, 1)})` : ''}, total ${rSigned(i.total_r)}${s ? ` (seuil ${rSigned(s.total_min_r)})` : ''}, baisse ${num(i.baisse_r, 1)}R${s ? ` (seuil ${num(s.baisse_max_r, 1)}R)` : ''}`;
+    const sur = i.complet ? `sur ses ${i.jours} derniers jours de trade` : `sur ${i.jours} jours de trade : moins de 60, c’est indicatif`;
+    const franchi = s && i.franchi.length > 0;
+    const verdict = !s ? 'pas de seuil pour ce marché' : !franchi ? 'rien à signaler' : i.complet ? `franchi : ${i.franchi.join(', ')}. Décoche ce marché et fais le point` : `au-delà du seuil pour l’instant : ${i.franchi.join(', ')}`;
+    const texte = [el('b', {}, `Interrupteur ${nom} : ${verdict}. `), `${mesures}, ${sur}.`];
+    return franchi ? el('div', { class: `banner${i.complet ? ' bad' : ''}` }, ...texte) : el('p', { class: 'interrupteur' }, ...texte);
+  }));
+}
+
 // ---------------------------------------------------------------- la séance : titre, phase et frise des règles
 // Heures des règles de l'EA, à New York (InpPre, InpOR, InpLiveBars, InpDCount et InpDValid, InpBEnd, InpFlat, InpFlatShort).
-// etrave/test_interface.py vérifie l'accord avec robot/Strategy-V10.mq5. L'heure de sortie du jour vient de l'EA (sortie_ny).
+// etrave/test_interface.py vérifie l'accord avec robot/Strategy-V11.mq5. L'heure de sortie du jour vient de l'EA (sortie_ny).
 const REGLES_NY = { elan: '09:00', range: '09:30', cassure: '09:35', finOrdres: '09:45', debutD: '09:40', finD: '10:00', finB: '14:00', sortie: '15:50', sortieCourte: '12:45' };
 const hm = (t) => { const [h, m] = String(t).split(':').map(Number); return h * 60 + m; };
 const hmTxt = (m) => `${Math.floor(m / 60)}:${String(m % 60).padStart(2, '0')}`;
@@ -803,13 +899,17 @@ async function exportNow(trimestre) {
 }
 
 // ---------------------------------------------------------------- risque
-const RISK_PRESETS = [0.25, 0.5, 1, 2, 5, 10, 20];
-function bounds() { return state ? state.reglages.bornes : { risqueMin: 0.05, risqueMax: 20, risqueAConfirmer: 1, levierMax: 2000 }; }
+// AUD-05 (audit du 26/11/2026) : plafond de 1 % (avant 20 %), mot RISQUE au-delà de 0,5 % ; les bornes viennent du serveur (pont.py).
+const RISK_PRESETS = [0.1, 0.25, 0.5, 0.75, 1];
+function bounds() { return state ? state.reglages.bornes : { risqueMin: 0.05, risqueMax: 1, risqueAConfirmer: 0.5, levierMax: 2000 }; }
+/** AUD-05 : un risque enregistré au-dessus du plafond (2,5 % d'avant le 26/11/2026) est appliqué au plafond par l'EA. */
+const clampedRisk = () => (state && state.reglages.risqueEnregistre != null && state.reglages.risqueEnregistre > bounds().risqueMax + 1e-9 ? state.reglages.risqueEnregistre : null);
+const clampedText = () => (clampedRisk() != null ? `Réglé à ${riskText(clampedRisk())}, ramené au plafond de ${riskText(bounds().risqueMax)}.` : '');
 function roundRisk(v) { const step = v < 1 ? 0.05 : v < 5 ? 0.1 : 0.5; return Number((Math.round(v / step) * step).toFixed(2)); }
 function sliderToRisk(position) { const b = bounds(); return roundRisk(b.risqueMin * Math.pow(b.risqueMax / b.risqueMin, position / 1000)); }
 function riskToSlider(risk) { const b = bounds(); return Math.round((1000 * Math.log(risk / b.risqueMin)) / Math.log(b.risqueMax / b.risqueMin)); }
 const savedLever = () => (state && state.reglages.levier != null ? state.reglages.levier : null);
-const riskDirty = () => draft && state && (Math.abs(draft.risque - currentRisk()) > 1e-9 || draft.levier !== savedLever());
+const riskDirty = () => draft && state && (Math.abs(draft.risque - currentRisk()) > 1e-9 || draft.levier !== savedLever() || clampedRisk() != null);
 function validDraft() { const b = bounds(); return draft && Number.isFinite(draft.risque) && draft.risque >= b.risqueMin && draft.risque <= b.risqueMax && (draft.levier === null || (draft.levier >= 1 && draft.levier <= b.levierMax)); }
 function renderRisk(fromInput) {
   if (!state) return;
@@ -823,6 +923,7 @@ function renderRisk(fromInput) {
     : used == null ? 'L’EA n’a pas encore démarré : ce réglage sera pris à son lancement.'
     : state.reglages.risquePct == null ? `L’EA utilise ${riskText(used)}, réglé dans MetaTrader. Enregistre une valeur ici pour la piloter depuis cette page.`
     : same ? `L’EA utilise ${riskText(used)}, réglé ici.` : `Enregistré ici : ${riskText(state.reglages.risquePct)}. L’EA utilise encore ${riskText(used)}${a && a.en_marche ? ' (il relit ce réglage toutes les 2 secondes)' : ' : il est arrêté'}.`;
+  if (clampedText() && !fixedLots()) status.lastChild.textContent = `${clampedText()} ${status.lastChild.textContent}`;
   $('sum-risque').textContent = `${riskText(currentRisk())}${savedLever() ? `, levier 1:${savedLever()}` : ''}`;
   // Correctif ET-13 (audit du 25/11/2026) : le rafraîchissement (toutes les 2 s) réécrivait le champ pendant la frappe. « 0. »
   // n'est pas encore un nombre : le champ devenait « 0 », et la suite de la frappe donnait « 05 », soit 5 %. Un champ en cours de
@@ -838,6 +939,7 @@ function renderRisk(fromInput) {
   $('risk-save').disabled = !dirty || !validDraft();
   $('risk-cancel').disabled = !dirty;
   if (!validDraft()) { $('risk-msg').className = 'msg err'; $('risk-msg').textContent = `Risque entre ${riskText(bounds().risqueMin)} et ${riskText(bounds().risqueMax)} ; levier entre 1 et ${bounds().levierMax}, ou vide.`; }
+  else if (dirty && clampedRisk() != null && Math.abs(draft.risque - currentRisk()) < 1e-9 && draft.levier === savedLever()) { $('risk-msg').className = 'msg'; $('risk-msg').textContent = `${clampedText()} « Enregistrer » écrit ${riskText(draft.risque)} à la place.`; }
   else if (dirty) { $('risk-msg').className = 'msg'; $('risk-msg').textContent = 'Non enregistré. Le nouveau risque vaudra pour le prochain trade, jamais pour un trade déjà ouvert.'; }
   else if ($('risk-msg').dataset.keep !== '1') $('risk-msg').textContent = '';
   renderSim();
@@ -860,29 +962,42 @@ function renderSim() {
   const a = account();
   const s = sim;
   $('sim-title').textContent = `${riskText(s.risquePct)} par trade${s.levier ? `, levier 1:${s.levier}` : ''}`;
-  $('sim-hint').textContent = `L’ancienne ORB v6 rejouée sur le Nasdaq du ${s.debut} au ${s.fin} (${s.trades} trades, ${String(s.annees).replace('.', ',')} ans), gains et pertes réinvestis.${s.levier ? '' : ' Sans levier saisi, la marge n’est pas prise en compte.'}`;
+  $('sim-hint').textContent = `La V11 rejouée sur le Nasdaq et le S&P 500 du ${s.debut} au ${s.fin} (${s.jours} jours de trade, ${String(s.annees).replace('.', ',')} ans, toutes les entrées du jour), gains et pertes réinvestis.${s.levier ? '' : ' Sans levier saisi, la marge n’est pas prise en compte.'}`;
   const gain = s.parAnPct > 100000 ? 'plus de 100 000 %' : pctSigned(s.parAnPct, s.parAnPct < 100 ? 1 : 0);
   const tiles = [
-    tile('Gain par an dans le test', gain, 'si les années à venir ressemblent à 2018-2026'),
-    tile('Pire baisse du test', `−${num(s.pireBaissePct, 1)} %`, 'du plus haut au plus bas, 2018-2026', s.pireBaissePct >= 30 ? 'alert' : ''),
-    tile(`${s.serie} pertes de suite`, `−${num(s.seriePct, 1)} %`, 'la pire série du test', s.seriePct >= 30 ? 'alert' : ''),
-    tile('Si 2015-2017 revenait', `au moins −${num(s.ancienTestPct, 0)} %`, `l’ancien test a baissé de ${s.ancienTestR}R`, s.ancienTestPct >= 30 ? 'alert' : ''),
+    tile('Gain par an dans le test', gain, 'si les années à venir ressemblent à 2019-2026'),
+    tile('Pire baisse du test', `−${num(s.pireBaissePct, 1)} %`, 'du plus haut au plus bas, 2019-2026', s.pireBaissePct >= 30 ? 'alert' : ''),
+    tile(`${s.serie} jours perdants de suite`, `−${num(s.seriePct, 1)} %`, 'la pire série du test', s.seriePct >= 30 ? 'alert' : ''),
+    tile('Pire journée du test', `−${num(s.pireJourPct, 1)} %`, `${num(s.pireJourR, 1)} fois le risque en un jour (A, B, D, deux marchés)`, s.pireJourPct >= 10 ? 'alert' : ''),
   ];
   if (s.levier) tiles.push(tile('Trades réduits par la marge', pct(s.reduitsPct), s.reduitsPct > 0 ? `risque réellement pris : ${riskText(Number(s.risqueMoyenPct.toFixed(2)))} en moyenne` : 'la marge suffit tous les jours du test', s.reduitsPct >= 50 ? 'alert' : ''));
   if (a && a.solde != null && !fixedLots()) tiles.push(tile('Sur ton solde', `${money((a.solde * s.risquePct) / 100, a.devise)}`, `risqués par trade, pour ${money(a.solde, a.devise)}`));
+  // AUD-24 (audit du 26/11/2026) : taille estimée par marché, avec le lot minimum et le pas de volume du courtier (clés de l'EA)
+  const tailles = s.tailles || [];
+  for (const t of tailles) tiles.push(tile(`Taille estimée, ${INSTRUMENTS[t.marche] || t.symbole}`, t.sousMinimum ? 'aucun trade' : `${num(t.lots, 2)} lot`,
+    t.sousMinimum ? `sous le minimum de ${num(t.lotMin, 2)} lot` : `stop d’environ ${prix(t.stopPrix)} points, ${money(t.risqueReelArgent, t.devise)} risqués`, t.sousMinimum ? 'alert' : ''));
   host.replaceChildren(...tiles);
   const notes = [];
+  for (const t of tailles) {
+    const nom = `${INSTRUMENTS[t.marche] || t.symbole} (${t.symbole})`;
+    if (t.sousMinimum) notes.push(el('div', { class: 'banner bad' }, el('b', {}, `Aucun trade sur ${nom} avec ce solde et ce risque. `),
+      `La taille calculée, ${num(t.lotsBruts, 3)} lot pour un stop d’environ ${prix(t.stopPrix)} points, est sous le minimum du courtier (${num(t.lotMin, 2)} lot) : l’EA ne prend pas le trade. Les jours de grand range, c’est pire.`));
+    else if (t.arrondiTropFort) notes.push(el('div', { class: 'banner' }, el('b', {}, `${nom} : l’arrondi au pas de ${num(t.lotPas, 2)} lot réduit le risque réel de ${num(t.reductionPct, 0)} %. `),
+      `Environ ${money(t.risqueReelArgent, t.devise)} risqués par cassure au lieu de ${money(t.risqueArgent, t.devise)}.`));
+  }
+  if (tailles.length) notes.push(el('p', { class: 'hint' }, 'Taille estimée avec le range médian du test (stop à 3 ranges), le prix, le lot minimum et le pas de volume donnés par l’EA. Le range du jour la fait varier d’un jour à l’autre.'));
   if (s.levier && s.reduitsPct > 0) {
     const needed = Math.ceil((s.risquePct / 100) * s.unites / (0.9 * s.stopRanges * s.rangeMedianPct / 100));
     notes.push(el('div', { class: `banner${s.reduitsPct >= 50 ? ' bad' : ''}` }, el('b', {}, 'La marge manque certains jours. '),
       `Avec un levier de 1:${s.levier}, ${pct(s.reduitsPct)} des trades du test n’auraient pas pu être ouverts à ${riskText(s.risquePct)} : l’EA réduit alors la taille pour garder la marge de toutes les entrées du jour et de leurs pyramides (${s.unites} unités en tout, 90 % de la marge libre au plus). Pour qu’un jour sur deux passe en entier, il faudrait environ 1:${needed}.`));
   }
-  if (s.risquePct > bounds().risqueAConfirmer) notes.push(el('div', { class: 'banner bad' }, el('b', {}, 'Au-delà de ce que le test rend raisonnable. '), `À ${riskText(s.risquePct)} par trade, la pire série du test (${s.serie} pertes) coûte ${num(s.seriePct, 0)} % du compte, et une période comme 2015-2017 au moins ${num(s.ancienTestPct, 0)} %. Le gain par an affiché suppose qu’aucune de ces séries n’arrive plus tôt ou plus fort que dans le test.`));
+  if (s.risquePct > bounds().risqueAConfirmer) notes.push(el('div', { class: 'banner bad' }, el('b', {}, 'Au-delà de ce que le test rend raisonnable. '), `À ${riskText(s.risquePct)} par trade, la pire baisse du test coûte ${num(s.pireBaissePct, 0)} % du compte et la pire journée ${num(s.pireJourPct, 0)} %. Le gain par an affiché suppose qu’aucune de ces baisses n’arrive plus tôt ou plus fort que dans le test : le Nasdaq n’a jamais été réglé que sur le passé.`));
   $('sim-notes').replaceChildren(...notes);
 }
 async function saveRisk(confirmation) {
   const values = {};
   if (draft.risqueTouche && (Math.abs(draft.risque - currentRisk()) > 1e-9 || state.reglages.risquePct == null)) values.risquePct = draft.risque;
+  else if (clampedRisk() != null) values.risquePct = draft.risque;   // AUD-05 : le plafond remplace la valeur hors bornes du fichier
   if (draft.levier !== savedLever()) values.levier = draft.levier;
   try {
     const result = await api('/api/reglages', { valeurs: values, confirmation: confirmation || '' });
@@ -970,7 +1085,7 @@ function renderConnections() {
     if (mt5Test.error) outcome.append(el('div', { class: 'banner bad' }, mt5Test.error));
     else if (answer && answer.resultat === 'ok') outcome.append(el('div', { class: 'banner ok' }, `MetaTrader (${answer.symbole}) a envoyé son message d’essai : les alertes des trades arriveront.`));
     else if (answer && answer.resultat === 'bloque') outcome.append(el('div', { class: 'banner bad' }, MT5_BLOCKED));
-    else if (answer && answer.resultat === 'occupe') outcome.append(el('div', { class: 'banner' }, `L’EA (${answer.symbole}) guette la cassure du range : il ne fait pas d’essai à ce moment-là. Réessaie après 9:45 New York.`));
+    else if (answer && answer.resultat === 'occupe') outcome.append(el('div', { class: 'banner' }, `L’EA (${answer.symbole}) est occupé (cassure guettée, entrée surveillée ou trade en cours) : il ne fait pas d’essai à ce moment-là. Réessaie après la sortie de 15:50 New York.`));
     else if (answer && answer.resultat === 'inactif') outcome.append(el('div', { class: 'banner' }, 'L’EA n’a pas encore pris le jeton et la discussion : réessaie dans quelques secondes.'));
     else if (answer && answer.resultat === 'expire') outcome.append(el('div', { class: 'banner' }, 'La demande est arrivée trop tard à l’EA : réessaie.'));
     else if (answer) outcome.append(el('div', { class: 'banner bad' }, `Telegram a refusé le message de MetaTrader (${answer.resultat}). Refais « Trouver ma discussion et tester ».`));
@@ -1006,15 +1121,26 @@ function renderConnections() {
   login.value = c.mt5Login || (a && a.compte_login) || '';
   server.value = c.mt5Serveur || (a && a.compte_serveur) || '';
   const pick = m.terminaux.length > 1 ? el('select', { id: 'k-terminal', 'aria-label': 'MetaTrader 5 à lancer' }, ...m.terminaux.map((t) => el('option', { value: String(t.id) }, t.dossier))) : null;
-  const canLaunch = m.windows && !m.ouvert && m.terminaux.length > 0;
-  const why = !m.windows ? 'MetaTrader 5 ne se lance que sous Windows : ouvre cette page sur l’ordinateur ou le VPS où il est installé.'
+  const canLaunch = m.pilotable && !m.ouvert && m.terminaux.length > 0;
+  const why = !m.pilotable ? (m.mac ? 'MetaTrader 5 pour Mac est introuvable : installe-le depuis le site de MetaQuotes, ouvre-le une fois, puis reviens ici.' : 'MetaTrader 5 ne se lance que sous Windows ou sur Mac : ouvre cette page sur l’ordinateur ou le VPS où il est installé.')
     : m.ouvert ? 'MetaTrader 5 est ouvert. Pour changer de compte, ferme-le d’abord toi-même (vérifie qu’aucun trade n’est en cours), puis reviens ici.'
     : m.terminaux.length === 0 ? 'MetaTrader 5 n’a pas été trouvé sur cet ordinateur : ouvre-le une première fois à la main et pose l’EA sur un graphique.' : '';
   const launch = async (withAccount) => {
     const body = { terminal: pick ? Number(pick.value) : 0, connexion: withAccount };
     if (withAccount) Object.assign(body, { login: login.value, motDePasse: password.value, serveur: server.value });
-    try { await api('/api/mt5/lancer', body); password.value = ''; toast(withAccount ? 'MetaTrader 5 se lance et se connecte au compte.' : 'MetaTrader 5 se lance.'); }
+    try { await api('/api/mt5/lancer', body); password.value = ''; toast((withAccount ? 'MetaTrader 5 se lance et se connecte au compte.' : 'MetaTrader 5 se lance.') + ' Nasdaq et S&P 500 s’ouvrent avec la V11.'); }
     catch (error) { toast(error.message); }
+  };
+  const shutdown = async (confirmation) => {
+    try { await api('/api/mt5/fermer', confirmation ? { confirmation } : {}); toast('MetaTrader 5 se ferme. Il gardera ses graphiques pour la prochaine fois.'); }
+    catch (error) { toast(error.message); }
+  };
+  // AUD-19 (audit du 26/11/2026) : l'EA ne répond plus, mais son dernier état disait un trade ou un ordre : il faut taper FERMER.
+  const askShutdown = () => {
+    const muets = state.eas.filter((e) => !e.en_marche && (e.position || e.attente || e.jambes > 0));
+    if (!muets.length) return shutdown('');
+    askWord({ titre: 'Fermer MetaTrader 5', mot: 'FERMER', bouton: 'Fermer MetaTrader 5', action: (mot) => shutdown(mot),
+      texte: `L’EA ne répond plus sur ${muets.map((e) => e.symbole).join(' et ')}, et son dernier état disait un trade ou un ordre en cours. Fermer MetaTrader 5 le laisserait sans surveillance (stops surveillés par l’EA, sortie de 15:50). Vérifie d’abord dans MetaTrader.` });
   };
   const install = async () => {
     installResult = { pending: true };
@@ -1034,13 +1160,15 @@ function renderConnections() {
     else if (r.error) installed.append(el('div', { class: 'banner bad' }, r.error));
     else installed.append(el('div', { class: `banner ${r.compile ? 'ok' : 'bad'}` },
       el('b', {}, r.compile ? 'EA installé et compilé. ' : r.compile === false ? 'EA copié, mais la compilation a échoué. ' : 'EA copié, pas compilé. '),
-      r.compile ? `Il est dans ${r.emplacement} : glisse-le sur le graphique (une seule fois), MetaTrader s’en souviendra.` : 'Envoie les lignes ci-dessous pour correction :',
+      r.compile ? `Il est dans ${r.emplacement}${r.profil ? ', avec les deux graphiques (Nasdaq et S&P 500) prêts' : ' ; ferme MetaTrader puis recommence pour remettre aussi les deux graphiques'}. Les boutons « Lancer » les ouvrent avec la V11.` : 'Envoie les lignes ci-dessous pour correction :',
       r.journal.length ? el('ul', { style: 'margin:8px 0 0' }, ...r.journal.map((line) => el('li', {}, line))) : null));
   }
   const mt5 = fold('mt5', 'Compte MetaTrader 5', true, a && a.en_marche ? `${a.compte_type === 'reel' ? 'RÉEL' : 'démo'} ${a.compte_login}` : 'arrêté',
-    el('div', { class: 'hint' }, 'Lance MetaTrader 5 et le connecte au compte de ton courtier. Le mot de passe n’est jamais gardé par cette page : MetaTrader le retient lui-même.'),
+    el('div', { class: 'hint' }, 'Lance MetaTrader 5 et le connecte au compte de ton courtier, avec la V11 sur le Nasdaq et le S&P 500 et le trading automatique actif. Le mot de passe n’est jamais gardé par cette page : MetaTrader le retient lui-même.'),
     statusLine(a && a.en_marche, a ? (a.en_marche ? `Connecté au compte ${a.compte_type === 'reel' ? 'RÉEL' : 'démo'} ${a.compte_login}, serveur ${a.compte_serveur}` : `MetaTrader arrêté (dernier compte vu : ${a.compte_login}, serveur ${a.compte_serveur})`) : 'Aucun EA vu pour l’instant'),
     why ? el('p', {}, why) : null,
+    // AUD-01 : l'autorisation du compte réel reste visible (et retirable) même MetaTrader fermé
+    c.reelAutorise ? el('div', { class: 'secret-row' }, statusLine(true, `Compte réel autorisé : n° ${c.reelAutorise}`), el('button', { class: 'btn small', type: 'button', onclick: () => revokeRealAccount() }, 'Retirer l’autorisation')) : null,
     el('div', { class: 'form' },
       el('div', {}, el('label', { for: 'k-login' }, 'Numéro de compte'), login),
       el('div', {}, el('label', { for: 'k-password' }, 'Mot de passe'), password),
@@ -1049,12 +1177,13 @@ function renderConnections() {
     el('div', { class: 'secret-row' },
       el('button', { class: 'btn primary', disabled: !canLaunch, onclick: () => launch(true) }, 'Lancer MetaTrader 5 et se connecter'),
       el('button', { class: 'btn', disabled: !canLaunch, onclick: () => launch(false) }, 'Ouvrir MetaTrader 5 tel quel'),
-      el('button', { class: 'btn', disabled: !m.windows || m.terminaux.length === 0, onclick: install }, 'Installer ou mettre à jour l’EA')),
+      el('button', { class: 'btn', disabled: !m.pilotable || m.terminaux.length === 0, onclick: install }, 'Installer ou mettre à jour l’EA'),
+      el('button', { class: 'btn', disabled: !m.pilotable || !m.ouvert, onclick: askShutdown }, 'Fermer MetaTrader 5')),
     installed,
     el('div', { class: 'checks' },
       el('label', { class: 'switch' }, el('input', { type: 'checkbox', checked: c.mt5Auto, onchange: (event) => option({ auto: event.target.checked }) }), 'Ouvrir MetaTrader 5 tout seul quand Étrave démarre'),
-      el('label', { class: 'switch' }, el('input', { type: 'checkbox', checked: m.demarrageWindows, disabled: !m.windows, onchange: (event) => option({ demarrageWindows: event.target.checked }) }), 'Lancer Étrave à l’ouverture de la session Windows')),
-    el('p', { style: 'margin-top:10px' }, 'Avec ces deux cases, un VPS qui redémarre relance tout seul Étrave puis MetaTrader, qui se reconnecte au compte et retrouve l’EA sur son graphique (si Windows ouvre la session automatiquement).'),
+      el('label', { class: 'switch' }, el('input', { type: 'checkbox', checked: m.demarrageWindows, disabled: !m.windows && !m.mac, onchange: (event) => option({ demarrageWindows: event.target.checked }) }), m.mac ? 'Lancer Étrave à l’ouverture de la session du Mac' : 'Lancer Étrave à l’ouverture de la session Windows')),
+    el('p', { style: 'margin-top:10px' }, m.mac ? 'Avec ces deux cases, le Mac relance tout seul Étrave puis MetaTrader à l’ouverture de ta session : le Nasdaq et le S&P 500 s’ouvrent avec la V11, et le Mac reste éveillé tant que MetaTrader tourne. Le double-clic sur Étrave fait la même chose.' : 'Avec ces deux cases, un VPS qui redémarre relance tout seul Étrave puis MetaTrader, qui se reconnecte au compte et retrouve l’EA sur son graphique (si Windows ouvre la session automatiquement).'),
     el('p', {}, 'Après un changement de compte, vérifie dans MetaTrader que l’EA est toujours sur son graphique et que le bouton « Trading algo » est actif : cette page te le dit en haut.'));
 
   const note = fold('note', 'Où vont ces réglages', false, '',

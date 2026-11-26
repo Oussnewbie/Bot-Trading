@@ -71,6 +71,19 @@ def verifier(dossier, message, appel=appeler):
     return {"step": "sent", "bot": bot}
 
 
+def envoyer(dossier, message, appel=appeler):
+    """AUD-09 (audit du 26/11/2026) : un message d'Étrave elle-même (l'interrupteur franchi), avec le jeton et la discussion
+    enregistrés. False s'il en manque un (rien n'est envoyé) ; Refus si Telegram refuse ; Injoignable s'il ne répond pas."""
+    cles = lire_reglages(dossier)
+    jeton, discussion = cles.get("telegram_jeton", ""), cles.get("telegram_discussion", "")
+    if jeton == "" or discussion == "":
+        return False
+    envoi = appeler_ok(appel, jeton, "sendMessage", {"chat_id": discussion, "text": message})
+    if not envoi.get("ok"):
+        raise Refus(f"Telegram a refusé le message ({_raison(envoi)}).")
+    return True
+
+
 def appeler_ok(appel, jeton, methode, corps):
     reponse = appel(jeton, methode, corps)
     return reponse if isinstance(reponse, dict) else {"ok": False}

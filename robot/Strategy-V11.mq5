@@ -1,7 +1,7 @@
 ﻿//+------------------------------------------------------------------+
-//| Strategy-V10.mq5 — cassure du range d'ouverture de New York (M5),|
+//| Strategy-V11.mq5 — cassure du range d'ouverture de New York (M5),|
 //| repli sur le VWAP et continuations, stop à 3 ranges.             |
-//| Version de référence ; mêmes règles que Strategy-V10.pine.       |
+//| Version de référence ; mêmes règles que Strategy-V11.pine.       |
 //+------------------------------------------------------------------+
 //
 // Marchés : Nasdaq 100 et S&P 500 seulement (MarcheAutorise : tout autre symbole est refusé au lancement), un graphique M5 chacun.
@@ -34,11 +34,15 @@
 //                 bougies (marge B_BUF_PB = 0,5 pb du prix), écart multiplié par 3.
 //  9. D1 à D3, continuations : à la clôture des bougies de 9:35, 9:40 et 9:45, tant que A est ouverte et que l'autre bord du range
 //                 n'a pas été touché depuis la cassure, l'EA guette 10 minutes le dépassement de l'extrême de la bougie (aucun ordre
-//                 chez le courtier) et entre au marché. Guet annulé si le prix touche d'abord l'autre extrême de la bougie. Stop à
-//                 cet autre extrême, écart multiplié par 3 et compté depuis le déclenchement (X-13).
+//                 chez le courtier) et entre au marché. Guet annulé si le prix touche d'abord l'autre extrême de la bougie.
+//                 V11 : le stop POSÉ d'une D est le prix d'entrée de A. Une bougie dont l'extrême n'est pas au-delà de l'entrée de A
+//                 (d'au moins un spread et de la distance minimale des stops du courtier, EX-1) ne donne pas de D. Le stop de la V10
+//                 (l'autre extrême, écart multiplié par 3 et compté depuis le déclenchement, X-13) ne sert plus qu'à la taille et au
+//                 1R de la D.
 // 10. B et D suivent la gestion de A dans leur propre R (stop à l'entrée à +1,5R, pyramide à +2R), ne prennent jamais plus de
-//                 lots ni plus de risque que A (en lots fixes, une jambe au stop plus large que A est donc sautée) et restent
-//                 ouvertes si A sort avant elles. Jusqu'à 5 positions ensemble, toutes dans le même sens.
+//                 lots ni plus de risque que A (en lots fixes, une jambe au stop plus large que A est donc sautée ; pour une D, le
+//                 stop de la V10 compte pour la taille et le risque réel jusqu'à l'entrée de A est plafonné à celui de A, EX-2) et
+//                 restent ouvertes si A sort avant elles. Jusqu'à 5 positions ensemble, toutes dans le même sens.
 //
 // JOURS SANS TRADE : décisions de la Fed (FOMC, codées jusqu'au 26/01/2028, puis InpFomc), jours fériés américains et
 // demi-séances, et garde-fou coût : aucun ordre si le spread plus deux
@@ -48,7 +52,8 @@
 // Présents dans le code mais coupés : entrée C de 10:00, plancher de bruit (H1), tendance H4, SAR, sortie au temps.
 //
 // HISTOIRE : v7 (cassure, pyramide, mémoire, FOMC et fériés), V8 (+ B et C), V9 (+ D, C coupée, garde-fou coût), V10 (stop à
-// 3 ranges, mémoire à +1R, D armées tant que l'autre bord n'est pas touché, Nasdaq et S&P 500 ensemble). Chiffres des tests et
+// 3 ranges, mémoire à +1R, D armées tant que l'autre bord n'est pas touché, Nasdaq et S&P 500 ensemble), V11 (26/11/2026 : stop des
+// D au prix d'entrée de A, corrections de l'audit d'exécution EX-1 à EX-7). Chiffres des tests et
 // limites : README.md. Les tests ont servi à la mise au point : ils disent ce que les règles auraient fait, pas ce qu'elles feront.
 //
 // INTERFACE ÉTRAVE (etrave/) : toutes les 2 secondes, l'EA lit Etrave\reglages.txt dans le dossier commun de MetaTrader (risque,
@@ -66,8 +71,8 @@
 // ouvert ; réponse du courtier perdue sans ordre en double ; état sur le disque pour un redémarrage ; filet de sécurité qui ferme
 // chaque minute toute position restée après la sortie ; messages envoyés un par un.
 #property copyright   "Bot-Trading"
-#property version     "10.00"
-#property description "Strategy V10 : cassure du range de 9:30 New York (stop à 3 ranges, pyramide, mémoire, jours FOMC et fériés exclus), repli sur le VWAP et 3 continuations. Nasdaq 100 et S&P 500, compte hedging. Règles verrouillées."
+#property version     "11.00"
+#property description "Strategy V11 : cassure du range de 9:30 New York (stop à 3 ranges, pyramide, mémoire, jours FOMC et fériés exclus), repli sur le VWAP et 3 continuations. Nasdaq 100 et S&P 500, compte hedging. Règles verrouillées."
 
 #include <Trade\Trade.mqh>
 
@@ -87,7 +92,8 @@ input group "Interface Étrave"
 input bool         InpUseUI     = true;         // Lire le risque, les cases et Telegram dans l'interface Étrave
 
 input group "Heure du serveur du broker"
-input int          InpSrvGMT    = 2;            // Décalage GMT du serveur en hiver (heures)
+input bool         InpSrvAuto   = true;         // Heure du serveur détectée automatiquement (hors testeur)
+input int          InpSrvGMT    = 2;            // Décalage GMT du serveur en hiver (heures) : testeur, ou détection coupée
 input ENUM_SRV_DST InpSrvDST    = SRV_DST_US;   // Heure d'été du serveur
 
 // ── Règles VERROUILLÉES le 25/11/2026 à la demande de l'utilisateur (« sans possibilité de changer manuellement ») : profil
@@ -145,8 +151,8 @@ input string       InpFomc      = "";           // Jours FOMC en plus (codés ju
 
 input group "Exécution"
 input ulong        InpMagic     = 50930;        // Numéro magique
-input int          InpDeviation = 30;           // Glissement maximal (points)
-input string       InpComment   = "Strategy V10";     // Commentaire des ordres
+input int          InpDeviation = 30;           // Écart de prix accepté, en points du symbole (30 = 0,30 sur NDX100) ; sans effet en exécution au marché
+input string       InpComment   = "Strategy V11";     // Commentaire des ordres
 // Correctif X-14 (25/11/2026) : le même commentaire pour tous les ordres. Il disait « B », « D1 »… et « pyramide », visibles dans
 // l'onglet Historique de MetaTrader, donc sur la photo de l'historique en fin de vidéo récap : le type d'entrée reste secret.
 // Le commentaire ne sert à rien d'autre : chaque jambe se reconnaît à son numéro magique.
@@ -170,11 +176,13 @@ input bool         InpPanel     = true;         // Panneau d'information
 #define UI_DIR      "Etrave\\"   // sous-dossier du dossier commun de MetaTrader, partagé avec l'interface
 #define UI_PERIOD   2            // secondes entre deux lectures des réglages et deux écritures de l'état
 #define RISK_MIN    0.05         // bornes du risque lu dans l'interface (% du solde) ; hors bornes, la valeur est ignorée
-#define RISK_MAX    20.0
+#define RISK_MAX    1.0          // AUD-05 (audit du 26/11/2026) : plafond dur, 20 % avant (ruine possible selon la marge)
 #define LEVER_MAX   2000.0
 #define MARGIN_USE  0.90         // part de la marge libre que la position, pyramide comprise, peut demander
 #define CMD_MAX_AGE 120          // secondes : une demande de l'interface plus vieille est ignorée
 #define QUEUE_MAX   20           // messages en attente d'envoi, au plus
+#define DOUBLON_S   30           // AUD-06 : deux positions A de même taille ouvertes à moins de 30 s d'écart = un doublon
+#define VERROU_MUET_S 10         // AUD-11 : un verrou de graphique sans battement depuis 10 s est repris
 
 //--- outils
 CTrade trade;
@@ -282,6 +290,8 @@ string   gRiskSrc   = "mt5";    // d'où il vient : "interface" ou "mt5"
 double   gLever     = 0;        // levier du courtier saisi dans l'interface (0 = non saisi)
 bool     gActive    = true;     // faux = case de l'instrument décochée : plus de nouveau trade
 string   gInstr     = "autre";  // "nasdaq" ou "sp500" (commandé par sa case de l'interface), d'après le nom du symbole
+double   gFlatBid   = 0, gFlatAsk = 0;   // EX-7 : bid et ask au moment où l'EA décide la sortie de fin de journée
+int      gFlatDay   = 0;
 string   gSymFile   = "";       // nom du symbole, réduit aux caractères sûrs (nom des fichiers, demandes de l'interface)
 bool     gUiLoaded  = false;    // les réglages ont été lus au moins une fois
 bool     gTgOn      = false;    // Telegram actif
@@ -292,6 +302,13 @@ long     gTestSeen  = -1;       // dernière demande d'essai vue (-1 = fichier j
 long     gCloseSeen = 0;        // dernière demande de clôture traitée
 bool     gCloseDue  = false;
 bool     gClockOk   = true;     // l'heure du serveur correspond aux réglages
+long     gReelAutorise = 0;     // AUD-01 : numéro du compte réel autorisé dans Étrave (reel_autorise), 0 = aucun
+bool     gEtatCharge = false;   // AUD-02 : état du compte relu (le numéro du compte peut être inconnu au démarrage)
+int      gManque    = 0;        // AUD-17 : dernier jour signalé « jour manqué »
+datetime gAmbigT    = 0;        // AUD-06 : heure de l'envoi de A resté sans verdict du courtier (0 = aucun)
+int      gAmbigNote = 0;        // AUD-06 : la position ouverte puis fermée pendant l'attente a été signalée ce jour-là
+long     gSrvBaseSec = 0;       // décalage d'hiver du serveur détecté (secondes), si gSrvBaseOk
+bool     gSrvBaseOk  = false;
 double   gBalStart  = 0;        // solde au moment de l'entrée (résultat du trade en %)
 datetime gSweepAllAt = 0;        // heure du balayage complet demandé après une clôture depuis l'interface (CloseOrphans)
 bool     gGvDirty   = false;    // état modifié depuis la dernière écriture sur le disque (FlushState)
@@ -351,7 +368,7 @@ bool EuDst(datetime utc)   // du dernier dimanche de mars au dernier dimanche d'
 
 long ServerOffsetSec(datetime srv)
   {
-   long     base = (long)InpSrvGMT * 3600;
+   long     base = gSrvBaseOk ? gSrvBaseSec : (long)InpSrvGMT * 3600;
    datetime utc  = (datetime)(srv - base);
    bool     dst  = InpSrvDST == SRV_DST_US ? UsDst(utc) : InpSrvDST == SRV_DST_EU ? EuDst(utc) : false;
    return base + (dst ? 3600 : 0);
@@ -470,6 +487,46 @@ const int FOMC_DATES[] =
    20270317, 20270428, 20270609, 20270728, 20270915, 20271117, 20280126
   };
 
+// Automatisme du 26/11/2026 : au-delà de la liste codée, les décisions de taux de la Fed sont lues dans le calendrier
+// économique de MetaTrader (événement « fed-interest-rate-decision »), hors testeur. Vérifié le 26/11/2026 : mêmes dates que la
+// liste de 2025 à fin 2027 chez TradinGlobal, sauf le 27/10/2027 : le calendrier de MetaTrader l'a encore, la liste l'a retiré d'après
+// le calendrier révisé de la Fed. Le calendrier peut donc garder une date périmée : on ne le lit qu'après la liste.
+bool FomcCalendrier(int ymd)
+  {
+   if(MQLInfoInteger(MQL_TESTER))
+      return false;
+   static ulong idFed = 0;
+   static bool  trouve = false;
+   if(!trouve)
+     {
+      MqlCalendarEvent ev[];
+      int n = CalendarEventByCountry("US", ev);
+      if(n <= 0)
+         return false;                       // calendrier pas encore chargé : nouvel essai au jour suivant
+      trouve = true;
+      for(int i = 0; i < n; i++)
+         if(ev[i].event_code == "fed-interest-rate-decision")
+           {
+            idFed = ev[i].id;
+            break;
+           }
+     }
+   if(idFed == 0)
+      return false;
+   MqlDateTime s;
+   ZeroMemory(s);
+   s.year = ymd / 10000;
+   s.mon  = (ymd / 100) % 100;
+   s.day  = ymd % 100;
+   datetime jour = StructToTime(s);
+   MqlCalendarValue v[];
+   int m = CalendarValueHistoryByEvent(idFed, v, jour - 2 * 86400, jour + 3 * 86400);
+   for(int k = 0; k < m; k++)
+      if(NYDate(ToNY(v[k].time)) == ymd)
+         return true;
+   return false;
+  }
+
 bool IsFomc(int ymd)   // ymd : date de New York au format aaaammjj
   {
    for(int i = 0; i < ArraySize(FOMC_DATES); i++)
@@ -488,7 +545,7 @@ bool IsFomc(int ymd)   // ymd : date de New York au format aaaammjj
       if(StringLen(p) == 8 && (int)StringToInteger(p) == ymd)
          return true;
      }
-   return false;
+   return ymd > FOMC_DATES[ArraySize(FOMC_DATES) - 1] && FomcCalendrier(ymd);
   }
 
 //+------------------------------------------------------------------+
@@ -603,10 +660,22 @@ void Notify(string msg)
 // Correctif X-08 (revue du 17/11/2026) : un envoi bloque l'EA jusqu'à la réponse du serveur. Avant, toute la file partait d'un
 // coup (jusqu'à 5 s par message et par canal) pendant que les sorties attendaient. Désormais : un seul message par appel
 // (le suivant à la cotation ou au passage du minuteur suivants), avec une attente de 3 s au plus par canal.
+// Correctif EX-5 (audit du 26/11/2026) : un envoi bloque l'EA jusqu'à 3 s par canal. Pendant qu'une entrée D est guettée ou qu'un
+// côté de la cassure est surveillé par l'EA (entrée au marché), les messages attendent : chaque cotation compte.
+bool EnvoiDiffere()
+  {
+   if(gPend && ((gPendDir != -1 && !gSrvL) || (gPendDir != 1 && !gSrvS)))
+      return true;
+   for(int k = 0; k < D_MAX; k++)
+      if(gD[k].arm)
+         return true;
+   return false;
+  }
+
 void FlushNotifs()
   {
    int n = ArraySize(gQueue);
-   if(n == 0)
+   if(n == 0 || EnvoiDiffere())
       return;
    bool wa = InpWhatsApp && InpWaPhone != "" && InpWaKey != "";
    string msg = gQueue[0];
@@ -622,13 +691,14 @@ void FlushNotifs()
 //+------------------------------------------------------------------+
 //| Sauvegarde de l'état (redémarrage de MT5 ou de l'EA)             |
 //+------------------------------------------------------------------+
-void   Sv(string k, double v) { GlobalVariableSet(GV + k, v); gGvDirty = true; }
+void   Sv(string k, double v) { if(!gEtatCharge) return; GlobalVariableSet(GV + k, v); gGvDirty = true; }   // AUD-02 : rien avant la relecture
 double Ld(string k, double d) { return GlobalVariableCheck(GV + k) ? GlobalVariableGet(GV + k) : d; }
 
 void SaveState()
   {
-   if(MQLInfoInteger(MQL_TESTER))
+   if(MQLInfoInteger(MQL_TESTER) || !gEtatCharge)
       return;
+   Sv("login", (double)AccountInfoInteger(ACCOUNT_LOGIN));   // AUD-02 : l'état appartient à ce compte
    Sv("day", gDay); Sv("pend", gPend); Sv("pdir", gPendDir); Sv("ortime", (double)gOrTime);
    Sv("srvl", gSrvL); Sv("srvs", gSrvS);
    Sv("skipnext", gSkipNext); Sv("observe", gObserve); Sv("timedone", gTimeDone);
@@ -657,6 +727,35 @@ void FlushState()
    GlobalVariablesFlush();
    gGvDirty = false;
    last     = GetTickCount();
+  }
+
+// AUD-02 (audit du 26/11/2026) : l'état (règle mémoire, jour, trade ouvert, jambes, statistiques, clôtures vues) appartient au
+// compte qui l'a écrit. Le même MetaTrader passé d'un compte démo à un compte réel relisait l'état de la démo : signal du jour
+// sauté par la règle mémoire, faux trade à 0 R dans le journal, statistiques mêlées. Un état d'un autre compte est effacé, pas
+// repris. Un état d'avant ce correctif (sans numéro de compte) n'est repris que sur un compte démo : la V11 n'a tourné qu'en démo.
+// Au démarrage de MetaTrader, le numéro du compte peut être encore inconnu (0) : la relecture attend qu'il le soit, et rien
+// n'est écrit d'ici là (Sv, SaveState).
+void ChargerEtatDuCompte()
+  {
+   long login = AccountInfoInteger(ACCOUNT_LOGIN);
+   if(login <= 0)
+      return;
+   gEtatCharge = true;
+   double lu   = GlobalVariableCheck(GV + "login") ? GlobalVariableGet(GV + "login") : 0;
+   bool   demo = (ENUM_ACCOUNT_TRADE_MODE)AccountInfoInteger(ACCOUNT_TRADE_MODE) == ACCOUNT_TRADE_MODE_DEMO;
+   if((long)lu == login || (lu == 0 && demo))
+     {
+      LoadState();
+      Sv("login", (double)login);
+      return;
+     }
+   bool avait = GlobalVariableCheck(GV + "day");
+   GlobalVariablesDeleteAll(GV);
+   Sv("login", (double)login);
+   GlobalVariablesFlush();
+   if(avait)
+      Notify(I_WARN + "AUTRE COMPTE : l'état enregistré sur ce MetaTrader appartenait à un autre compte. Il n'est pas repris : règle mémoire, "
+             "jour et statistiques repartent de zéro sur le compte n° " + IntegerToString(login) + ".");
   }
 
 void LoadState()
@@ -873,6 +972,10 @@ double StopA(int d)
 // alors ce côté et entre au marché quand le prix l'atteint, comme les versions précédentes.
 bool PlaceStop(int d)
   {
+   // AUD-07 (audit du 26/11/2026) : un ordre de ce côté déjà posé aujourd'hui (EA relancé juste après la pose, avant l'écriture de
+   // son état) est repris tel quel : sinon deux ordres stop, puis deux positions.
+   if(HasPending(d))
+      return true;
    double price = NormalizeDouble(d == 1 ? gOrH : gOrL, _Digits);
    double sl    = NormalizeDouble(StopA(d), _Digits);
    double ask   = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
@@ -1010,6 +1113,56 @@ int CloseOrphans(string why, bool toutes)
    return n;
   }
 
+// AUD-08 (audit du 26/11/2026) : le stop posé n'était jamais relu. Une position de l'EA sans stop chez le courtier (stop retiré à
+// la main ou par le courtier) n'était protégée que tant que l'EA tournait. Chaque minute, chaque position de l'EA sur ce symbole
+// est relue : sans stop, le stop prévu de son trade est reposé ; si le prix l'a déjà franchi, si on ne le connaît pas ou si le
+// courtier refuse, la position est fermée au marché. Une alerte dans tous les cas.
+double StopPrevu(ulong mg)
+  {
+   if(mg == InpMagic)
+      return !gIn ? 0 : gVStop > 0 ? gVStop : gSL;
+   if(mg == gB.magic)
+      return !gB.enPos ? 0 : gB.vstop > 0 ? gB.vstop : gB.sl;
+   if(mg == gC.magic)
+      return !gC.enPos ? 0 : gC.vstop > 0 ? gC.vstop : gC.sl;
+   for(int k = 0; k < D_MAX; k++)
+      if(mg == gD[k].magic)
+         return !gD[k].enPos ? 0 : gD[k].vstop > 0 ? gD[k].vstop : gD[k].sl;
+   return 0;
+  }
+
+void VerifierStops()
+  {
+   double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+   double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+   double gap = MathMax(SymbolInfoInteger(_Symbol, SYMBOL_TRADE_STOPS_LEVEL), SymbolInfoInteger(_Symbol, SYMBOL_TRADE_FREEZE_LEVEL)) * _Point;
+   for(int i = PositionsTotal() - 1; i >= 0; i--)
+     {
+      ulong tk = PositionGetTicket(i);
+      if(tk == 0 || PositionGetString(POSITION_SYMBOL) != _Symbol)
+         continue;
+      ulong mg = (ulong)PositionGetInteger(POSITION_MAGIC);
+      if(mg < InpMagic || mg > InpMagic + 2 + D_MAX)
+         continue;
+      if(PositionGetDouble(POSITION_SL) > 0)
+         continue;
+      int    dir = PositionGetInteger(POSITION_TYPE) == POSITION_TYPE_BUY ? 1 : -1;
+      double sl  = NormalizeDouble(StopPrevu(mg), _Digits);
+      if(sl > 0 && (dir == 1 ? bid - sl > gap : sl - ask > gap) &&
+         trade.PositionModify(tk, sl, PositionGetDouble(POSITION_TP)))
+        {
+         Notify(I_WARN + "STOP ABSENT chez le courtier sur une position de l'EA : reposé à " + Px(sl));
+         continue;
+        }
+      if(mg == InpMagic)
+         gCloseWhy = "stop absent chez le courtier";
+      if(trade.PositionClose(tk, InpDeviation))
+         Notify(I_WARN + "STOP ABSENT chez le courtier, impossible à reposer" + (sl > 0 ? " à " + Px(sl) : "") + " : position fermée au marché");
+      else
+         Notify(I_WARN + "STOP ABSENT chez le courtier et fermeture refusée (" + trade.ResultRetcodeDescription() + ") : ferme la position à la main dans MetaTrader");
+     }
+  }
+
 // Pose le même stop sur toutes les positions de l'EA ; false si une pose a été refusée (l'EA surveille alors lui-même)
 bool SetStopAll(double sl)
   {
@@ -1112,6 +1265,9 @@ void SyncPosition()
    ulong tk = FindPos();
    if(tk > 0 && !gIn)
      {
+      // AUD-06 : un doublon est fermé avant de prendre la position ; la reprise se fait à la cotation suivante, liste à jour
+      if(FermerDoublonsA() > 0)
+         return;
       if(!PositionSelectByTicket(tk))
          return;
       gIn      = true;
@@ -1285,12 +1441,22 @@ bool Setup()   // true = terminé (trade préparé ou pas de trade), false = don
       CheckClock();
       if(!gClockOk)
         {
-         string whyH = "l'heure du serveur ne correspond pas aux réglages « Décalage GMT du serveur » et « Heure d'été du serveur »";
+         string whyH = "l'heure de New York n'est pas sûre (horloge de l'ordinateur décalée, ou serveur pas à l'heure du réglage « Décalage GMT du serveur »)";
          gDayTxt = "Pas de trade : " + whyH;
-         Notify(I_WARN + "PAS DE TRADE aujourd'hui\n" + whyH + ". Corrige-les : sinon le range serait pris sur la mauvaise bougie.");
+         Notify(I_WARN + "PAS DE TRADE aujourd'hui\n" + whyH + ". Corrige-la : sinon le range serait pris sur la mauvaise bougie.");
          SaveState();
          return true;
         }
+     }
+
+   // AUD-01 : compte réel pas autorisé : aucun ordre ; la règle mémoire n'est pas touchée
+   if(!CompteAutorise())
+     {
+      string whyR = "compte réel n° " + IntegerToString(AccountInfoInteger(ACCOUNT_LOGIN)) + " pas autorisé (Étrave : « Autoriser ce compte réel »)";
+      gDayTxt = "Pas de trade : " + whyR;
+      Notify(I_WARN + "PAS DE TRADE aujourd'hui\n" + whyR);
+      SaveState();
+      return true;
      }
 
    // v7 : aucun ordre les jours de décision de la Fed ni les jours fériés américains / demi-séances.
@@ -1404,6 +1570,11 @@ bool Setup()   // true = terminé (trade préparé ou pas de trade), false = don
    gPend      = true;
    gFails     = 0;
    gGoneAt    = 0;
+   // AUD-07 : le jour et les ordres prévus sont écrits sur le disque AVANT la pose (au plus une seconde plus tard sinon) : relancé
+   // juste après, l'EA ne prépare pas une deuxième fois le même jour.
+   SaveState();
+   if(!MQLInfoInteger(MQL_TESTER))
+      GlobalVariablesFlush();
    // ordres stop posés chez le courtier : exécutés par son serveur dès que le prix touche le niveau, sans attendre l'EA
    // (moins de glissement qu'un ordre au marché envoyé après la cassure).
    gSrvL = gPendDir != -1 && PlaceStop(1);
@@ -1450,10 +1621,111 @@ bool Setup()   // true = terminé (trade préparé ou pas de trade), false = don
 //+------------------------------------------------------------------+
 //| Entrées : ordres posés chez le courtier, ou côté surveillé        |
 //+------------------------------------------------------------------+
+// AUD-06 : un ordre A envoyé sans verdict a-t-il laissé une trace (deal d'entrée, ordre exécuté ou ordre au marché en cours) de ce
+// numéro magique depuis son envoi ? Historique illisible : vrai (dans le doute, pas de nouvel ordre).
+bool EntreeATrouvee(datetime depuis)
+  {
+   for(int i = OrdersTotal() - 1; i >= 0; i--)
+     {
+      ulong tk = OrderGetTicket(i);
+      if(!MyOrder(tk))
+         continue;
+      ENUM_ORDER_TYPE t = (ENUM_ORDER_TYPE)OrderGetInteger(ORDER_TYPE);
+      if(t == ORDER_TYPE_BUY || t == ORDER_TYPE_SELL)
+         return true;
+     }
+   if(!HistorySelect(depuis - 60, TimeCurrent() + 60))
+      return true;
+   for(int i = HistoryDealsTotal() - 1; i >= 0; i--)
+     {
+      ulong dk = HistoryDealGetTicket(i);
+      if(dk == 0 || HistoryDealGetString(dk, DEAL_SYMBOL) != _Symbol || (ulong)HistoryDealGetInteger(dk, DEAL_MAGIC) != InpMagic)
+         continue;
+      if(HistoryDealGetInteger(dk, DEAL_ENTRY) == DEAL_ENTRY_IN && (datetime)HistoryDealGetInteger(dk, DEAL_TIME) >= depuis - 5)
+         return true;
+     }
+   for(int i = HistoryOrdersTotal() - 1; i >= 0; i--)
+     {
+      ulong ok = HistoryOrderGetTicket(i);
+      if(ok == 0 || HistoryOrderGetString(ok, ORDER_SYMBOL) != _Symbol || (ulong)HistoryOrderGetInteger(ok, ORDER_MAGIC) != InpMagic)
+         continue;
+      ENUM_ORDER_TYPE t = (ENUM_ORDER_TYPE)HistoryOrderGetInteger(ok, ORDER_TYPE);
+      ENUM_ORDER_STATE st = (ENUM_ORDER_STATE)HistoryOrderGetInteger(ok, ORDER_STATE);
+      if((t == ORDER_TYPE_BUY || t == ORDER_TYPE_SELL) && (st == ORDER_STATE_FILLED || st == ORDER_STATE_PARTIAL) &&
+         (datetime)HistoryOrderGetInteger(ok, ORDER_TIME_SETUP) >= depuis - 5)
+         return true;
+     }
+   return false;
+  }
+
+// AUD-06 (audit du 26/11/2026) : deux positions A de même sens et de même taille, ouvertes à moins de DOUBLON_S secondes d'écart,
+// sont un doublon (ordre renvoyé après une réponse perdue), pas une pyramide : l'ajout fait InpPyrSize fois la taille et ne vient
+// qu'à la clôture d'une bougie à +2R. Avant, le doublon passait pour une pyramide (stop à l'entrée coupé, 2 à 3 R exposés).
+// La plus ancienne reste ; les doublons sont fermés au marché. Renvoie le nombre de fermetures faites.
+int FermerDoublonsA()
+  {
+   double step = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_STEP);
+   if(step <= 0)
+      step = 0.01;
+   int n = 0;
+   for(int sens = -1; sens <= 1; sens += 2)
+     {
+      ulong  tkRef = 0;
+      long   tRef = 0;
+      double volRef = 0;
+      for(int i = PositionsTotal() - 1; i >= 0; i--)   // la plus ancienne de ce sens
+        {
+         ulong tk = PositionGetTicket(i);
+         if(tk == 0 || PositionGetString(POSITION_SYMBOL) != _Symbol || (ulong)PositionGetInteger(POSITION_MAGIC) != InpMagic)
+            continue;
+         if((PositionGetInteger(POSITION_TYPE) == POSITION_TYPE_BUY ? 1 : -1) != sens)
+            continue;
+         long t = PositionGetInteger(POSITION_TIME_MSC);
+         if(tkRef == 0 || t < tRef)
+           {
+            tkRef = tk;
+            tRef = t;
+            volRef = PositionGetDouble(POSITION_VOLUME);
+           }
+        }
+      if(tkRef == 0)
+         continue;
+      for(int i = PositionsTotal() - 1; i >= 0; i--)
+        {
+         ulong tk = PositionGetTicket(i);
+         if(tk == 0 || tk == tkRef || PositionGetString(POSITION_SYMBOL) != _Symbol || (ulong)PositionGetInteger(POSITION_MAGIC) != InpMagic)
+            continue;
+         if((PositionGetInteger(POSITION_TYPE) == POSITION_TYPE_BUY ? 1 : -1) != sens || PositionGetInteger(POSITION_IDENTIFIER) == gPosId2)
+            continue;
+         double vol = PositionGetDouble(POSITION_VOLUME);
+         long   t   = PositionGetInteger(POSITION_TIME_MSC);
+         if(MathAbs(vol - volRef) < step / 2 && t - tRef <= DOUBLON_S * 1000)
+           {
+            double pasV = step;
+            if(trade.PositionClose(tk, InpDeviation))
+              {
+               n++;   // seules les fermetures faites comptent : un refus ne doit pas empêcher la reprise de la position
+               Notify(I_WARN + "DOUBLON de la cassure fermé au marché (" + DoubleToString(vol, VolDigits(pasV)) + " lot, ouvert " +
+                      IntegerToString((int)((t - tRef) / 1000)) + " s après la première position) : réponse du courtier perdue puis ordre renvoyé");
+              }
+            else
+               PrintFormat("Fermeture du doublon refusée (%d) : %s", trade.ResultRetcode(), trade.ResultRetcodeDescription());
+           }
+        }
+     }
+   return n;
+  }
+
 void CheckEntries()
   {
    if(!gPend || gIn)
       return;
+   // AUD-01 : des ordres du jour relus d'un état ancien ne partent pas sur un compte réel non autorisé
+   if(!CompteAutorise())
+     {
+      CancelDay("compte réel pas autorisé", I_WARN + "ORDRES ANNULÉS");
+      return;
+     }
    double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
    double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
    // côté bloqué touché avant toute entrée : plus de trade aujourd'hui (vérifié à chaque cotation, comme le test à la minute)
@@ -1528,6 +1800,27 @@ void CheckEntries()
    if(gAmbigMs != 0 && GetTickCount() - gAmbigMs < 3000)
       return;
    gAmbigMs = 0;
+   // AUD-06 (audit du 26/11/2026) : 3 s ne suffisent pas toujours pour que la position apparaisse. Avant tout renvoi, l'historique
+   // des deals et des ordres est relu : s'il garde une trace de l'envoi sans verdict, aucun nouvel ordre ; SyncPosition reprend la
+   // position dès qu'elle est visible. Le renvoi n'a lieu que si l'historique confirme que rien n'est passé.
+   if(gAmbigT > 0)
+     {
+      if(EntreeATrouvee(gAmbigT))
+        {
+         if(TimeCurrent() - gAmbigT > 60 && FindPos() == 0 && gAmbigNote != gDay)
+           {
+            gAmbigNote = gDay;
+            gPend   = false;
+            gDelDue = !DeletePendings();
+            DropPendingDraw();
+            gDayTxt = "Entrée passée malgré une réponse perdue, puis fermée : voir l'historique de MetaTrader";
+            Notify(I_WARN + "ENTRÉE PASSÉE PUIS FERMÉE pendant une réponse perdue du courtier\nVérifie l'onglet Historique de MetaTrader : pas d'autre entrée aujourd'hui.");
+            SaveState();
+           }
+         return;
+        }
+      gAmbigT = 0;
+     }
    double sl = NormalizeDouble(StopA(d), _Digits);
    bool ok = d == 1 ? trade.Buy(gLots, _Symbol, 0, sl, 0, InpComment) : trade.Sell(gLots, _Symbol, 0, sl, 0, InpComment);
    uint rc = trade.ResultRetcode();
@@ -1538,7 +1831,10 @@ void CheckEntries()
       return;
      }
    if(rc == 0 || rc == TRADE_RETCODE_TIMEOUT || rc == TRADE_RETCODE_ERROR)
+     {
       gAmbigMs = MathMax(GetTickCount(), (uint)1);
+      gAmbigT = TimeCurrent();
+     }
    gFails++;
    PrintFormat("Entrée refusée (%d) : %s", rc, trade.ResultRetcodeDescription());
    if(gFails >= 3)
@@ -1851,6 +2147,11 @@ bool LegOpen(SLeg &g, int dir, double stop, string quoi, double ref = 0)
    double perLot = (ts > 0 && tv > 0) ? dist / ts * tv : 0;
    double lots   = 0;
    double sl     = NormalizeDouble(stop, _Digits);
+   // V11 : pour une continuation D, ce stop de la V10 sert seulement à la taille et au 1R de la jambe (+1,5 R, +2 R) ;
+   // le stop posé chez le courtier est le prix d'entrée de A (voir plus bas).
+   double slV10 = sl;
+   bool   estD  = StringSubstr(g.nom, 0, 1) == "D";
+   double perLotReal = (estD && gEntry > 0 && ts > 0 && tv > 0) ? MathAbs(px - gEntry) / ts * tv : 0;   // risque réel d'un lot (EX-2)
    double fill   = 0;
    ulong  deal   = 0;
    if(pxOld > 0)
@@ -1888,6 +2189,34 @@ bool LegOpen(SLeg &g, int dir, double stop, string quoi, double ref = 0)
          LegSave(g);
          return false;
         }
+      // V11 (26/11/2026) : stop de la continuation au prix d'entrée de A. Pas d'entrée si le prix n'est plus au-delà de l'entrée
+      // de A, ou trop près d'elle pour le courtier (distance minimale des stops).
+      if(estD)
+        {
+         // Correctif EX-1 : contrôle contre le prix qui servira au courtier (bid pour un achat, ask pour une vente)
+         double gapD = MathMax(lvl, SymbolInfoInteger(_Symbol, SYMBOL_TRADE_FREEZE_LEVEL) * _Point);
+         double refQ = dir == 1 ? bid : ask;
+         if(gEntry <= 0 || (refQ - gEntry) * dir <= gapD)
+           {
+            Notify(I_NONE + "PAS D'ENTRÉE " + g.nom + " (" + g.titre + ")\nLe prix (" + Px(refQ) + ") n'est plus assez au-delà de l'entrée de A (" + Px(gEntry) + ")");
+            LegSave(g);
+            return false;
+           }
+         // Correctif EX-2 : le risque réel (jusqu'à l'entrée de A) ne dépasse pas celui de la cassure
+         if(perLotReal > 0)
+           {
+            double capR = MathFloor(gV8RiskMoney / perLotReal / step + 0.000001) * step;
+            if(capR < lots)
+               lots = NormalizeDouble(MathMax(capR, 0), vd);
+            if(lots < vmin)
+              {
+               Notify(I_NONE + "PAS D'ENTRÉE " + g.nom + " (" + g.titre + ")\nTrop loin de l'entrée de A : le risque réel dépasserait celui de la cassure");
+               LegSave(g);
+               return false;
+              }
+           }
+         sl = NormalizeDouble(gEntry, _Digits);
+        }
       trade.SetExpertMagicNumber(g.magic);
       bool   ok   = dir == 1 ? trade.Buy(lots, _Symbol, 0, sl, 0, InpComment) : trade.Sell(lots, _Symbol, 0, sl, 0, InpComment);
       uint   rc   = trade.ResultRetcode();
@@ -1914,7 +2243,7 @@ bool LegOpen(SLeg &g, int dir, double stop, string quoi, double ref = 0)
          Notify(I_WARN + "ENTRÉE " + g.nom + " : réponse du courtier perdue (" + rcTx + "), la position ouverte est reprise par l'EA");
         }
      }
-   g.enPos = true; g.dir = dir; g.entry = fill > 0 ? fill : px; g.sl = sl; g.risk = MathAbs(g.entry - sl);
+   g.enPos = true; g.dir = dir; g.entry = fill > 0 ? fill : px; g.sl = sl; g.risk = MathAbs(g.entry - (estD ? slV10 : sl));
    if(g.risk <= 0)
       g.risk = dist;
    g.lots = lots; g.vstop = 0; g.riskMoney = gV8RiskMoney; g.balStart = AccountInfoDouble(ACCOUNT_BALANCE);
@@ -1930,8 +2259,8 @@ bool LegOpen(SLeg &g, int dir, double stop, string quoi, double ref = 0)
    if(g.id == 0)
       LegIds(g);
    Notify((dir == 1 ? I_BUY + "ACHAT " : I_SELL + "VENTE ") + g.nom + " exécuté(e) : " + quoi +
-          "\nEntrée : " + Px(g.entry) + " · stop : " + Px(sl) + " (" + Pts(g.risk) + ")" +
-          "\nTaille : " + DoubleToString(lots, vd) + " lot · risque " + Money(-lots * perLot) + " (au plus celui de la cassure : " + Money(-gV8RiskMoney) + ")" +
+          "\nEntrée : " + Px(g.entry) + " · stop : " + Px(sl) + (estD ? " (entrée de A, " + Pts(MathAbs(g.entry - sl)) + ")" : " (" + Pts(g.risk) + ")") +
+          "\nTaille : " + DoubleToString(lots, vd) + " lot · risque " + Money(-lots * (estD && perLotReal > 0 ? perLotReal : perLot)) + " (au plus celui de la cassure : " + Money(-gV8RiskMoney) + ")" +
           (InpBeR > 0 ? "\nStop au prix d'entrée dès " + Px(g.entry + dir * InpBeR * g.risk) : "") +
           ((g.pyrOk && InpUsePyr) ? "\nPyramide si une bougie clôture à " + Px(g.entry + dir * InpPyrR * g.risk) : "") +
           "\nSortie à " + InpFlat + " NY");
@@ -2049,7 +2378,7 @@ void AppendLegTrade(SLeg &g, datetime tx, double r, double net, string why)
    datetime ny = ToNY(tx);
    string day = TimeToString(ny, TIME_DATE);
    StringReplace(day, ".", "-");
-   string w = "V10 " + g.nom + " : " + why;
+   string w = "V11 " + g.nom + " : " + why;
    StringReplace(w, ";", ",");
    TradesWrite(IntegerToString((long)(tx - ServerOffsetSec(tx))) + ";" + day + ";" + TimeToString(ny, TIME_MINUTES) + ";" + gSymFile + ";" +
                IntegerToString(g.dir) + ";" + DoubleToString(g.lots, 2) + ";" + DoubleToString(r, 4) + ";" + DoubleToString(net, 2) + ";" +
@@ -2113,9 +2442,55 @@ bool LegRecord(SLeg &g, bool force)
   }
 
 // À chaque cotation : fermeture détectée, stop surveillé par l'EA, sortie de fin de journée
+// AUD-18 (audit du 26/11/2026) : une jambe B/D marquée refusée (réponse perdue, position pas encore visible) ou inconnue de l'état
+// après un plantage, alors que sa position existe, restait sans stop à l'entrée, sans pyramide ni sortie jusqu'au balayage de
+// 15:51. Une position du jour qui porte le numéro magique de la jambe est reprise avec son propre prix et son propre stop.
+void LegAdopt(SLeg &g)
+  {
+   for(int i = PositionsTotal() - 1; i >= 0; i--)
+     {
+      ulong tk = PositionGetTicket(i);
+      if(tk == 0 || !LegMine(g))
+         continue;
+      datetime t = (datetime)PositionGetInteger(POSITION_TIME);
+      if(NYDate(ToNY(t)) != NYDate(ToNY(TimeCurrent())))
+         return;                                     // d'un jour précédent : le filet de sécurité la ferme
+      int    dir = PositionGetInteger(POSITION_TYPE) == POSITION_TYPE_BUY ? 1 : -1;
+      double px  = PositionGetDouble(POSITION_PRICE_OPEN);
+      double sl  = PositionGetDouble(POSITION_SL);
+      // 1R de la jambe : distance au stop de la V10 pour une D (déclenchement et autre extrême de sa bougie, élargis comme la
+      // cassure), sinon distance au stop posé
+      double slR = sl;
+      if(StringSubstr(g.nom, 0, 1) == "D" && g.trig > 0 && g.stp > 0)
+         slR = g.trig - dir * gStopMult * MathAbs(g.trig - g.stp);
+      g.enPos = true; g.done = true; g.dir = dir; g.entry = px; g.sl = sl;
+      g.risk = slR > 0 ? MathAbs(px - slR) : 0;
+      if(g.risk <= 0)
+         g.risk = gV8OrH > gV8OrL ? gStopMult * (gV8OrH - gV8OrL) : MathAbs(px - sl);
+      g.lots = PositionGetDouble(POSITION_VOLUME); g.vstop = 0; g.riskMoney = gV8RiskMoney;
+      g.balStart = AccountInfoDouble(ACCOUNT_BALANCE); g.be = false; g.pyrFree = true; g.closeWhy = ""; g.wait = 0;
+      g.fillBar = t - t % BAR; g.day = NYDate(ToNY(t)); g.id = 0; g.id2 = 0;
+      LegIds(g);
+      g.pyr = g.id2 != 0;
+      if(g.pyr)
+         g.pyrFree = false;
+      Notify(I_WARN + "ENTRÉE " + g.nom + " retrouvée (position ouverte que l'EA ne suivait plus) : reprise avec son stop " +
+             (sl > 0 ? Px(sl) : "ABSENT, reposé à la minute") + " et la sortie de " + InpFlat + " NY");
+      LegSave(g);
+      SaveState();
+      return;
+     }
+  }
+
 void LegOnTick(SLeg &g)
   {
    bool has = LegHasPos(g);
+   if(!g.enPos && has)
+     {
+      LegAdopt(g);
+      if(!g.enPos)
+         return;
+     }
    if(g.enPos && has && (g.id == 0 || (g.pyr && g.id2 == 0)))
       LegIds(g);
    if(g.enPos && !has)
@@ -2141,7 +2516,22 @@ void LegOnTick(SLeg &g)
       LegClose(g, g.pyr ? "Stop remonté" : "Stop à l'entrée");
    datetime ny = ToNY(TimeCurrent());
    if(NYMin(ny) >= FlatMin(ny) || NYDate(ny) != g.day)
+     {
+      FlatRef();
       LegClose(g, "Fin de journée");
+     }
+  }
+
+// Correctif EX-7 (audit du 26/11/2026) : prix de référence de la sortie de fin de journée (le premier du jour), pour mesurer son
+// glissement dans le journal d'exécution.
+void FlatRef()
+  {
+   int d = NYDate(ToNY(TimeCurrent()));
+   if(gFlatDay == d)
+      return;
+   gFlatDay = d;
+   gFlatBid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+   gFlatAsk = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
   }
 
 // Prix moyen de la séance pondéré par le volume (VWAP), de la bougie du range (9:30) jusqu'à « fin » exclu, calculé sur
@@ -2252,6 +2642,20 @@ void V9ArmD(MqlRates &r[])
       return;
    if(r[1].time < gV8BreakBar || gD[k].done || gD[k].enPos || gD[k].arm || r[1].high - r[1].low <= 0)
       return;
+   // V11 (26/11/2026) : le stop d'une continuation est le prix d'entrée de A. Une bougie dont l'extrême n'est pas au-delà de
+   // l'entrée de A (le prix est revenu) ne donne pas de continuation.
+   double trigD = gV8Dir == 1 ? r[1].high : r[1].low;
+   // Correctif EX-1 (audit du 26/11/2026) : le courtier contrôle le stop d'un achat contre le bid et celui d'une vente contre l'ask ;
+   // le niveau doit dépasser l'entrée de A d'au moins un spread et de la distance minimale des stops, sinon l'ordre serait refusé.
+   double sprD = SymbolInfoDouble(_Symbol, SYMBOL_ASK) - SymbolInfoDouble(_Symbol, SYMBOL_BID);
+   double gapD = MathMax(SymbolInfoInteger(_Symbol, SYMBOL_TRADE_STOPS_LEVEL), SymbolInfoInteger(_Symbol, SYMBOL_TRADE_FREEZE_LEVEL)) * _Point;
+   if(gEntry <= 0 || (gV8Dir == 1 ? trigD - sprD <= gEntry + gapD : trigD + sprD >= gEntry - gapD))
+     {
+      gD[k].done = true;
+      LegSave(gD[k]);
+      Print(BOT + " · " + _Symbol + " · entrée " + gD[k].nom + " non armée : " + Px(trigD) + " n'est pas au-delà de l'entrée de A (" + Px(gEntry) + ")");
+      return;
+     }
    gD[k].arm  = true;
    gD[k].trig = gV8Dir == 1 ? r[1].high : r[1].low;
    gD[k].stp  = gV8Dir == 1 ? r[1].low : r[1].high;
@@ -2259,7 +2663,8 @@ void V9ArmD(MqlRates &r[])
    LegSave(gD[k]);
    Seg(GV + "trg" + gD[k].nom + "_" + (string)gV8Day, r[0].time, gD[k].exp, gD[k].trig, clrTeal, STYLE_DASH, 1);
    Print(BOT + " · " + _Symbol + " · entrée " + gD[k].nom + " guettée " + (string)InpDValid + " min : " +
-         (gV8Dir == 1 ? "achat si l'ask atteint " : "vente si le bid atteint ") + Px(gD[k].trig) + ", stop " + Px(gD[k].stp));
+         (gV8Dir == 1 ? "achat si l'ask atteint " : "vente si le bid atteint ") + Px(gD[k].trig) + ", annulée si le prix touche " + Px(gD[k].stp) +
+         " avant, stop à l'entrée de A " + Px(gEntry));
   }
 
 // À chaque cotation : un guet D se déclenche, expire, ou est annulé parce que le prix a touché son stop d'abord
@@ -2427,6 +2832,17 @@ void OnNewBar()
    datetime ny1 = ToNY(r[1].time);
    if(NYMin(ny1) == mOR && NYDate(ny1) != gDay && !gIn && !gPend)
       gSetupDue = true;
+   // AUD-17 (audit du 26/11/2026) : EA lancé ou relancé après la bougie de 9:35 (VPS redémarré, MetaTrader rouvert), ou Setup jamais
+   // abouti pendant la bougie de 9:35 : le jour disparaissait sans message et le panneau affichait « En attente de 9:35 NY ».
+   // Pas d'entrée tardive (jamais testée) : un message, une fois par jour, jusqu'à la sortie de fin de journée.
+   if(NYMin(ny1) > mOR && NYMin(ny1) < FlatMin(ny1) && NYDate(ny1) != gDay && !gIn && !gPend && !gSetupDue && gManque != NYDate(ny1) &&
+      !MQLInfoInteger(MQL_TESTER))
+     {
+      gManque = NYDate(ny1);
+      string whyM = "l'EA n'a pas préparé le range de 9:30 (lancé, relancé ou reconnecté à " + TimeToString(ToNY(TimeCurrent()), TIME_MINUTES) + " NY)";
+      gDayTxt = "Pas de trade : " + whyM;
+      Notify(I_WARN + "JOUR MANQUÉ aujourd'hui\n" + whyM + ". Pas d'entrée tardive : le robot reprend demain à 9:35 NY.");
+     }
   }
 
 //+------------------------------------------------------------------+
@@ -2445,7 +2861,8 @@ string InstrumentOf(string sym)
    string s = StringToUpperCopy(sym);
    if(StringFind(s, "NAS") >= 0 || StringFind(s, "NDX") >= 0 || StringFind(s, "NQ") >= 0 || StringFind(s, "USTEC") >= 0 || StringFind(s, "US100") >= 0 || StringFind(s, "USATECH") >= 0 || StringFind(s, "TECH100") >= 0)
       return "nasdaq";
-   if(StringFind(s, "SPX") >= 0 || StringFind(s, "SP500") >= 0 || StringFind(s, "US500") >= 0 || StringFind(s, "USA500") >= 0 || StringFind(s, "S&P") >= 0 || StringFind(s, "SPI500") >= 0)
+   // AUD-28 (audit du 26/11/2026) : même liste que le script TradingView (« ES1! », contrat continu du S&P 500, y était seul)
+   if(StringFind(s, "SPX") >= 0 || StringFind(s, "SP500") >= 0 || StringFind(s, "US500") >= 0 || StringFind(s, "USA500") >= 0 || StringFind(s, "S&P") >= 0 || StringFind(s, "SPI500") >= 0 || StringFind(s, "ES1") == 0)
       return "sp500";
    return "autre";
   }
@@ -2540,8 +2957,9 @@ bool TestRules()   // les règles saisies sont-elles celles du test ?
 // instant (l'interface est en train de l'écrire) laisse tout en l'état jusqu'à la lecture suivante.
 void ReadSettings()
   {
-   double risk   = InpRiskPct;
+   double risk   = MathMin(InpRiskPct, RISK_MAX);   // AUD-05 : plafond, même pour la valeur saisie dans MetaTrader
    string src    = "mt5";
+   long   reel   = 0;                                // AUD-01 : compte réel autorisé dans Étrave
    double lever  = 0;
    bool   active = true;
    bool   tgOn   = InpTelegram && InpTgToken != "" && InpTgChat != "";
@@ -2578,12 +2996,17 @@ void ReadSettings()
                if(k == "risque_pct")
                  {
                   double x = StringToDouble(v);
-                  if(x >= RISK_MIN - 1e-9 && x <= RISK_MAX + 1e-9)
+                  // AUD-05 (audit du 26/11/2026) : au-dessus du plafond, la valeur est ramenée au plafond (avant : acceptée
+                  // jusqu'à 20 %)
+                  if(x >= RISK_MIN - 1e-9 && MathIsValidNumber(x))
                     {
-                     risk = x;
+                     risk = MathMin(x, RISK_MAX);
                      src  = "interface";
                     }
                  }
+               // AUD-01 (audit du 26/11/2026) : numéro du compte réel autorisé, écrit par Étrave après le mot REEL
+               else if(k == "reel_autorise")
+                  reel = StringToInteger(v);
                else if(k == "levier")
                  {
                   double x = StringToDouble(v);
@@ -2618,6 +3041,7 @@ void ReadSettings()
                  }
               }
             FileClose(h);
+            gReelAutorise = reel;
             if(OnlyChars(fTok, ":_-") && OnlyChars(fChat, "-"))
               {
                tgOn = true;
@@ -2633,7 +3057,8 @@ void ReadSettings()
             else if(test != gTestSeen)
               {
                gTestSeen = test;
-               string res = !gTgOn ? "inactif" : (gPend || gSetupDue) ? "occupe" : MathAbs((long)TimeGMT() - test) > CMD_MAX_AGE ? "expire" :
+               // AUD-23 (audit du 26/11/2026) : l'envoi bloque l'EA jusqu'à 3 s ; refusé aussi pendant un trade ou une entrée guettée
+               string res = !gTgOn ? "inactif" : (gPend || gSetupDue || gIn || OpenLegs() > 0 || EnvoiDiffere()) ? "occupe" : MathAbs((long)TimeGMT() - test) > CMD_MAX_AGE ? "expire" :
                             SendTelegram(BOT + " · " + _Symbol + "\n" + I_WIN + "Essai réussi : MetaTrader envoie bien les alertes.");
                gTgTest = IntegerToString(test) + ":" + res;
                if(res == "ok" || res == "bloque" || StringFind(res, "refus") == 0)
@@ -2693,14 +3118,76 @@ void UiClose()
 
 // L'heure du serveur correspond-elle toujours aux réglages ? (contrôlé au lancement, puis en continu : un mauvais
 // réglage d'heure d'été ne se voit que les semaines où les États-Unis et l'Europe sont décalés)
+// Automatisme du 26/11/2026 (« tout se règle tout seul ») : hors testeur, le décalage d'hiver du serveur se déduit de l'écart
+// entre l'heure du serveur et l'heure GMT de l'ordinateur, arrondi à l'heure (les courtiers sont à l'heure pleine : une horloge
+// fausse de moins de 30 min ne change rien ; au-delà de 10 min, un avertissement), avec la règle d'heure d'été réglée
+// (américaine par défaut). Les réglages InpSrvGMT / InpSrvDST ne servent plus que dans le testeur, où TimeGMT() vaut
+// l'heure du serveur, ou si la détection est coupée.
+void DetecterHeureServeur()
+  {
+   if(!InpSrvAuto || MQLInfoInteger(MQL_TESTER) || !TerminalInfoInteger(TERMINAL_CONNECTED))
+      return;
+   datetime srv = TimeTradeServer();
+   datetime gmt = TimeGMT();
+   if(srv <= 0 || gmt <= 0)
+      return;
+   long brut = (long)(srv - gmt);
+   long reel = (long)MathRound((double)brut / 3600.0) * 3600;
+   datetime utc = (datetime)(srv - reel);
+   bool dst  = InpSrvDST == SRV_DST_US ? UsDst(utc) : InpSrvDST == SRV_DST_EU ? EuDst(utc) : false;
+   long base = reel - (dst ? 3600 : 0);
+   // AUD-04 (audit du 26/11/2026) : l'écart se mesure par rapport à l'heure attendue du serveur (InpSrvGMT), pas par rapport à
+   // l'heure pleine la plus proche : à +40 min, le message disait « décalée de 20 min ». Positif = horloge de l'ordinateur en avance.
+   long attendu = (long)InpSrvGMT * 3600 + (dst ? 3600 : 0);
+   int  ecart   = (int)MathRound((attendu - brut) / 60.0);
+   static bool averti = false;
+   if((MathAbs(brut - reel) > 600 || MathAbs(ecart) > 10) && !averti)
+     {
+      averti = true;
+      Notify(I_WARN + StringFormat("HORLOGE : l'heure de cet ordinateur semble %s de %d min sur celle du serveur (attendu : GMT%+d en hiver). "
+                                   "Mets-la à l'heure automatique : l'EA s'en sert pour trouver l'heure de New York.%s",
+                                   ecart > 0 ? "en avance" : "en retard", MathAbs(ecart), InpSrvGMT,
+                                   base != (long)InpSrvGMT * 3600 ? " Pas de trade tant que l'écart dépasse 30 min." : ""));
+     }
+   if(gSrvBaseOk && base == gSrvBaseSec)
+      return;
+   bool change = gSrvBaseOk;
+   gSrvBaseSec = base;
+   gSrvBaseOk  = true;
+   string txt  = StringFormat("Heure du serveur détectée : GMT%+.2g en hiver (maintenant GMT%+.2g)", base / 3600.0, reel / 3600.0);
+   Print(BOT + " · " + _Symbol + " · " + txt);
+   if(change)
+      Notify(I_WARN + "HEURE DU SERVEUR : " + txt + ". Les heures de New York suivent.");
+  }
+
+// AUD-01 (audit du 26/11/2026) : le double-clic lance le trading automatique sur le compte enregistré dans MetaTrader, quel qu'il
+// soit. Un compte réel ne trade que si son numéro est autorisé dans Étrave (clé reel_autorise, écrite après le mot REEL ; rien à
+// régler dans MetaTrader, « je règle tout depuis Étrave »). Un compte démo, ou le testeur, trade toujours (étape démo).
+bool CompteAutorise()
+  {
+   if(MQLInfoInteger(MQL_TESTER))
+      return true;
+   if((ENUM_ACCOUNT_TRADE_MODE)AccountInfoInteger(ACCOUNT_TRADE_MODE) == ACCOUNT_TRADE_MODE_DEMO)
+      return true;
+   long login = AccountInfoInteger(ACCOUNT_LOGIN);
+   return login > 0 && login == gReelAutorise;
+  }
+
 void CheckClock()
   {
    if(!TerminalInfoInteger(TERMINAL_CONNECTED))
       return;
+   DetecterHeureServeur();
    long real = (long)(TimeTradeServer() - TimeGMT());
    bool ok   = MathAbs(real - ServerOffsetSec(TimeTradeServer())) <= 1800;
+   // AUD-03 (audit du 26/11/2026) : la détection automatique ne se comparait qu'à elle-même. Une horloge d'ordinateur fausse de 30
+   // à 90 min donnait un décalage faux d'une heure, accepté sans alerte : le range était pris sur la bougie de 8:30 ou de 10:30.
+   // Le décalage détecté doit concorder avec celui réglé (InpSrvGMT, GMT+2 chez le courtier de la démo) ; sinon, pas de trade.
+   if(InpSrvAuto && gSrvBaseOk && gSrvBaseSec != (long)InpSrvGMT * 3600)
+      ok = false;
    if(!ok && gClockOk)
-      Notify(I_WARN + "HEURE DU SERVEUR : les réglages de l'EA ne correspondent plus à l'heure réelle du serveur.\nCorrige « Décalage GMT du serveur » ou « Heure d'été du serveur », sinon le range sera pris sur la mauvaise bougie.");
+      Notify(I_WARN + "HEURE DU SERVEUR : l'heure de New York calculée n'est plus sûre (serveur vu à GMT" + StringFormat("%+.2g", (gSrvBaseOk ? gSrvBaseSec : (long)InpSrvGMT * 3600) / 3600.0) +
+             " en hiver, réglage « Décalage GMT du serveur » à GMT" + StringFormat("%+d", InpSrvGMT) + ").\nMets l'horloge de cet ordinateur à l'heure automatique ; si elle l'est, le courtier a changé d'heure : corrige le réglage. Pas de trade d'ici là.");
    gClockOk = ok;
   }
 
@@ -2725,7 +3212,7 @@ void WriteState()
    double m  = BrokerMarginPerLot();
    double pl = gIn ? OpenProfit() : 0;
    Kv(h, "version", "1");
-   Kv(h, "ea", "10.00");
+   Kv(h, "ea", "11.00");
    Kv(h, "symbole", gSymFile);
    Kv(h, "instrument", gInstr);
    Kv(h, "actif", gActive ? "1" : "0");
@@ -2733,6 +3220,19 @@ void WriteState()
    Kv(h, "compte_type", tm == ACCOUNT_TRADE_MODE_REAL ? "reel" : tm == ACCOUNT_TRADE_MODE_CONTEST ? "concours" : "demo");
    Kv(h, "compte_serveur", AccountInfoString(ACCOUNT_SERVER));
    Kv(h, "compte_login", IntegerToString(AccountInfoInteger(ACCOUNT_LOGIN)));
+   Kv(h, "compte_autorise", CompteAutorise() ? "1" : "0");                                      // AUD-01
+   Kv(h, "ea_build", TimeToString(__DATETIME__, TIME_DATE | TIME_SECONDS));                      // AUD-22 : version compilée
+   {
+    // AUD-24 : de quoi estimer la taille dans l'onglet Risque (lot minimum, pas, valeur d'un point pour un lot, prix)
+    double tsz = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_SIZE);
+    double tvl = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_VALUE_LOSS);
+    if(tvl <= 0)
+       tvl = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_VALUE);
+    Kd(h, "lot_min", SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MIN), 4);
+    Kd(h, "lot_pas", SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_STEP), 4);
+    Kd(h, "valeur_point_lot", tsz > 0 ? tvl / tsz : 0, 6);
+    Kd(h, "prix", SymbolInfoDouble(_Symbol, SYMBOL_BID), _Digits);
+   }
    Kv(h, "devise", AccountInfoString(ACCOUNT_CURRENCY));
    Kd(h, "solde", AccountInfoDouble(ACCOUNT_BALANCE), 2);
    Kd(h, "capital", AccountInfoDouble(ACCOUNT_EQUITY), 2);
@@ -2837,7 +3337,7 @@ void TradesWrite(string line)
 // En-tête en première ligne, séparateur « ; », point décimal, prix dans l'unité du symbole. Dans le testeur, les fichiers vont dans
 // Etrave\testeur\ (vidé au lancement) : jamais mêlés à ceux du compte. Un journal ne doit jamais gêner le trading : aucune erreur
 // ici n'arrête l'EA, et une valeur inconnue reste vide (jamais calculée contre 0). Étrave en fait un export par trimestre.
-#define JOURNAL_VERSION "1"
+#define JOURNAL_VERSION "2"   // 2 (V11, 26/11/2026) : le stop initial d'une D est l'entrée de A (risque_prix, mfe_r, mae_r des D)
 #define EXEC_COLONNES   "version;source;id_position;jour_ny;symbole;entree;sens;lots;entree_utc_ms;entree_ny;prix_vise;prix_entree;glissement_entree;spread_entree;stop_initial;risque_prix;sortie_utc_ms;sortie_ny;stop_en_place;stop_virtuel;prix_sortie;glissement_sortie;raison;raison_courtier;mfe_prix;mae_prix;mfe_r;mae_r;excursion;frais;swap;resultat_net;r;range_prix;stop_mult;devise;complet"
 #define SEANCE_COLONNES "version;source;jour_ny;symbole;moment;heure_ny;range_bas;range_haut;range_prix;stop_mult;spread;cout_r;filtres;etat"
 // bougies-<symbole>.csv : les bougies M5 de la séance (de 30 min avant le range jusqu'à la sortie), heure de New York, écrites une
@@ -3032,6 +3532,8 @@ void ExecRow(long posId, string type, int dirHint, double plan, double vstop, st
    double ref = rsn == DEAL_REASON_SL ? outSl : (vstop > 0 ? vstop : outSl);
    int    day = inMsc > 0 ? NYDate(ToNY((datetime)(inMsc / 1000))) : NYDate(ToNY(TimeCurrent()));
    bool   sameDay = day == dayJour && rangeJour > 0;
+   bool   finJ = StringFind(why, "Fin de journée") == 0 && gFlatDay == day && gFlatBid > 0 && gFlatAsk > 0;   // EX-7
+   double refF = dir == 1 ? gFlatBid : gFlatAsk;
    string line = JOURNAL_VERSION + ";" + SourceTxt() + ";" + IntegerToString(posId) + ";" + JourTxt(day) + ";" + gSymFile + ";" + Champ(type) + ";" +
                  IntegerToString(dir) + ";" + DoubleToString(inVol, 2) + ";" +
                  UtcMs(inMsc) + ";" + NyTxt((datetime)(inMsc / 1000)) + ";" +
@@ -3039,7 +3541,7 @@ void ExecRow(long posId, string type, int dirHint, double plan, double vstop, st
                  NumOpt(spr, spr >= 0, _Digits) + ";" + NumOpt(inSl, inSl > 0, _Digits) + ";" + NumOpt(risk, risk > 0, _Digits) + ";" +
                  UtcMs(outMsc) + ";" + NyTxt((datetime)(outMsc / 1000)) + ";" +
                  NumOpt(outSl, outSl > 0, _Digits) + ";" + NumOpt(vstop, vstop > 0, _Digits) + ";" + NumOpt(outPx, outPx > 0, _Digits) + ";" +
-                 NumOpt((ref - outPx) * dir, complet && stopExit && ref > 0, _Digits) + ";" + Champ(why) + ";" + RaisonCourtier(rsn) + ";" +
+                 NumOpt(finJ && !stopExit ? (refF - outPx) * dir : (ref - outPx) * dir, complet && ((stopExit && ref > 0) || finJ), _Digits) + ";" + Champ(why) + ";" + RaisonCourtier(rsn) + ";" +
                  NumOpt(mfe, exc, _Digits) + ";" + NumOpt(mae, exc, _Digits) + ";" + NumOpt(risk > 0 ? mfe / risk : 0, exc && risk > 0, 3) + ";" +
                  NumOpt(risk > 0 ? mae / risk : 0, exc && risk > 0, 3) + ";" + src + ";" +
                  DoubleToString(fees, 2) + ";" + DoubleToString(swp, 2) + ";" + DoubleToString(net, 2) + ";" +
@@ -3204,7 +3706,7 @@ void Panel()
    string live = "";
    if(gIn && gRiskMoney > 0)
       live = (gDir == 1 ? "Achat" : "Vente") + " en cours · " + RTxt(OpenProfit() / gRiskMoney) + (gPyr ? " · pyramide, stop à " + Px(gVStop) : gBE ? " · stop à l'entrée" : "");
-   string s = BOT + " · Strategy V10 · " + _Symbol + " · " +
+   string s = BOT + " · Strategy V11 · " + _Symbol + " · " +
               (InpFixedLots > 0 ? DoubleToString(InpFixedLots, 2) + " lot fixe par cassure (le risque en % suit le stop)" :
                RiskTxt(gRiskPct) + " par trade (" + (gRiskSrc == "interface" ? "interface" : "MetaTrader") + ")") +
               (gActive ? "" : " · DÉSACTIVÉ dans l'interface") + "\n" +
@@ -3212,7 +3714,7 @@ void Panel()
               "Range 9:30 : " + (gOrH > 0 ? Px(gOrL) + " – " + Px(gOrH) + " (" + Pts(gOrH - gOrL) + ")" : "—") + "\n" +
               "Filtres : " + ((InpUseRSI || InpUseExt) ? gFiltTxt : "désactivés") + "\n" +
               "Cassure (A) : " + (live != "" ? live : gDayTxt) + "\n" +
-              "Entrées V10 : " + LegTxt(gB, InpUseB) + " · " + LegTxt(gC, InpUseC) + " · " + DTxt() + "\n" +
+              "Entrées V11 : " + LegTxt(gB, InpUseB) + " · " + LegTxt(gC, InpUseC) + " · " + DTxt() + "\n" +
               "Historique : " + (gN == 0 ? "aucun trade" : (string)gN + " trades · " + DoubleToString(100.0 * gWin / gN, 0) + " % gagnants · " + RTxt(gSumR) +
               " · " + (gSumR >= 0 ? "+" : "") + DoubleToString(gSumR / gN, 2) + "R par trade · pire baisse -" + DoubleToString(gDD, 1) + "R · " + (string)gWorst + " pertes de suite");
    Comment(s);
@@ -3226,11 +3728,62 @@ bool MarcheAutorise(string sym)
    return InstrumentOf(sym) != "autre";   // une seule liste de symboles : celle des cases de l'interface
   }
 
+// AUD-11 (audit du 26/11/2026) : la V11 posée sur deux graphiques du même symbole, dans le même MetaTrader, posait deux fois ses
+// ordres (risque doublé) et partageait le même état. Un verrou par symbole et numéro magique (variable globale temporaire, effacée
+// à la fermeture de MetaTrader) : le premier graphique le prend, un deuxième refuse de démarrer. Le graphique qui le tient bat
+// toutes les 2 s (minuteur) ; un verrou sans battement depuis VERROU_MUET_S secondes (EA planté) est repris.
+string gVerrou    = "";
+double gVerrouJet = 0;   // jeton de ce graphique (jamais 0)
+
+bool PrendreVerrou()
+  {
+   if(MQLInfoInteger(MQL_TESTER))
+      return true;
+   gVerrou = "StratV11_verrou_" + _Symbol + "_" + (string)InpMagic;
+   if(gVerrouJet == 0)
+      gVerrouJet = (double)(1 + (GetMicrosecondCount() % 1000000000));
+   if(!GlobalVariableCheck(gVerrou))
+     {
+      GlobalVariableTemp(gVerrou);
+      GlobalVariableSet(gVerrou, 0);
+     }
+   double tient = GlobalVariableGet(gVerrou);
+   if(tient == gVerrouJet)
+      return true;
+   bool pris = false;
+   if(tient == 0)
+      pris = GlobalVariableSetOnCondition(gVerrou, gVerrouJet, 0);
+   else
+     {
+      double bat = GlobalVariableCheck(gVerrou + "_bat") ? GlobalVariableGet(gVerrou + "_bat") : 0;
+      if((double)TimeLocal() - bat > VERROU_MUET_S)
+         pris = GlobalVariableSetOnCondition(gVerrou, gVerrouJet, tient);
+     }
+   if(pris)
+      BattreVerrou();
+   return pris;
+  }
+
+void BattreVerrou()
+  {
+   if(gVerrou == "" || MQLInfoInteger(MQL_TESTER))
+      return;
+   if(!GlobalVariableCheck(gVerrou + "_bat"))
+      GlobalVariableTemp(gVerrou + "_bat");
+   GlobalVariableSet(gVerrou + "_bat", (double)TimeLocal());
+  }
+
+void RelacherVerrou()
+  {
+   if(gVerrou != "" && !MQLInfoInteger(MQL_TESTER))
+      GlobalVariableSetOnCondition(gVerrou, 0, gVerrouJet);
+  }
+
 int OnInit()
   {
    if(!MarcheAutorise(_Symbol))
      {
-      Alert("Strategy V10 : ce robot ne trade que le Nasdaq 100 et le S&P 500 (" + _Symbol + " refusé). Place-le sur ces deux graphiques en M5.");
+      Alert("Strategy V11 : ce robot ne trade que le Nasdaq 100 et le S&P 500 (" + _Symbol + " refusé). Place-le sur ces deux graphiques en M5.");
       return INIT_FAILED;
      }
    mOR = ParseHM(InpOR);
@@ -3239,12 +3792,12 @@ int OnInit()
    mFlatShort = ParseHM(InpFlatShort);
    if(mOR < 0 || mPre < 0 || mFlat < 0 || mPre >= mOR || mFlat <= mOR || mFlatShort <= mOR || mFlatShort > mFlat)
      {
-      Alert("Strategy V10 : heures invalides (format HH:MM, début de l'élan < range < sortie des jours fériés <= sortie).");
+      Alert("Strategy V11 : heures invalides (format HH:MM, début de l'élan < range < sortie des jours fériés <= sortie).");
       return INIT_PARAMETERS_INCORRECT;
      }
    if(InpUsePyr && (InpPyrGap <= 0 || InpPyrGap > InpPyrR || InpPyrSize <= 0))
      {
-      Alert("Strategy V10 : pyramide invalide (la distance du stop doit être positive et ne pas dépasser le seuil d'ajout).");
+      Alert("Strategy V11 : pyramide invalide (la distance du stop doit être positive et ne pas dépasser le seuil d'ajout).");
       return INIT_PARAMETERS_INCORRECT;
      }
    trade.SetExpertMagicNumber(InpMagic);
@@ -3269,10 +3822,15 @@ int OnInit()
    mTimeAt = ParseHM(InpTimeAt);
    if(InpUseTime && (mTimeAt <= mOR || mTimeAt >= mFlat))
      {
-      Alert("Strategy V10 : heure de la sortie au temps invalide (format HH:MM, entre le range et la sortie de fin de journée).");
+      Alert("Strategy V11 : heure de la sortie au temps invalide (format HH:MM, entre le range et la sortie de fin de journée).");
       return INIT_PARAMETERS_INCORRECT;
      }
-   GV = "StratV10_" + _Symbol + "_" + (string)InpMagic + "_";
+   GV = "StratV11_" + _Symbol + "_" + (string)InpMagic + "_";
+   if(!PrendreVerrou())
+     {
+      Alert("Strategy V11 : l'EA tourne déjà sur un autre graphique " + _Symbol + " de ce MetaTrader. Un seul graphique par marché : retire-le de celui-ci.");
+      return INIT_FAILED;
+     }
    // V8 : entrées B (repli sur le VWAP) et C (heure fixe)
    gB.nom = "B"; gB.titre = "repli sur le VWAP"; gB.magic = InpMagic + 1; gB.pyrOk = true;
    gC.nom = "C"; gC.titre = "entrée de " + InpCAt; gC.magic = InpMagic + 2; gC.pyrOk = false;
@@ -3285,41 +3843,45 @@ int OnInit()
      }
    if((InpUseD && (InpDCount < 1 || InpDCount > D_MAX || InpDValid < 1)) || InpMaxCostR < 0 || InpStopMult < 1.0 || InpStopMult > 10.0)
      {
-      Alert("Strategy V10 : réglages des entrées D, du garde-fou coût ou de la largeur du stop invalides (1 à 7 bougies, validité d'au moins 1 minute, valeurs positives, largeur du stop entre 1 et 10).");
+      Alert("Strategy V11 : réglages des entrées D, du garde-fou coût ou de la largeur du stop invalides (1 à 7 bougies, validité d'au moins 1 minute, valeurs positives, largeur du stop entre 1 et 10).");
       return INIT_PARAMETERS_INCORRECT;
      }
    // Plancher de la pyramide (PyrLock) : entrée + (taille × écart - 1) R. Il doit rester sous le niveau de l'ajout, sinon toutes
    // les pyramides seraient abandonnées.
    if(InpUsePyr && InpPyrSize * InpPyrGap - 1.0 > InpPyrR - 0.1 - 1e-9)
      {
-      Alert("Strategy V10 : pyramide impossible avec ces réglages : taille × écart de l'ajout doit rester sous le seuil de la pyramide + 0,9 (valeurs du test : 2 × 1 et +2R).");
+      Alert("Strategy V11 : pyramide impossible avec ces réglages : taille × écart de l'ajout doit rester sous le seuil de la pyramide + 0,9 (valeurs du test : 2 × 1 et +2R).");
       return INIT_PARAMETERS_INCORRECT;
      }
    mBEnd = ParseHM(InpBEnd);
    mCAt  = ParseHM(InpCAt);
    if((InpUseB && (mBEnd <= mOR || mBEnd > mFlat || InpBTol < 0)) || (InpUseC && (mCAt <= mOR + 5 || mCAt >= mFlat)))
      {
-      Alert("Strategy V10 : réglages des entrées B ou C invalides (heures au format HH:MM, entre le range et la sortie ; tolérance et marge positives).");
+      Alert("Strategy V11 : réglages des entrées B ou C invalides (heures au format HH:MM, entre le range et la sortie ; tolérance et marge positives).");
       return INIT_PARAMETERS_INCORRECT;
      }
    gLegsOk = (ENUM_ACCOUNT_MARGIN_MODE)AccountInfoInteger(ACCOUNT_MARGIN_MODE) == ACCOUNT_MARGIN_MODE_RETAIL_HEDGING;
    if(!gLegsOk && (InpUseB || InpUseC || InpUseD))
-      Alert("Strategy V10 : compte en mode netting. Les entrées B, C et D demandent un compte « hedging » : elles sont coupées, seul le trade de cassure est pris.");
+      Alert("Strategy V11 : compte en mode netting. Les entrées B, C et D demandent un compte « hedging » : elles sont coupées, seul le trade de cassure est pris.");
    gInstr   = InstrumentOf(_Symbol);
    gSymFile = SafeName(_Symbol);
-   gRiskPct = InpRiskPct;
+   gRiskPct = MathMin(InpRiskPct, RISK_MAX);   // AUD-05
    if(MQLInfoInteger(MQL_TESTER))
+     {
       GlobalVariablesDeleteAll(GV);
+      gEtatCharge = true;
+     }
    else
      {
-      LoadState();
-      // contrôle du décalage horaire saisi
+      ChargerEtatDuCompte();
+      // contrôle du décalage horaire (détecté automatiquement, sinon saisi)
+      DetecterHeureServeur();
       long real = (long)(TimeTradeServer() - TimeGMT());
-      if(MathAbs(real - ServerOffsetSec(TimeTradeServer())) > 1800)
-         Alert(StringFormat("Strategy V10 : le serveur est à GMT%+.1f maintenant, les réglages donnent GMT%+.1f. Corrige « Décalage GMT du serveur » ou « Heure d'été », sinon les heures de New York seront fausses.",
+      if(!gSrvBaseOk && TerminalInfoInteger(TERMINAL_CONNECTED) && MathAbs(real - ServerOffsetSec(TimeTradeServer())) > 1800)
+         Alert(StringFormat("Strategy V11 : le serveur est à GMT%+.1f maintenant, les réglages donnent GMT%+.1f. Corrige « Décalage GMT du serveur » ou « Heure d'été », sinon les heures de New York seront fausses.",
                             real / 3600.0, ServerOffsetSec(TimeTradeServer()) / 3600.0));
       if(!gLegsOk)
-         Print("Strategy V10 : compte en mode netting. L'EA ne prend que le trade de cassure et n'ouvre rien d'autre sur ce symbole en même temps.");
+         Print("Strategy V11 : compte en mode netting. L'EA ne prend que le trade de cassure et n'ouvre rien d'autre sur ce symbole en même temps.");
      }
    gLastBar = 0;   // la première bougie est contrôlée tout de suite (EA lancé à 9:35 : le range du jour est pris)
    ReadSettings();
@@ -3332,12 +3894,16 @@ int OnInit()
       FileDelete(JournalName("seances"), FILE_COMMON);
       FileDelete(JournalName("bougies"), FILE_COMMON);
      }
+   if(!MQLInfoInteger(MQL_TESTER))
+      EventSetTimer(UI_PERIOD);   // AUD-11 : battement du verrou, même sans l'interface
    if(!MQLInfoInteger(MQL_TESTER) && InpUseUI)
      {
       FolderCreate("Etrave", FILE_COMMON);
-      EventSetTimer(UI_PERIOD);
       WriteState();
      }
+   // AUD-01 : prévenir dès le lancement qu'un compte réel non autorisé ne tradera pas
+   if(!MQLInfoInteger(MQL_TESTER) && AccountInfoInteger(ACCOUNT_LOGIN) > 0 && !CompteAutorise())
+      Notify(I_WARN + "COMPTE RÉEL n° " + IntegerToString(AccountInfoInteger(ACCOUNT_LOGIN)) + " : le robot ne prendra AUCUN trade tant que ce compte n'est pas autorisé (Étrave : « Autoriser ce compte réel »).");
    Panel();
    return INIT_SUCCEEDED;
   }
@@ -3345,6 +3911,7 @@ int OnInit()
 void OnDeinit(const int reason)
   {
    EventKillTimer();
+   RelacherVerrou();   // AUD-11
    // Correctif (revue du 17/11/2026) : EA retiré du graphique, graphique ou terminal fermé : ses ordres stop du jour sont
    // supprimés, pour qu'aucun ne soit exécuté sans l'EA pour le gérer (stop à l'entrée, pyramide, sortie de 15:50).
    // Rien n'est supprimé quand l'EA redémarre aussitôt (réglages modifiés, recompilation, changement de période).
@@ -3378,7 +3945,12 @@ void OnDeinit(const int reason)
 // attente. Aucune décision d'entrée ou de gestion n'est prise ici : elles restent dans OnTick.
 void OnTimer()
   {
-   if(MQLInfoInteger(MQL_TESTER) || !InpUseUI)
+   if(MQLInfoInteger(MQL_TESTER))
+      return;
+   BattreVerrou();   // AUD-11
+   if(!gEtatCharge)
+      ChargerEtatDuCompte();   // AUD-02 : compte connu plus tard que le lancement
+   if(!InpUseUI)
       return;
    ReadSettings();
    if(gCloseDue)
@@ -3396,6 +3968,13 @@ void OnTimer()
 
 void OnTick()
   {
+   // AUD-02 : tant que le compte n'est pas connu, son état n'est pas relu : rien n'est décidé
+   if(!gEtatCharge)
+     {
+      ChargerEtatDuCompte();
+      if(!gEtatCharge)
+         return;
+     }
    // 1. exécutions et sorties (stop, objectif, fermeture)
    SyncPosition();
 
@@ -3422,6 +4001,7 @@ void OnTick()
    if(gIn)
      {
       CloseOpposite();
+      FermerDoublonsA();   // AUD-06 : un doublon apparu après la reprise de la position
       FindAddId();   // X-16
      }
 
@@ -3444,7 +4024,10 @@ void OnTick()
          SaveState();
         }
       if(gIn && (NYMin(ny) >= FlatMin(ny) || NYDate(ny) != gPosDay))
+        {
+         FlatRef();
          ClosePos("Fin de journée");
+        }
      }
    // V8. entrées B et C : sorties, stops surveillés, fin de journée, entrée C à l'heure dite
    V8OnTick();
@@ -3459,11 +4042,24 @@ void OnTick()
      {
       sweepAt = TimeCurrent();
       datetime nyS = ToNY(TimeCurrent());
+      VerifierStops();   // AUD-08
       int nS = CloseOrphans(sweepUi ? "fermeture depuis l'interface" : "filet de sécurité", sweepUi || NYMin(nyS) >= FlatMin(nyS) + 1);
       // Revue cloud du 25/11/2026 : seul le balayage complet efface sa demande. Avant, le balayage d'une minute tombé dans les 10 s
       // qui suivent un « Clôturer » l'effaçait, et le balayage complet n'avait jamais lieu (environ une clôture sur six).
+      // AUD-20 (audit du 26/11/2026) : tant qu'un balayage complet trouve encore une position (fermeture refusée, marché rapide), il
+      // est refait 10 s plus tard ; avant, plus aucun essai jusqu'à 15:51, et l'échec n'apparaissait que dans le journal.
       if(sweepUi)
          gSweepAllAt = 0;
+      static bool clotureNote = false;
+      if(sweepUi && nS > 0)
+        {
+         if(!clotureNote)
+            Notify(I_WARN + "CLÔTURE PAS ENCORE FAITE : " + IntegerToString(nS) + " position(s) encore ouverte(s) 10 s après la demande. Nouvel essai toutes les 10 s ; vérifie dans MetaTrader.");
+         clotureNote = true;
+         gSweepAllAt = TimeCurrent() + 10;
+        }
+      else if(sweepUi)
+         clotureNote = false;
       // journal des séances : une ligne « fin » par jour, une fois la sortie de fin de journée passée
       if(gDay == NYDate(nyS) && NYMin(nyS) >= FlatMin(nyS) + 2 && gSessFin != gDay)
         {

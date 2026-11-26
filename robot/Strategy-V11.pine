@@ -1,6 +1,6 @@
 //@version=6
-// Strategy V10 — cassure du range d'ouverture de New York (5 minutes), repli sur le VWAP et continuations, stop à 3 ranges.
-// Mêmes règles que l'EA MetaTrader (Strategy-V10.mq5), qui voit le bid et l'ask et reste la version de référence.
+// Strategy V11 — cassure du range d'ouverture de New York (5 minutes), repli sur le VWAP et continuations, stop à 3 ranges.
+// Mêmes règles que l'EA MetaTrader (Strategy-V11.mq5), qui voit le bid et l'ask et reste la version de référence.
 // Marchés : Nasdaq 100 et S&P 500 seulement (tout autre symbole arrête le script). Graphique M5, avec les bougies hors séance.
 // Règles VERROUILLÉES le 25/11/2026 à la demande de l'utilisateur : ce sont des constantes plus bas. Toutes les heures sont celles
 // de New York (9:30 NY = 15:30 à Paris la plupart de l'année).
@@ -27,8 +27,9 @@
 //                 dernières bougies (marge B_BUF_PB = 0,5 pb du prix), écart multiplié par 3.
 //  9. D1 à D3, continuations : à la clôture des bougies de 9:35, 9:40 et 9:45, tant que A est ouverte et que l'autre bord du range
 //                 n'a pas été touché depuis la cassure, un ordre stop est posé sur l'extrême de la bougie, valable 10 minutes,
-//                 annulé si le prix touche d'abord l'autre extrême. Stop à cet autre extrême, écart multiplié par 3 et compté depuis
-//                 le déclenchement.
+//                 annulé si le prix touche d'abord l'autre extrême. V11 : stop posé au prix d'entrée de A ; une bougie dont l'extrême
+//                 n'est pas au-delà de l'entrée de A ne donne pas de D. Le stop de la V10 (l'autre extrême, écart multiplié par 3,
+//                 compté depuis le déclenchement) ne sert plus qu'à la taille et au 1R de la D.
 // 10. B et D suivent la gestion de A dans leur propre R (stop à l'entrée à +1,5R, pyramide à +2R), ne prennent jamais plus
 //                 d'unités ni plus de risque que A et restent ouvertes si A sort avant elles. Jusqu'à 5 positions, même sens.
 //
@@ -37,7 +38,8 @@
 // risque du jour (3 ranges). Présents dans le code mais coupés : entrée C de 10:00, plancher de bruit, tendance H4, SAR, sortie au
 // temps.
 // HISTOIRE : v7 (cassure, pyramide, mémoire, FOMC et fériés), V8 (+ B et C), V9 (+ D, C coupée, garde-fou coût), V10 (stop à
-// 3 ranges, mémoire à +1R, D armées tant que l'autre bord n'est pas touché, Nasdaq et S&P 500). Chiffres des tests : README.md.
+// 3 ranges, mémoire à +1R, D armées tant que l'autre bord n'est pas touché, Nasdaq et S&P 500), V11 (26/11/2026 : stop des D au
+// prix d'entrée de A). Chiffres des tests : README.md.
 //
 // SUR LE GRAPHIQUE : rectangle « 9:30 » et tirets « Achat stop » / « Vente stop » = ordres de A. Ligne orange = VWAP de séance.
 // Étiquettes « ACHAT B » / « VENTE B » = la bougie à la clôture de laquelle on entre. Tirets « D1 stop »… = ordre stop d'une
@@ -52,7 +54,7 @@
 // le stop d'une D fermait A). PINE-05 : la bougie de cassure compte pour le bord opposé. PINE-06 à PINE-08 (audit du 25/11/2026) :
 // alertes d'annulation des D, de fin de journée et lot de la pyramide des jambes. Rien de tout cela n'est encore passé par
 // l'analyseur de TradingView : à vérifier sur un graphique.
-strategy("Strategy V10 — ORB New York, stop élargi (Confort) + repli VWAP + continuations", shorttitle = "Strategy V10", overlay = true,
+strategy("Strategy V11 — ORB New York, stop élargi (Confort) + repli VWAP + continuations", shorttitle = "Strategy V11", overlay = true,
      initial_capital = 10000, currency = currency.USD, pyramiding = 20, close_entries_rule = "ANY",
      process_orders_on_close = true, margin_long = 0, margin_short = 0, slippage = 2,
      max_lines_count = 500, max_boxes_count = 500, max_labels_count = 500)
@@ -303,11 +305,12 @@ if barstate.isfirst
 isFomc(int d) =>
     array.includes(FOMC, d) or array.includes(fomcX, d)
 
-// Marchés autorisés (verrou du 25/11/2026) : Nasdaq 100 et S&P 500, comme l'EA (MarcheAutorise)
+// Marchés autorisés (verrou du 25/11/2026) : Nasdaq 100 et S&P 500, comme l'EA (MarcheAutorise).
+// AUD-28 (audit du 26/11/2026) : exactement la même liste que InstrumentOf de l'EA (un test compare les deux).
 string tkU = str.upper(syminfo.ticker)
-bool marcheOk = str.contains(tkU, "NAS") or str.contains(tkU, "NDX") or str.contains(tkU, "NQ") or str.contains(tkU, "USTEC") or str.contains(tkU, "US100") or str.contains(tkU, "TECH100") or str.contains(tkU, "SPX") or str.contains(tkU, "SP500") or str.contains(tkU, "US500") or str.contains(tkU, "USA500") or str.startswith(tkU, "ES1")
+bool marcheOk = str.contains(tkU, "NAS") or str.contains(tkU, "NDX") or str.contains(tkU, "NQ") or str.contains(tkU, "USTEC") or str.contains(tkU, "US100") or str.contains(tkU, "USATECH") or str.contains(tkU, "TECH100") or str.contains(tkU, "SPX") or str.contains(tkU, "SP500") or str.contains(tkU, "US500") or str.contains(tkU, "USA500") or str.contains(tkU, "S&P") or str.contains(tkU, "SPI500") or str.startswith(tkU, "ES1")
 if not marcheOk
-    runtime.error("Strategy V10 : ce script ne trade que le Nasdaq 100 et le S&P 500 (" + syminfo.ticker + " refusé).")
+    runtime.error("Strategy V11 : ce script ne trade que le Nasdaq 100 et le S&P 500 (" + syminfo.ticker + " refusé).")
 
 // ═════════════════════════ Séance ═════════════════════════
 bool isOR   = not na(time(timeframe.period, orS, TZ_NY))
@@ -483,6 +486,7 @@ type Leg
     float  pnl    = 0.0
     int    lastK  = -1
     float  inval  = na        // V10 (D) : niveau qui annule l'ordre en attente (l'autre extrême de la bougie), distinct du stop élargi
+    float  rsl    = na        // V11 (D) : stop de la V10, sert seulement au 1R de la jambe (+1,5R, +2R) ; le stop posé est l'entrée de A
     bool   pend   = false     // V9 (D) : ordre stop pas encore exécuté
     int    expBar = 0         // V9 (D) : dernière bougie de validité de l'ordre
     line   eLn = na
@@ -762,21 +766,23 @@ openLeg(string nm, int d, float stop, float q, bool pyrOk, string quoi) =>
          (pyrOk and usePyr ? "\nPyramide si une bougie clôture à " + fmt(close + d * pyrR * g.risk) : "") + "\nSortie à 15:50 NY au plus tard")
     g
 
-// V9 : entrée D (continuation). Ordre stop sur l'extrême de la bougie qui vient de clôturer, stop à l'autre extrême.
-openLegStop(string nm, int d, float trig, float stop, float inval, float q, bool pyrOk, int nBars) =>
-    Leg g = Leg.new(name = nm, id = nm + " #" + str.tostring(tradeN), addId = nm + "+ #" + str.tostring(tradeN), dir = d, entry = trig, sl = stop,
-         risk = math.abs(trig - stop), qty = q, usd = v8.usd, fillBar = bar_index + 1, tFill = time_close, col = C_LD, usePyr = pyrOk, pend = true, expBar = bar_index + nBars, inval = inval)
+// V9 : entrée D (continuation). Ordre stop sur l'extrême de la bougie qui vient de clôturer.
+// V11 (26/11/2026) : le stop posé est le prix d'entrée de A (slOrdre) ; le stop élargi de la V10 (stop) ne sert plus qu'à la taille
+// et au 1R de la jambe (+1,5R, +2R).
+openLegStop(string nm, int d, float trig, float stop, float inval, float q, bool pyrOk, int nBars, float slOrdre) =>
+    Leg g = Leg.new(name = nm, id = nm + " #" + str.tostring(tradeN), addId = nm + "+ #" + str.tostring(tradeN), dir = d, entry = trig, sl = slOrdre,
+         risk = math.abs(trig - stop), qty = q, usd = v8.usd, fillBar = bar_index + 1, tFill = time_close, col = C_LD, usePyr = pyrOk, pend = true, expBar = bar_index + nBars, inval = inval, rsl = stop)
     strategy.entry(g.id, d == 1 ? strategy.long : strategy.short, qty = q, stop = trig, comment = nm + " continuation")
-    strategy.exit("X" + g.id, from_entry = g.id, stop = stop, comment_loss = "Stop", comment_profit = "Stop")
-    float  lots = legLots(g.risk)
+    strategy.exit("X" + g.id, from_entry = g.id, stop = slOrdre, comment_loss = "Stop", comment_profit = "Stop")
+    float  lots = math.min(legLots(g.risk), legLots(math.abs(trig - slOrdre)))   // AUD-12 : lot plafonné comme dans l'EA (EX-2)
     string sens = d == 1 ? "ACHAT " : "VENTE "
     if showOrders
         int x2 = time_close + nBars * BAR
         g.eLn := line.new(g.tFill, trig, x2, trig, xloc = xloc.bar_time, color = color.new(g.col, 15), style = line.style_dashed, width = 1)
-        g.sLn := line.new(g.tFill, stop, x2, stop, xloc = xloc.bar_time, color = color.new(g.col, 55), style = line.style_dotted, width = 1)
-        g.eLb := sideLabel(x2, trig, nm + " stop · " + fmt(trig), g.col, "Entrée " + nm + " (continuation) : " + sens + "si le prix " + (d == 1 ? "dépasse " : "passe sous ") + fmt(trig) + " dans les " + str.tostring(nBars * 5) + " minutes. Stop : " + fmt(stop) + ".")
+        g.sLn := line.new(g.tFill, slOrdre, x2, slOrdre, xloc = xloc.bar_time, color = color.new(g.col, 55), style = line.style_dotted, width = 1)
+        g.eLb := sideLabel(x2, trig, nm + " stop · " + fmt(trig), g.col, "Entrée " + nm + " (continuation) : " + sens + "si le prix " + (d == 1 ? "dépasse " : "passe sous ") + fmt(trig) + " dans les " + str.tostring(nBars * 5) + " minutes. Stop : " + fmt(slOrdre) + " (entrée de A).")
     // Correctif PINE-06 (audit du 25/11/2026) : l'alerte dit aussi le niveau qui annule l'ordre (l'autre extrême de la bougie).
-    notify(nm + " GUETTÉE : ordre stop " + (d == 1 ? "d'achat" : "de vente") + " à " + fmt(trig) + " pendant " + str.tostring(nBars * 5) + " min · stop " + fmt(stop) + " (" + distTxt(g.risk) + ")" +
+    notify(nm + " GUETTÉE : ordre stop " + (d == 1 ? "d'achat" : "de vente") + " à " + fmt(trig) + " pendant " + str.tostring(nBars * 5) + " min · stop " + fmt(slOrdre) + " (entrée de A, " + distTxt(math.abs(trig - slOrdre)) + ")" +
          "\nAnnule l'ordre si le prix touche " + fmt(nz(inval, stop)) + " avant (une alerte « ANNULÉE » le rappelle)" +
          "\nTaille : " + str.tostring(q) + (na(lots) ? "" : lots > 0 ? " (" + lotTxt(lots) + " chez le courtier)" : " (moins de " + str.tostring(lotStep) + " lot chez le courtier)") + " — au plus la taille et le risque de la cassure")
     g
@@ -905,7 +911,7 @@ legStep(Leg g, int idx) =>
                 ep := strategy.closedtrades.entry_price(k)
             if not na(ep)
                 g.entry := ep
-                g.risk  := math.abs(ep - g.sl)
+                g.risk  := math.abs(ep - nz(g.rsl, g.sl))   // V11 : 1R d'une D sur le stop de la V10, pas sur l'entrée de A
                 if not na(g.eLn)
                     g.eLn.set_y1(ep)
                     g.eLn.set_y2(ep)
@@ -1082,8 +1088,15 @@ if v8On
     if useD and kA >= 0 and kA < dCount and not inFlat and not na(cur) and openQtyOf(0) > 0 and bar_index >= v8.breakBar and high > low and not v8.stopHit   // V10 : pas si l'autre bord du range a été touché
         if na(array.get(legD, kA))
             float qD = legQty(stopMult * (high - low))
-            if qD > 0
-                array.set(legD, kA, openLegStop("D" + str.tostring(kA + 1), v8.dir, v8.dir == 1 ? high : low, v8.dir == 1 ? high - stopMult * (high - low) : low + stopMult * (high - low), v8.dir == 1 ? low : high, qD, dPyr, dValid))
+            // AUD-12 (audit du 26/11/2026), comme EX-2 dans l'EA : le risque réel d'une D (de son niveau à l'entrée de A, son stop
+            // posé) ne dépasse pas celui de la cassure ; trop loin de l'entrée de A pour la plus petite taille : pas de D.
+            float trigD = v8.dir == 1 ? high : low
+            float distA = math.abs(trigD - cur.entry)
+            float capD  = distA > 0 and not na(v8.usd) ? math.floor(v8.usd / (distA * syminfo.pointvalue * fx) / qtyStep + 0.000001) * qtyStep : 0.0
+            qD := math.min(qD, capD)
+            // V11 : une continuation n'existe que si son niveau est au-delà de l'entrée de A (son stop est l'entrée de A)
+            if qD > 0 and (v8.dir == 1 ? high > cur.entry : low < cur.entry)
+                array.set(legD, kA, openLegStop("D" + str.tostring(kA + 1), v8.dir, v8.dir == 1 ? high : low, v8.dir == 1 ? high - stopMult * (high - low) : low + stopMult * (high - low), v8.dir == 1 ? low : high, qD, dPyr, dValid, cur.entry))
                 v8.dTxt := "D" + str.tostring(kA + 1) + " guettée"
 
 seen := strategy.closedtrades
@@ -1270,7 +1283,7 @@ var table tb = table.new(tblPos, 2, 11, bgcolor = chart.bg_color, frame_color = 
      border_color = color.new(color.gray, 85), border_width = 1)
 if showTable and barstate.islast
     color fg = chart.fg_color
-    table.cell(tb, 0, 0, "Strategy V10", text_color = fg, text_size = size.normal, text_halign = text.align_left)
+    table.cell(tb, 0, 0, "Strategy V11", text_color = fg, text_size = size.normal, text_halign = text.align_left)
     table.cell(tb, 1, 0, "NY 9:30 · M5 · " + str.tostring(riskPct) + " % par trade", text_color = color.new(fg, 45), text_size = size.small, text_halign = text.align_right)
     cellRow(tb, 1, "Range 9:30", na(orH) ? "—" : fmt(orL) + " – " + fmt(orH) + " (" + distTxt(orH - orL) + ")", fg)
     cellRow(tb, 2, "Filtres", (useRSI or useExt) ? S.filtTxt : "désactivés", fg)

@@ -1,4 +1,4 @@
-"""Contrôles statiques de l'EA Strategy V10 : `python -m pytest robot`.
+"""Contrôles statiques de l'EA Strategy V11 : `python -m pytest robot`.
 
 Ce ne sont pas des tests de compilation (impossible sans MetaEditor) : ils vérifient, dans le texte du code, que les
 correctifs d'exécution sont en place et que les calculs recopiés ici donnent le bon résultat.
@@ -8,7 +8,7 @@ import os
 import re
 
 ICI = os.path.dirname(os.path.abspath(__file__))
-EA = open(os.path.join(ICI, "Strategy-V10.mq5"), encoding="utf-8-sig").read()
+EA = open(os.path.join(ICI, "Strategy-V11.mq5"), encoding="utf-8-sig").read()
 
 
 def vol_digits(step):
@@ -121,7 +121,7 @@ def test_les_deux_pyramides_ont_le_plancher():
     assert "mkt - gDir * InpPyrGap * gRisk" not in EA and "mkt - g.dir * InpPyrGap * g.risk" not in EA
 
 
-PINE = open(os.path.join(ICI, "Strategy-V10.pine"), encoding="utf-8").read()
+PINE = open(os.path.join(ICI, "Strategy-V11.pine"), encoding="utf-8").read()
 
 
 def test_l_alerte_tradingview_donne_le_stop_elargi():
@@ -227,7 +227,7 @@ def test_le_script_compte_la_bougie_de_cassure_pour_le_bord_oppose():
 def test_chaque_sortie_du_script_ferme_sa_propre_position():
     """PINE-04 : sans close_entries_rule = "ANY", TradingView ferme la plus ancienne position (FIFO) : le stop d'une continuation
     fermait la cassure A, et le script suivait le mauvais trade (résultat, règle mémoire, stop à l'entrée)."""
-    entete = PINE[PINE.index("strategy(\"Strategy V10"):]
+    entete = PINE[PINE.index("strategy(\"Strategy V11"):]
     entete = entete[:entete.index(")\n")]
     assert 'close_entries_rule = "ANY"' in entete
     # le script retrouve chaque sortie par le nom de son entrée : c'est ce que « ANY » rend juste
@@ -308,7 +308,7 @@ def test_regles_verrouillees_et_marches():
     """Verrou du 25/11/2026 : les règles ne sont plus des paramètres ; seuls le compte, l'heure du serveur, les FOMC, l'exécution, les
     notifications et l'affichage restent réglables. Nasdaq 100 et S&P 500 seulement, dans l'EA comme dans le script."""
     reglables = set(re.findall(r"^input\s+\S+\s+(Inp\w+)", EA, re.M))
-    assert reglables == {"InpRiskPct", "InpFixedLots", "InpUseUI", "InpSrvGMT", "InpSrvDST", "InpFomc", "InpMagic", "InpDeviation",
+    assert reglables == {"InpRiskPct", "InpFixedLots", "InpUseUI", "InpSrvAuto", "InpSrvGMT", "InpSrvDST", "InpFomc", "InpMagic", "InpDeviation",
                          "InpComment", "InpPush", "InpWhatsApp", "InpWaPhone", "InpWaKey", "InpTelegram", "InpTgToken", "InpTgChat",
                          "InpDraw", "InpPanel"}, reglables
     for nom, valeur in (("InpUseB", "true"), ("InpUseD", "true"), ("InpUseC", "false"), ("InpStopMult", "3.0"), ("InpNoiseFloor", "false")):
@@ -320,7 +320,7 @@ def test_regles_verrouillees_et_marches():
     assert entrees_pine <= {"riskPct", "qtyStepIn", "showLots", "lotSize", "lotStep", "lotBal", "fomcExtra", "tgChat", "showOrders",
                             "showZones", "showPre", "showBlocked", "showVwap", "showZoneB", "showGuide", "keepEmpty", "showTable",
                             "tblPosIn"} | {n for n in entrees_pine if n.startswith(("show", "tbl", "col", "txt"))}, entrees_pine
-    assert "runtime.error(\"Strategy V10 : ce script ne trade que le Nasdaq 100 et le S&P 500" in PINE
+    assert "runtime.error(\"Strategy V11 : ce script ne trade que le Nasdaq 100 et le S&P 500" in PINE
     assert "useB      = true" in PINE and "useD      = true" in PINE and "stopMultIn = 3.0" in PINE
 
 
@@ -517,7 +517,7 @@ def test_en_tete_a_jour():
 def test_alertes_du_pine_pour_trader_a_la_main():
     """PINE-06 à PINE-08 : annulation d'une D guettée annoncée (avec son niveau dès l'alerte « GUETTÉE »), alerte à la sortie de
     15:50, lot de l'ajout des jambes chez le courtier. Non passé par l'analyseur de TradingView."""
-    pine = open(os.path.join(ICI, "Strategy-V10.pine"), encoding="utf-8").read()
+    pine = open(os.path.join(ICI, "Strategy-V11.pine"), encoding="utf-8").read()
     assert "Annule l'ordre si le prix touche \" + fmt(nz(inval, stop))" in pine
     annule = pine.index('notify(g.name + " ANNULÉE : supprime l\'ordre stop "')
     assert pine.rindex('strategy.cancel(g.id)', 0, annule) > pine.rindex("if g.pend\n", 0, annule)
@@ -527,8 +527,8 @@ def test_alertes_du_pine_pour_trader_a_la_main():
 
 
 def test_en_tete_du_pine_a_jour():
-    pine = open(os.path.join(ICI, "Strategy-V10.pine"), encoding="utf-8").read()
-    entete = pine[:pine.index('strategy("Strategy V10')]
+    pine = open(os.path.join(ICI, "Strategy-V11.pine"), encoding="utf-8").read()
+    entete = pine[:pine.index('strategy("Strategy V11')]
     assert entete.startswith("//@version=6\n")
     for ancien in ("NASDAQ UNIQUEMENT", "(NAS100) uniquement", "Version non passée", "+0,05R", "Stop     : de l'autre côté du range"):
         assert ancien not in entete, ancien
@@ -552,7 +552,282 @@ def noms_de_prop_firm(texte):
 def test_aucune_prop_firm_nommee_dans_le_depot_public():
     """Le dépôt est public : les infobulles du Pine disent « prop firm » sans nommer d'entreprise (choix de l'utilisateur, 25/11/2026)."""
     racine = os.path.dirname(ICI)
-    for chemin in ("robot/Strategy-V10.pine", "robot/Strategy-V10.mq5", "README.md", "CLAUDE.md"):
+    for chemin in ("robot/Strategy-V11.pine", "robot/Strategy-V11.mq5", "README.md", "CLAUDE.md"):
         assert not noms_de_prop_firm(open(os.path.join(racine, chemin), encoding="utf-8-sig").read()), chemin
     assert noms_de_prop_firm("un certificat " + "Funding" + "Pips") and not noms_de_prop_firm("une prop firm")
     assert "chez une prop firm" in PINE and "compte de prop firm" in PINE
+
+
+def test_v11_stop_des_continuations_a_l_entree_de_a_ea():
+    """V11 (choix de l'utilisateur, 26/11/2026) : le stop posé d'une continuation D est le prix d'entrée de A ; sa taille et ses
+    seuils (+1,5 R, +2 R) restent ceux de la V10 ; une D dont le niveau n'est pas au-delà de l'entrée de A n'est pas armée."""
+    arm = fonction("void V9ArmD(MqlRates &r[])")
+    assert "V11" in arm and "trigD - sprD <= gEntry + gapD" in arm and "trigD + sprD >= gEntry - gapD" in arm
+    corps = fonction("bool LegOpen(SLeg &g, int dir, double stop, string quoi, double ref = 0)")
+    assert "double slV10 = sl;" in corps
+    assert "sl = NormalizeDouble(gEntry, _Digits);" in corps
+    assert "g.risk = MathAbs(g.entry - (estD ? slV10 : sl));" in corps
+
+
+def test_ex1_stop_d_controle_contre_le_bon_prix():
+    """EX-1 (audit du 26/11/2026) : le stop d'un achat est contrôlé contre le bid, celui d'une vente contre l'ask, avec la distance
+    minimale et le gel du courtier ; une D trop près de l'entrée de A n'est pas armée (un spread de marge)."""
+    corps = fonction("bool LegOpen(SLeg &g, int dir, double stop, string quoi, double ref = 0)")
+    assert "double refQ = dir == 1 ? bid : ask;" in corps and "(refQ - gEntry) * dir <= gapD" in corps
+    assert "SYMBOL_TRADE_FREEZE_LEVEL" in corps
+    arm = fonction("void V9ArmD(MqlRates &r[])")
+    assert "SYMBOL_ASK) - SymbolInfoDouble(_Symbol, SYMBOL_BID)" in arm and "SYMBOL_TRADE_FREEZE_LEVEL" in arm
+
+
+def test_ex2_risque_reel_d_plafonne():
+    """EX-2 : le risque réel d'une D (jusqu'à l'entrée de A) ne dépasse pas celui de la cassure, et la notification l'affiche."""
+    corps = fonction("bool LegOpen(SLeg &g, int dir, double stop, string quoi, double ref = 0)")
+    assert "MathAbs(px - gEntry) / ts * tv" in corps
+    assert "double capR = MathFloor(gV8RiskMoney / perLotReal / step + 0.000001) * step;" in corps
+    assert "Money(-lots * (estD && perLotReal > 0 ? perLotReal : perLot))" in corps
+
+
+def test_ex3_journal_version_2():
+    """EX-3 : le journal d'exécution passe en version 2 (le stop initial d'une D est l'entrée de A)."""
+    assert '#define JOURNAL_VERSION "2"' in EA
+
+
+def test_ex5_envois_differes_pendant_les_entrees_surveillees():
+    """EX-5 : pas d'envoi WhatsApp / Telegram (bloquant) pendant qu'une D est guettée ou qu'un côté de la cassure est surveillé."""
+    corps = fonction("void FlushNotifs()")
+    assert "n == 0 || EnvoiDiffere()" in corps
+    diff = fonction("bool EnvoiDiffere()")
+    assert "gD[k].arm" in diff and "!gSrvL" in diff and "!gSrvS" in diff
+
+
+def test_ex7_glissement_de_la_sortie_de_fin_de_journee():
+    """EX-7 : la sortie de 15:50 a un prix de référence (bid ou ask au moment de la décision) pour mesurer son glissement."""
+    assert EA.count("FlatRef();") == 2
+    ligne = fonction("void ExecRow(long posId, string type, int dirHint, double plan, double vstop, string why, double riskMoney, double rangeJour, double smultJour, int dayJour)")
+    assert "finJ && !stopExit ? (refF - outPx) * dir : (ref - outPx) * dir" in ligne
+
+
+def test_v11_stop_des_continuations_a_l_entree_de_a_pine():
+    """V11 dans le Pine : même règle que l'EA."""
+    assert "float  rsl" in PINE
+    assert "openLegStop(string nm, int d, float trig, float stop, float inval, float q, bool pyrOk, int nBars, float slOrdre) =>" in PINE
+    assert "strategy.exit(\"X\" + g.id, from_entry = g.id, stop = slOrdre," in PINE
+    assert "(v8.dir == 1 ? high > cur.entry : low < cur.entry)" in PINE
+    assert "g.risk  := math.abs(ep - nz(g.rsl, g.sl))" in PINE
+
+
+def test_heure_du_serveur_detectee_automatiquement():
+    """Automatisme du 26/11/2026 : hors testeur, le décalage du serveur se déduit de TimeTradeServer() - TimeGMT() ; les
+    réglages ne servent plus que dans le testeur (où TimeGMT() vaut l'heure du serveur) ou si la détection est coupée."""
+    assert "input bool         InpSrvAuto   = true;" in EA
+    det = fonction("void DetecterHeureServeur()")
+    assert "MQLInfoInteger(MQL_TESTER)" in det and "MathRound((double)brut / 3600.0) * 3600" in det and "MathAbs(brut - reel) > 600" in det
+    assert "long     base = gSrvBaseOk ? gSrvBaseSec : (long)InpSrvGMT * 3600;" in EA
+    assert "DetecterHeureServeur();" in fonction("void CheckClock()")
+
+
+def test_fomc_lus_dans_le_calendrier_au_dela_de_la_liste():
+    """Automatisme du 26/11/2026 : après le dernier jour codé, les décisions de la Fed viennent du calendrier de MetaTrader."""
+    cal = fonction("bool FomcCalendrier(int ymd)")
+    assert '"fed-interest-rate-decision"' in cal and "MQLInfoInteger(MQL_TESTER)" in cal
+    assert "return ymd > FOMC_DATES[ArraySize(FOMC_DATES) - 1] && FomcCalendrier(ymd);" in fonction("bool IsFomc(int ymd)")
+
+
+def test_etiquettes_v11():
+    """26/11/2026 : la version, l'état lu par Étrave, la raison des trades et le panneau disaient encore « V10 »."""
+    for texte in ('#property version     "11.00"', 'Kv(h, "ea", "11.00");', 'string w = "V11 " + g.nom', '"Entrées V11 : "'):
+        assert texte in EA, texte
+
+
+# ───────────────────────── audit du 26/11/2026 (AUD-xx) ─────────────────────────
+def mql_round(x):
+    """MathRound de MQL5 : la moitié s'éloigne de zéro."""
+    return math.floor(x + 0.5) if x >= 0 else -math.floor(-x + 0.5)
+
+
+def horloge(avance_min, srv_gmt_h=2, dst=False):
+    """Copie en Python de DetecterHeureServeur() + CheckClock() (détection automatique) : l'horloge de l'ordinateur est en
+    avance de `avance_min` minutes sur l'heure vraie ; le serveur est réellement à GMT+srv_gmt_h (+1 h en été).
+    Renvoie (heure du serveur jugée bonne, écart annoncé en minutes : positif = horloge de l'ordinateur en avance)."""
+    vrai = (srv_gmt_h + (1 if dst else 0)) * 3600
+    brut = vrai - avance_min * 60                  # TimeTradeServer() - TimeGMT() : l'ordinateur en avance réduit l'écart
+    reel = mql_round(brut / 3600.0) * 3600
+    base = reel - (3600 if dst else 0)
+    attendu = srv_gmt_h * 3600 + (3600 if dst else 0)
+    decalage = base + (3600 if dst else 0)         # ServerOffsetSec avec la base détectée
+    ok = abs(brut - decalage) <= 1800 and base == srv_gmt_h * 3600
+    return ok, round((attendu - brut) / 60)
+
+
+def test_aud03_horloge_decalee_d_une_heure_bloque_le_trading():
+    """AUD-03 : avec une horloge d'ordinateur décalée de 50 à 70 min, la détection prenait la bougie de 8:30 ou de 10:30 sans
+    alerte : CheckClock comparait la détection à elle-même. Elle doit concorder avec le décalage réglé (InpSrvGMT)."""
+    for avance in (40, 50, 60, 70, 80, -40, -60, -80):
+        assert horloge(avance)[0] is False, avance
+        assert horloge(avance, dst=True)[0] is False, avance
+    for avance in (0, 10, 20, 29, -20, -29):
+        assert horloge(avance)[0] is True, avance
+    clock = fonction("void CheckClock()")
+    assert "InpSrvAuto && gSrvBaseOk && gSrvBaseSec != (long)InpSrvGMT * 3600" in clock
+    assert clock.index("DetecterHeureServeur();") < clock.index("gSrvBaseSec != (long)InpSrvGMT * 3600")
+
+
+def test_aud04_ecart_de_l_horloge_annonce_par_rapport_a_l_heure_attendue():
+    """AUD-04 : à +40 min, le message disait « décalée de 20 min » (écart à l'heure pleine la plus proche)."""
+    assert horloge(40)[1] == 40 and horloge(80)[1] == 80 and horloge(30)[1] == 30 and horloge(-25)[1] == -25
+    det = fonction("void DetecterHeureServeur()")
+    assert "long attendu = (long)InpSrvGMT * 3600 + (dst ? 3600 : 0);" in det
+    assert "(attendu - brut) / 60.0" in det and '"en avance"' in det and '"en retard"' in det
+
+
+def compte_autorise(testeur, demo, login, fichier):
+    """Copie en Python de CompteAutorise()."""
+    if testeur or demo:
+        return True
+    return login > 0 and login == fichier
+
+
+def test_aud01_compte_reel_jamais_trade_sans_autorisation():
+    """AUD-01 : le double-clic lançait le trading automatique sur le compte enregistré, réel compris, sans contrôle."""
+    assert compte_autorise(True, False, 123, 0) and compte_autorise(False, True, 123, 0)
+    assert not compte_autorise(False, False, 123, 0)
+    assert not compte_autorise(False, False, 123, 456) and not compte_autorise(False, False, 0, 0)
+    assert compte_autorise(False, False, 123, 123)
+    f = fonction("bool CompteAutorise()")
+    assert "MQLInfoInteger(MQL_TESTER)" in f and "ACCOUNT_TRADE_MODE_DEMO" in f
+    assert "return login > 0 && login == gReelAutorise;" in f
+    setup = corps("Setup")
+    garde = setup.index("if(!CompteAutorise())")
+    assert setup.index("if(!gClockOk)") < garde < setup.index("gObserve   = true;") < setup.index("PlaceStop(1)")
+    assert 'k == "reel_autorise"' in fonction("void ReadSettings()")
+    assert 'Kv(h, "compte_autorise", CompteAutorise() ? "1" : "0");' in fonction("void WriteState()")
+    entrees = fonction("void CheckEntries()")
+    assert entrees.index("if(!CompteAutorise())") < entrees.index("trade.Buy(gLots")
+    assert "InpCompteReel" not in EA                     # rien à régler dans MetaTrader : l'autorisation vient d'Étrave
+
+
+def test_aud02_l_etat_appartient_a_un_compte():
+    """AUD-02 : l'état (règle mémoire, jour, trade ouvert, statistiques) d'un compte démo était relu tel quel sur un compte réel."""
+    charge = fonction("void ChargerEtatDuCompte()")
+    assert "if(login <= 0)\n      return;" in charge                      # compte pas encore connu au démarrage : réessayé
+    assert "(long)lu == login || (lu == 0 && demo)" in charge and "LoadState();" in charge
+    assert "GlobalVariablesDeleteAll(GV);" in charge and 'Sv("login", (double)login);' in charge
+    assert 'Sv("login", (double)AccountInfoInteger(ACCOUNT_LOGIN));' in fonction("void SaveState()")
+    assert "if(MQLInfoInteger(MQL_TESTER) || !gEtatCharge)\n      return;" in fonction("void SaveState()")
+    init = fonction("int OnInit()")
+    assert "ChargerEtatDuCompte();" in init and "      LoadState();\n" not in init
+    tick = fonction("void OnTick()")
+    assert tick.index("if(!gEtatCharge)") < tick.index("SyncPosition();")
+
+
+def test_aud05_risque_plafonne_a_1_pct():
+    """AUD-05 : jusqu'à 20 % par trade était accepté (ruine possible selon la marge) ; au-delà du plafond, ramené au plafond."""
+    assert re.search(r"#define RISK_MAX\s+1\.0\b", EA)
+    lecture = fonction("void ReadSettings()")
+    assert "risk = MathMin(x, RISK_MAX);" in lecture
+    assert "double risk   = MathMin(InpRiskPct, RISK_MAX);" in lecture
+
+
+def test_aud06_pas_de_renvoi_tant_que_l_historique_n_a_pas_ete_relu():
+    """AUD-06 : après une réponse perdue, l'ordre A repartait au bout de 3 s si la position n'était pas encore visible."""
+    trouve = fonction("bool EntreeATrouvee(datetime depuis)")
+    assert "HistorySelect(" in trouve and "DEAL_ENTRY_IN" in trouve and "HistoryOrdersTotal()" in trouve and "OrdersTotal()" in trouve
+    entrees = fonction("void CheckEntries()")
+    assert entrees.index("GetTickCount() - gAmbigMs < 3000") < entrees.index("EntreeATrouvee(gAmbigT)") < entrees.index("trade.Buy(gLots")
+    assert "gAmbigT = TimeCurrent();" in entrees
+
+
+def test_aud06_doublon_de_a_ferme_et_pas_pris_pour_une_pyramide():
+    """AUD-06 : deux positions A de même taille ouvertes à quelques secondes d'écart passaient pour une pyramide."""
+    doublon = fonction("int FermerDoublonsA()")
+    assert "POSITION_TIME_MSC" in doublon and "DOUBLON_S" in doublon and "trade.PositionClose(" in doublon
+    assert "MathAbs(vol - volRef) < step / 2" in doublon
+    sync = fonction("void SyncPosition()")
+    assert sync.index("FermerDoublonsA() > 0") < sync.index("gPyr     = CountPos(gDir) > 1;")
+    tick = fonction("void OnTick()")
+    assert "FermerDoublonsA();" in tick
+
+
+def test_aud07_ordre_stop_deja_pose_repris_a_la_relance():
+    """AUD-07 : relancé pendant la bougie de 9:35 avant l'écriture de l'état, l'EA reposait les deux ordres stop."""
+    pose = fonction("bool PlaceStop(int d)")
+    assert pose.index("if(HasPending(d))\n      return true;") < pose.index("trade.BuyStop(")
+    setup = corps("Setup")
+    assert setup.index("GlobalVariablesFlush();") < setup.index("PlaceStop(1)")
+
+
+def test_aud08_stop_du_courtier_relu_chaque_minute():
+    """AUD-08 : une position sans stop chez le courtier n'était jamais repérée."""
+    verif = fonction("void VerifierStops()")
+    assert "PositionGetDouble(POSITION_SL) > 0" in verif and "trade.PositionModify(" in verif and "trade.PositionClose(" in verif
+    assert "mg < InpMagic || mg > InpMagic + 2 + D_MAX" in verif
+    tick = fonction("void OnTick()")
+    assert tick.index("TimeCurrent() - sweepAt >= 60") < tick.index("VerifierStops();") < tick.index("CloseOrphans(")
+
+
+def test_aud11_un_seul_graphique_par_symbole():
+    """AUD-11 : la V11 posée sur deux graphiques du même symbole doublait le risque et partageait le même état."""
+    init = fonction("int OnInit()")
+    assert "if(!PrendreVerrou())" in init and "INIT_FAILED" in init[init.index("if(!PrendreVerrou())"):]
+    verrou = fonction("bool PrendreVerrou()")
+    assert "GlobalVariableSetOnCondition(" in verrou and "GlobalVariableTemp(" in verrou and "VERROU_MUET_S" in verrou
+    assert "RelacherVerrou();" in fonction("void OnDeinit(const int reason)")
+    assert "BattreVerrou();" in fonction("void OnTimer()")
+
+
+def test_aud17_jour_manque_signale():
+    """AUD-17 : EA lancé ou relancé après la bougie de 9:35 : le jour disparaissait sans message."""
+    barre = fonction("void OnNewBar()")
+    assert "JOUR MANQUÉ" in barre and "NYMin(ny1) > mOR" in barre and "gManque != NYDate(ny1)" in barre
+
+
+def test_aud18_jambe_inconnue_de_l_etat_reprise():
+    """AUD-18 : une jambe B/D marquée refusée ou perdue alors que sa position existe restait sans gestion jusqu'à 15:51."""
+    tick = fonction("void LegOnTick(SLeg &g)")
+    assert tick.index("if(!g.enPos && has)") < tick.index("if(g.enPos && !has)")
+    adopt = fonction("void LegAdopt(SLeg &g)")
+    assert "POSITION_PRICE_OPEN" in adopt and "POSITION_SL" in adopt and "g.enPos = true;" in adopt and "LegSave(g);" in adopt
+
+
+def test_aud20_cloture_demandee_reessayee():
+    """AUD-20 : si la clôture demandée et le balayage de 10 s étaient refusés, plus aucun essai jusqu'à 15:51."""
+    tick = fonction("void OnTick()")
+    assert "if(sweepUi && nS > 0)" in tick and "gSweepAllAt = TimeCurrent() + 10;" in tick
+    assert "CLÔTURE PAS ENCORE FAITE" in tick
+
+
+def test_aud22_version_compilee_publiee():
+    assert 'Kv(h, "ea_build", TimeToString(__DATETIME__, TIME_DATE | TIME_SECONDS));' in fonction("void WriteState()")
+
+
+def test_aud23_pas_d_essai_telegram_pendant_un_trade():
+    lecture = fonction("void ReadSettings()")
+    assert "(gPend || gSetupDue || gIn || OpenLegs() > 0 || EnvoiDiffere())" in lecture
+
+
+def test_aud24_lot_minimum_et_pas_publies():
+    etat = fonction("void WriteState()")
+    for cle in ("lot_min", "lot_pas", "valeur_point_lot", "prix"):
+        assert f'Kd(h, "{cle}"' in etat, cle
+
+
+def marches_du_code(texte, motif):
+    return set(re.findall(motif, texte))
+
+
+def test_aud28_meme_liste_de_marches_dans_l_ea_et_le_script():
+    """AUD-28 : « USATECHIDXUSD » ou « ES1! » étaient acceptés par l'un et refusés par l'autre."""
+    ea = marches_du_code(fonction("string InstrumentOf(string sym)"), r'StringFind\(s, "([A-Z0-9&]+)"\)')
+    pine_ligne = PINE[PINE.index("bool marcheOk ="):PINE.index("\n", PINE.index("bool marcheOk ="))]
+    pine = marches_du_code(pine_ligne, r'str\.(?:contains|startswith)\(tkU, "([A-Z0-9&]+)"\)')
+    assert ea == pine, (ea ^ pine)
+    assert 'StringFind(s, "ES1") == 0' in fonction("string InstrumentOf(string sym)") and 'str.startswith(tkU, "ES1")' in pine_ligne
+
+
+def test_aud12_le_script_plafonne_le_risque_reel_des_d_comme_l_ea():
+    """AUD-12 : l'EA plafonne le risque réel d'une D (jusqu'à l'entrée de A) à celui de la cassure (EX-2) ; le Pine prenait toute
+    la taille, et une D étroite loin de l'entrée de A risquait plus que la cassure."""
+    assert "float capD  = distA > 0 and not na(v8.usd) ? math.floor(v8.usd / (distA * syminfo.pointvalue * fx) / qtyStep + 0.000001) * qtyStep : 0.0" in PINE
+    assert "qD := math.min(qD, capD)" in PINE
+    assert PINE.index("qD := math.min(qD, capD)") < PINE.index("if qD > 0 and (v8.dir == 1 ? high > cur.entry : low < cur.entry)")
+    assert "float  lots = math.min(legLots(g.risk), legLots(math.abs(trig - slOrdre)))" in PINE

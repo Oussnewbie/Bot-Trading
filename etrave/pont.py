@@ -8,7 +8,7 @@ L'EA et l'interface ne se parlent que par des fichiers texte rangés dans le dos
     trades-<symbole>.csv  une ligne par trade clôturé, ajoutée par l'EA
 
 Format : une ligne `cle=valeur` par réglage. Une clé absente de reglages.txt laisse à l'EA la valeur saisie dans
-MetaTrader ; les noms de clés sont les mêmes dans robot/Strategy-V10.mq5 (etrave/test_interface.py vérifie l'accord).
+MetaTrader ; les noms de clés sont les mêmes dans robot/Strategy-V11.mq5 (etrave/test_interface.py vérifie l'accord).
 
 Règles reprises de Vigie :
  - tout est validé AVANT d'écrire quoi que ce soit ;
@@ -18,8 +18,10 @@ Règles reprises de Vigie :
    un fichier oublié ne peut donc jamais fermer un trade futur.
 """
 import glob
+import math
 import os
 import re
+import sys
 import threading
 import time
 
@@ -28,17 +30,36 @@ SLOGAN = "la cassure de l’ouverture de New York"
 SOUS_DOSSIER = "Etrave"
 FICHIER_REGLAGES = "reglages.txt"
 
-# Bornes du risque par trade, en % du solde (les mêmes dans l'EA : RISK_MIN, RISK_MAX).
-RISQUE_MIN, RISQUE_MAX = 0.05, 20.0
-# Au-delà de ce risque, il faut confirmer en toutes lettres.
-RISQUE_A_CONFIRMER = 1.0
+# Bornes du risque par trade, en % du solde (les mêmes dans l'EA : RISK_MIN, RISK_MAX). AUD-05 (audit du 26/11/2026) : plafond
+# ramené de 20 % à 1 % ; une valeur enregistrée au-dessus est ramenée au plafond par l'EA, et montrée ainsi par la page.
+RISQUE_MIN, RISQUE_MAX = 0.05, 1.0
+# Au-delà de ce risque, il faut confirmer en toutes lettres (AUD-05 : 0,5 %, avant 1 %). La page lit ce seuil ici (bornes).
+RISQUE_A_CONFIRMER = 0.5
 LEVIER_MAX = 2000.0
 # L'EA réécrit son état toutes les 2 secondes : passé ce délai sans nouvelle, il est arrêté (ou MT5 fermé).
 EA_MUET_S = 15.0
-# Les deux marchés de la V10 (verrou du 25/11/2026), une case chacun : l'EA classe son symbole « nasdaq » ou « sp500 »
+# Les deux marchés de la V11 (verrou du 25/11/2026, reconduit en V11 le 26/11/2026), une case chacun : l'EA classe son symbole « nasdaq » ou « sp500 »
 # (InstrumentOf) et ne lit que sa case. Décochée, l'EA ne prend plus de nouveau trade.
 INSTRUMENTS = {"nasdaq": True, "sp500": True}
-MOTS = {"risque": "RISQUE", "cloturer": "CLOTURER"}
+# AUD-09 (audit du 26/11/2026) : le marché d'un symbole des journaux, comme InstrumentOf() dans l'EA (mêmes noms, même ordre ;
+# etrave/test_interface.py vérifie l'accord). Les seuils de l'interrupteur sont par marché, les journaux par symbole.
+NOMS_MARCHES = {"nasdaq": ("NAS", "NDX", "NQ", "USTEC", "US100", "USATECH", "TECH100"),
+                "sp500": ("SPX", "SP500", "US500", "USA500", "S&P", "SPI500")}
+DEBUTS_MARCHES = {"nasdaq": (), "sp500": ("ES1",)}      # noms qui doivent ouvrir le symbole (StringFind(...) == 0 dans l'EA)
+
+
+def instrument_de(symbole):
+    """« nasdaq », « sp500 » ou « autre », comme InstrumentOf() dans l'EA."""
+    texte = str(symbole or "").upper()
+    for marche, noms in NOMS_MARCHES.items():
+        if any(nom in texte for nom in noms) or any(texte.startswith(debut) for debut in DEBUTS_MARCHES[marche]):
+            return marche
+    return "autre"
+# Mots à taper pour confirmer : AUD-01 (compte réel), AUD-10 (arrêt d'urgence), AUD-19 (fermer MetaTrader quand l'EA ne répond plus
+# alors que son dernier état disait un trade en cours).
+MOTS = {"risque": "RISQUE", "cloturer": "CLOTURER", "reel": "REEL", "arret": "ARRET", "fermer": "FERMER"}
+# AUD-01 : numéro d'un compte réel autorisé (reel_autorise), des chiffres seulement (fullmatch, ET-09).
+LOGIN_REEL = re.compile(r"\d{1,20}")
 
 REGLES = {
     "telegram_jeton": (re.compile(r"^\d{5,15}:[A-Za-z0-9_-]{30,60}$"),
@@ -55,14 +76,23 @@ class Refus(Exception):
     """Une demande refusée : le message est fait pour être montré tel quel, et ne répète jamais une valeur secrète."""
 
 
-def dossier_commun(env=None):
-    """Le dossier partagé avec l'EA. `ETRAVE_DOSSIER` passe avant tout (essais, MetaTrader installé ailleurs)."""
+def dossier_commun(env=None, systeme=sys.platform, existe=os.path.isdir):
+    """Le dossier partagé avec l'EA. `ETRAVE_DOSSIER` passe avant tout (essais, MetaTrader installé ailleurs).
+
+    Correctif du 26/11/2026 : sur Mac, MetaTrader 5 tourne dans le Wine de MetaQuotes et l'EA écrit dans le dossier commun de
+    ce Wine (drive_c/users/<utilisateur>/AppData/Roaming/…). Étrave lisait ~/.etrave : ses réglages n'atteignaient pas l'EA."""
     env = os.environ if env is None else env
     if env.get("ETRAVE_DOSSIER"):
         return env["ETRAVE_DOSSIER"]
     if env.get("APPDATA"):
         return os.path.join(env["APPDATA"], "MetaQuotes", "Terminal", "Common", "Files", SOUS_DOSSIER)
-    return os.path.join(os.path.expanduser("~"), ".etrave")
+    maison = env.get("HOME") or os.path.expanduser("~")
+    if systeme == "darwin" and env.get("USER"):
+        commun = os.path.join(maison, "Library", "Application Support", "net.metaquotes.wine.metatrader5", "drive_c", "users",
+                              env["USER"], "AppData", "Roaming", "MetaQuotes", "Terminal", "Common")
+        if existe(commun):
+            return os.path.join(commun, "Files", SOUS_DOSSIER)
+    return os.path.join(maison, ".etrave")
 
 
 # ───────────────────────── fichiers cle=valeur ─────────────────────────
@@ -150,10 +180,13 @@ def _modifier_sans_verrou(dossier, changements):
 
 # ───────────────────────── réglages : risque, levier, instruments ─────────────────────────
 def _nombre(texte):
+    """Un nombre fini, ou None. AUD-16 (audit du 26/11/2026) : « nan » ou « inf » passaient en NaN dans le JSON de la page
+    (illisible par le navigateur), et int(inf) faisait planter la lecture du journal des trades."""
     try:
-        return float(str(texte).replace(",", "."))
+        valeur = float(str(texte).replace(",", "."))
     except (TypeError, ValueError):
         return None
+    return valeur if math.isfinite(valeur) else None
 
 
 def _decimal(valeur):
@@ -164,10 +197,16 @@ def reglages_publics(dossier):
     """Ce que la page peut savoir des réglages : jamais le jeton ni la discussion Telegram."""
     cles = lire_reglages(dossier)
     risque, levier = _nombre(cles.get("risque_pct")), _nombre(cles.get("levier"))
+    # AUD-05 : comme l'EA, une valeur au-dessus du plafond (2,5 % enregistrés avant le 26/11/2026) vaut le plafond ;
+    # risqueEnregistre garde la valeur du fichier pour que la page explique « Réglé à 2,5 %, ramené au plafond de 1 % ».
+    valable = risque is not None and risque >= RISQUE_MIN - 1e-9
     return {
-        "risquePct": risque if risque is not None and RISQUE_MIN <= risque <= RISQUE_MAX else None,
+        "risquePct": min(risque, RISQUE_MAX) if valable else None,
+        "risqueEnregistre": risque if valable else None,
         "levier": levier if levier is not None and 1 <= levier <= LEVIER_MAX else None,
         "instruments": {nom: (cles[nom] == "1") if cles.get(nom) in ("0", "1") else defaut for nom, defaut in INSTRUMENTS.items()},
+        # AUD-01 : le compte réel autorisé (son numéro n'est pas un secret ; le jeton Telegram, lui, n'est jamais renvoyé)
+        "reelAutorise": cles["reel_autorise"] if LOGIN_REEL.fullmatch(cles.get("reel_autorise", "")) else "",
         "telegramJeton": cles.get("telegram_jeton", "") != "",
         "telegramDiscussion": cles.get("telegram_discussion", "") != "",
         # compte et serveur du dernier lancement (jamais le mot de passe), et les deux automatismes de lancement
@@ -266,10 +305,52 @@ def demander_cloture(dossier, symbole, confirmation, maintenant=None):
     return numero
 
 
+def arret_urgence(dossier, symboles, confirmation, maintenant=None):
+    """AUD-10 (audit du 26/11/2026) : arrêt d'urgence, avec le mot ARRET. Les deux marchés sont décochés (plus aucun nouveau
+    trade) et la clôture est demandée à l'EA de chaque symbole de `symboles` (ceux dont l'EA est en marche), en une seule
+    écriture du fichier : l'EA lit les deux à la fois. Un symbole illisible n'empêche ni l'arrêt ni les autres clôtures.
+    Retourne (numéro de la demande, symboles dont la clôture est demandée, symboles écartés)."""
+    if confirmation != MOTS["arret"]:
+        raise Refus(f"Pour l’arrêt d’urgence, tape {MOTS['arret']}.")
+    numero = str(int(time.time() if maintenant is None else maintenant))
+    changements = {nom: "0" for nom in INSTRUMENTS}
+    fermes, ecartes = [], []
+    for symbole in symboles:
+        if isinstance(symbole, str) and SYMBOLE.fullmatch(symbole):
+            changements[f"cloturer_{symbole}"] = f"{numero};{symbole}"
+            changements["cloturer"] = f"{numero};{symbole}"          # l'ancienne clé, pour un EA d'avant les clés par symbole
+            fermes.append(symbole)
+        else:
+            ecartes.append(str(symbole))
+    _modifier(dossier, changements)
+    return numero, fermes, ecartes
+
+
+def autoriser_compte_reel(dossier, login, confirmation, etats):
+    """AUD-01 (audit du 26/11/2026) : l'EA ne prend aucun trade sur un compte réel tant que reglages.txt ne contient pas
+    `reel_autorise=<son numéro de compte>`. Étrave l'écrit seulement avec le mot REEL, et seulement pour le numéro d'un EA en
+    marche sur un compte réel (état `compte_type=reel`) : on n'autorise jamais un compte qu'on ne voit pas. Retourne les clés
+    modifiées."""
+    if confirmation != MOTS["reel"]:
+        raise Refus(f"Pour autoriser un compte réel, tape {MOTS['reel']}.")
+    if not isinstance(login, str) or not LOGIN_REEL.fullmatch(login):
+        raise Refus("Numéro de compte illisible : ce sont des chiffres uniquement.")
+    if not any(e.get("en_marche") and e.get("compte_type") == "reel" and e.get("compte_login") == login for e in etats):
+        raise Refus("Aucun EA en marche sur ce compte réel : ouvre MetaTrader 5 sur ce compte, puis réessaie.")
+    return _modifier(dossier, {"reel_autorise": login})
+
+
+def retirer_autorisation_reel(dossier):
+    """AUD-01 : retire l'autorisation du compte réel (l'EA arrête de prendre de nouveaux trades sur ce compte)."""
+    return _modifier(dossier, {"reel_autorise": None})
+
+
 # ───────────────────────── ce que dit l'EA ─────────────────────────
 NOMBRES = ("solde", "capital", "marge_libre", "levier_compte", "levier_symbole", "risque_pct", "range_bas", "range_haut",
            "pos_sens", "pos_entree", "pos_stop", "pos_lots", "pos_resultat", "pos_r", "risque_argent", "solde_depart",
-           "stats_n", "stats_gagnants", "stats_r", "stats_baisse", "stats_serie", "jambes", "v8_resultat", "lots_fixes")
+           "stats_n", "stats_gagnants", "stats_r", "stats_baisse", "stats_serie", "jambes", "v8_resultat", "lots_fixes",
+           # AUD-24 (audit du 26/11/2026) : lot minimum, pas de volume, argent par point de prix et par lot, prix (bid)
+           "lot_min", "lot_pas", "valeur_point_lot", "prix")
 DRAPEAUX = ("actif", "connecte", "trading_auto", "horloge_ok", "regles_test", "position", "pos_pyramide", "attente", "telegram")
 
 
@@ -290,6 +371,8 @@ def lire_etats(dossier, maintenant=None):
             etat[cle] = _nombre(cles.get(cle))
         for cle in DRAPEAUX:
             etat[cle] = cles.get(cle) == "1"
+        # AUD-01 : 0 = compte réel pas autorisé, l'EA ne prend aucun trade. Clé absente (EA plus ancien) : None, ni oui ni non.
+        etat["compte_autorise"] = {"1": True, "0": False}.get(cles.get("compte_autorise"))
         etat["age_s"] = round(age, 1)
         etat["en_marche"] = age < EA_MUET_S
         etats.append(etat)
