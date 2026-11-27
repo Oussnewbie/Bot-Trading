@@ -16,7 +16,7 @@ chacun).
 - **Règles verrouillées en constantes** dans l'EA et le Pine : toutes les entrées (A, B, D1-D3), stop à 3 ranges (A, B ; taille des
   D), stop posé des D à l'entrée de A (V11), plancher de bruit (H1) coupé, pyramide, mémoire. Profil V10 choisi par l'utilisateur comme le plus rentable (critère gain) ; V11 retenue le 26/11/2026 comme meilleur compromis gain / pire baisse. Seuls restent réglables le
   compte (risque, lots fixes ; solde, taille de contrat et pas de lot dans le Pine), l'heure du serveur (détectée seule hors
-  testeur, `InpSrvAuto`), les FOMC en plus, l'exécution, les notifications et l'affichage. Demande de l'utilisateur du 26/11/2026 :
+  testeur, `InpSrvAuto`, et contre-vérifiée par `InpSrvGMT` : changer de courtier = régler `InpSrvGMT`, voir AUD-03), les FOMC en plus, l'exécution, les notifications et l'affichage. Demande de l'utilisateur du 26/11/2026 :
   « un double-clic, tout se met en place, je règle tout depuis Étrave ». Ne rends pas une règle réglable sans que l'utilisateur le demande.
 - Hors sujet : bitcoin, or, devises, DAX.
 
@@ -34,7 +34,9 @@ etrave/    interface web locale de l'EA (Python sans dépendance), export.py (ex
 .claude/   commands/audit.md (/audit) et agents/auditeur.md (auditeur adapté au robot) ; rapports dans audits/ (ignoré)
 video/     (branche communication/outil-video) vidéos TikTok : récap de séance et présentation, `python3 video/outil.py` ; README
 ```
-- Tests : `.venv/bin/python -m pytest robot etrave video -q` (sur `main`, sans `video`). Le `.venv` du dépôt tourne sous Python 3.15.
+- Tests : `.venv/bin/python -m pytest robot etrave video -q` sur cette branche (sur `main`, sans `video` : 175 tests et 1 ignoré
+  au 27/11/2026). Le `.venv` (Python 3.15) n'existe que dans le clone principal `~/Documents/GitHub/Bot-Trading` : depuis un
+  worktree (dont `Bot-Trading-main`), utiliser `~/Documents/GitHub/Bot-Trading/.venv/bin/python`.
 - Étrave en essai : `.venv/bin/python etrave/etrave.py --sans-navigateur --port 8799 --dossier <dossier jetable>`, puis
   `http://127.0.0.1:8799`. Pour voir la page avec des données, écrire de faux `etat-<symbole>.txt` (format dans
   `etrave/test_interface.py`, `faux_etat`) et un `trades-<symbole>.csv`, et les réécrire toutes les 2 secondes (au-delà de 15 s sans
@@ -61,7 +63,7 @@ video/     (branche communication/outil-video) vidéos TikTok : récap de séanc
 - **Le Pine** (pas de TradingView) : n'affirme jamais qu'un `.pine` modifié passe l'analyseur. La version du 21/11/2026 l'avait
   passé ; les modifications suivantes n'ont pas été analysées.
 - **Étrave sous Windows** (lancement de MetaTrader avec le profil, installation de l'EA et du profil dans le dossier de données,
-  fermeture, démarrage avec Windows, `Etrave.bat --tout`) et la police Bahnschrift. Le même chemin est vérifié sur Mac en vrai
+  fermeture, démarrage avec Windows, `Etrave.bat --tout`) et l'aspect de la page avec Consolas et Segoe UI. Le même chemin est vérifié sur Mac en vrai
   (26/11/2026 : double-clic sur `Etrave.command`, EA recompilé, profil posé, MetaTrader ouvert, deux EA `trading_auto=1`,
   heure du serveur détectée GMT+2, fermeture propre depuis la page).
 - **Pas de `.ex5` dans le dépôt.** On compile sur ce Mac, ou l'utilisateur avec F7 dans MetaEditor, ou avec le bouton d'Étrave.
@@ -71,14 +73,10 @@ video/     (branche communication/outil-video) vidéos TikTok : récap de séanc
   - `robot/test_robot.py` relit le code pour vérifier chaque correctif. Un nouveau correctif ajoute son contrôle.
 
 ## État au 26 novembre 2026 et prochaine action
-1. **V11 validée au testeur MT5** (copie d'essai dans `MQL5/Experts/Essais/`, ticks réels, 01/01/2025 → 25/11/2026, 0,1 lot, dépôt
-   10 000 $) contre le simulateur de la recherche (variante « stopA_D ») : NDX100 +2 991,22 $ contre +3 015,72 $ (237 jours, même
-   signe 99,2 %) ; SPX500 +413,92 $ contre +309,14 $ (même signe 96,3 %, simulateur prudent comme pour la V10). Entrées A et B
-   identiques à la V10 du même testeur ; 36 (NDX) et 33 (SPX) D de moins. Les corrections EX-1 à EX-7 ne changent aucun trade
-   (mêmes entrées, même résultat au centime). Nasdaq + S&P : +3 405 $, 45 % de jours gagnants, pire jour −101 $, pire baisse −248 $
-   (V10 : +3 951 $, 47 %, −110 $, −360 $).
-2. **Testeur V10 précédent** (NDX100, 20/11/2025 → 19/11/2026, 0,1 lot sur 1 000 $) : +1 885,09 $, 379 trades ; sert de repère.
-3. **Démo préparée pour la V11, jamais lancée en séance.** Profil MetaTrader « Etrave-demo » à deux graphiques M5 (NDX100 et
+1. **V11 validée au testeur MT5** (ticks réels, 01/01/2025 → 25/11/2026, 0,1 lot, dépôt 10 000 $) : NDX100 +2 991,22 $, SPX500
+   +413,92 $ ; Nasdaq + S&P : +3 405 $, 45 % de jours gagnants, pire jour −101 $, pire baisse −248 $ (V10 : +3 951 $, 47 %, −110 $,
+   −360 $). Les corrections EX-1 à EX-7 ne changent aucun trade (mêmes entrées, même résultat au centime).
+2. **Démo préparée pour la V11, jamais lancée en séance.** Profil MetaTrader « Etrave-demo » à deux graphiques M5 (NDX100 et
    SPX500), la V11 attachée à chacun avec lots fixes à 0 (demande de l'utilisateur du 26/11/2026 : la taille vient du risque
    d'Étrave ; compte démo de 10 000 $, 0,25 % ≈ 0,1 lot sur NDX100) (`robot/mt5/profil-Etrave-demo/`, fichiers UTF-16 générés puis relus par
    MetaTrader ; vérifié le 26/11/2026 : les deux EA se chargent, `trading_auto=1`, `lots_fixes=0.00`). **Lancement : double-clic sur
@@ -89,17 +87,16 @@ video/     (branche communication/outil-video) vidéos TikTok : récap de séanc
    pour que MetaTrader garde le profil. Un `[StartUp]` n'enregistre pas l'EA dans le profil. `robot/mt5/demo.ini` reste le modèle
    manuel. But : mesurer le **glissement réel** (entrées A, B, D et sortie de 15:50). Deux MetaTrader
    ne tournent pas ensemble : arrêter la démo pour un test.
-4. Interrupteur, sur 60 jours de trade, **par marché** (AUD-09, 27/11/2026 ; `export.SEUILS_INTERRUPTEUR`, recalculés depuis
+3. Interrupteur, sur 60 jours de trade, **par marché** (AUD-09, 27/11/2026 ; `export.SEUILS_INTERRUPTEUR`, recalculés depuis
    `reference.json` : pire fenêtre de 60 jours × 1,25 pour le total et la baisse, pire part de jours gagnants − 5 points ; données
    déjà vues, pas une preuve) : Nasdaq < 26,67 % de jours gagnants, total < −14,54 R ou baisse > 23,88 R ; S&P 500 < 18,33 %,
    < −44,83 R ou > 48,64 R. Avant : 28 %, −40 R, 66 R, calculés pour la V10 et un seul marché. Étrave le vérifie toutes les 10 min,
    l'affiche dans l'onglet Séance et envoie un Telegram une fois par franchissement (`interrupteur.txt`), à 60 jours complets. Il
    n'arrête pas l'EA : c'est à l'utilisateur de décider.
-5. Le risque par trade se décide une fois le glissement réel connu. C'est la décision de l'utilisateur.
-6. **Recherche du 26/11/2026** (hors dépôt, `donnees/`) : protections contre les retournements, coupes CHoCH M1 à M15, dojis,
-   confirmations M5/M15, filtres de tendance H1/H4/jour, range de 15/30 min, largeur du stop, carte de 26 critères à 9:35, deux grilles
-   de 219 744 et 2 636 928 combinaisons à 1 et 3 points, relues par des relecteurs indépendants : rien ne bat la V10 de façon solide ;
-   la V11 a été choisie comme meilleur compromis gain / pire baisse. Ne pas refaire ces tests ; la prochaine donnée neuve est la démo.
+4. Le risque par trade se décide une fois le glissement réel connu. C'est la décision de l'utilisateur.
+5. Les variantes testées jusqu'au 26/11/2026 (protections contre les retournements, coupes, filtres de tendance, confirmations,
+   largeur du stop, grilles de combinaisons) n'ont rien donné de mieux que la V10 ; la V11 est le compromis gain / pire baisse
+   retenu. Ne pas les refaire : la prochaine donnée neuve est la démo.
 
 ## Discipline
 - **Ne règle plus rien sur le Nasdaq à partir du backtest** : tout l'historique 2010 → 18/11/2026 a servi à la mise au point
@@ -134,15 +131,16 @@ video/     (branche communication/outil-video) vidéos TikTok : récap de séanc
   `StratV11_verrou_<symbole>_<magic>` et son battement `_bat` (minuteur toutes les 2 s, posé même sans interface).
 - **Risque plafonné à 1 %** (AUD-05, 27/11/2026, choix de Claude sur délégation de l'utilisateur) : `RISK_MAX` = 1.0 dans l'EA et
   Étrave ; une valeur plus haute est ramenée à 1 % (l'utilisateur avait enregistré 2,5 % : pire baisse −80 % dans la simulation de
-  la page). Ne le remonte jamais sans son accord.
+  la page). Ne le remonte jamais sans son accord. **Ce plafond ne vaut que pour le risque en %** : avec `InpFixedLots` > 0, la
+  taille vient des lots fixes et n'est pas plafonnée (calcul des lots dans `Strategy-V11.mq5`, vérifié le 27/11/2026).
 - Les numéros magiques 50930 à 50935 sont partagés avec d'anciennes versions (V9, ORB v6) ; le filet de sécurité et
   `EaPositions` surveillent 50930 à 50939. Préfixe d'état `StratV11_`. Compte
   **hedging** obligatoire.
 - Le risque réglé dans Étrave passe avant les 0,25 % de l'EA. Après une mise à jour depuis la v6, il peut encore valoir 0,5 %.
-- `etrave/reference.json` (26/11/2026) : la V11 rejouée par le simulateur de la recherche sur les données M1 du courtier, Nasdaq +
-  S&P 500, 2019-03-28 → 2026-11-25, une ligne par marché et par jour (`date, marche, r, range_sur_prix`, R de toutes les jambes).
-  `risque.simuler` compose jour par jour (somme des deux marchés), marge par ligne (15 unités). Régénérer avec
-  `donnees/recherche-combinaisons-2026-11-26/reference_v11.py` (variables `GRILLE_SIM`, `BOT_TRADING_DONNEES`). Avant : ORB v6.
+- `etrave/reference.json` (26/11/2026) : la V11 rejouée par le simulateur sur les données M1 du courtier, Nasdaq + S&P 500,
+  2019-03-28 → 2026-11-25, une ligne par marché et par jour (`date, marche, r, range_sur_prix`, R de toutes les jambes).
+  `risque.simuler` compose jour par jour (somme des deux marchés), marge par ligne (15 unités). Recalculer avec
+  `donnees/reference-v11/regenerer.sh` (hors dépôt, voir « Données hors dépôt »).
 - **Étrave sur Mac** : le dossier partagé est celui du Wine de MetaTrader 5 pour Mac
   (`…/net.metaquotes.wine.metatrader5/drive_c/users/$USER/AppData/Roaming/MetaQuotes/Terminal/Common/Files/Etrave`). Avant le
   26/11/2026, Étrave lisait `~/.etrave` : ses réglages n'atteignaient pas l'EA. Les tests n'utilisent jamais le vrai MetaTrader
@@ -167,10 +165,10 @@ video/     (branche communication/outil-video) vidéos TikTok : récap de séanc
   nom provisoire puis renommé. C'est la matière des ajustements futurs : glissement réel, spread, excursions, jours sans trade.
 - **Journal des bougies** (`bougies-<symbole>.csv`, `BougiesRow`) : les bougies M5 de 30 min avant le range jusqu'à la sortie, écrites
   une fois par jour avec la ligne « fin » (hors séance, une lecture). Sert la vidéo récap (`video/`). Testeur 12 mois NDX100 à 0,25 %
-  sur 300 000 $ avec ce journal : 448 trades, +64 931,85 $, identique à la référence.
+  sur 300 000 $ avec ce journal : 448 trades, +64 931,85 $, identique à la référence (avant X-13 ; après : 449 trades, +65 324,88 $).
 - **Vidéos** (`video/`) : rien de personnel ni de fichier sous licence dans le dépôt (prénom, montant, certificat, voix, clé, voix_id,
   sons Mixkit, police DIN) : tout est dans `~/.config/etrave-video/config.json` et des dossiers locaux. Un test le vérifie en lisant
-  les valeurs dans cette configuration. Démo, réel ou testeur : seulement dans la description de la publication (choix de l'utilisateur), jamais dans la vidéo, la couverture ni les noms de fichiers. Les
+  les valeurs dans cette configuration. Démo ou réel : seulement dans la description de la publication (choix de l'utilisateur), jamais dans la vidéo, la couverture ni les noms de fichiers. **Une vidéo faite à partir du testeur ne se publie pas** (décision de l'utilisateur du 27/11/2026) : c'est un essai. Les
   raisons des filtres et le type d'entrée (A, B, D) ne sont jamais montrés : c'est le secret de la stratégie, à la demande de l'utilisateur.
   Preuve : photo de l'onglet Historique de MetaTrader prise par l'outil le soir même (`video/historique.py`, à régler une fois),
   épinglée avec le R en fin de vidéo ; jamais d'image fabriquée à la place. Récap : voix en une seule prise par vidéo (`voix.recit`, sinon le timbre change d'une scène à l'autre), chemin du prix en points
@@ -197,17 +195,35 @@ video/     (branche communication/outil-video) vidéos TikTok : récap de séanc
   métier » ; `avant-de-publier.txt` dans chaque dossier de publication (« Contenu généré par l'IA » coché, « Contenu
   commercial » non coché tant que rien n'est vendu, publication à la main).
 - Jours fériés et demi-séances : aucun trade (`InpSkipShort`), même si `FlatMin` prévoit une sortie à 12:45.
-- **Page d'Étrave (« carte marine », 25/11/2026)** : thème clair par défaut, mode nuit ; chiffres en DIN (Bahnschrift sous Windows,
-  DIN Alternate en gras seulement sur Mac), aucune police extérieure (CSP). L'onglet Séance dessine les fenêtres des règles
-  (`REGLES_NY`, accord avec l'EA vérifié par un test) et ne les allume que si l'EA a des ordres ou des positions. Le magenta
-  (`--mark`) est réservé à l'aiguille « maintenant ». Les noms des variables CSS sont utilisés par le script : changer leurs valeurs,
-  pas leurs noms. Pas de « · » pour joindre des textes générés par la page.
+- **Page d'Étrave (« terminal de trading sombre », décision de l'utilisateur du 27/11/2026, remplace la « carte marine » du
+  25/11/2026)** : thème sombre par défaut quel que soit le réglage de l'ordinateur, clair au bouton (choix retenu sous la clé
+  `theme-terminal`). Chiffres en chasse fixe des polices du système (`--f-num` : ui-monospace, SF Mono, Menlo, Consolas, Cascadia
+  Mono ; Chrome sur Mac prend Menlo), texte en police du système ; aucune police extérieure (CSP). Une seule couleur d'accent, le
+  bleu du logo (actions, voyants « en marche », fenêtre en cours, courbe) ; vert et rouge réservés aux résultats, le rouge servant
+  aussi aux alarmes de sécurité (arrêt d'urgence plein, compte réel, EA arrêté, bandeaux graves) ; le magenta (`--mark`) est réservé
+  à l'aiguille « maintenant ». Coins de 2 px, filets fins, aucune ombre, contraste AA vérifié dans les deux thèmes. Hiérarchie de
+  l'onglet Séance : barre d'état (voyant par marché, démo/RÉEL, heure de New York, date de l'EA, « Arrêt d'urgence ») ; une ligne
+  par marché (sens, état du jour, entrée, stop, range, règle en R tirée de `pos_r`, résultat ouvert en grand, « Clôturer ») ;
+  interrupteur ; frise des règles (`REGLES_NY`, accord avec l'EA vérifié par un test ; fenêtres allumées seulement si l'EA a des
+  ordres ou des positions) ; compte ; ligne « Vidéo du jour » (champ `video` de `/api/etat`, rien si absent) ; courbe ; trades et
+  exports repliés. Les explications passent derrière un « ? » ou un pli (« Détail », « Les étapes ») dont l'ouverture est retenue
+  (`foldOpen`) ; les avertissements de sécurité restent visibles. Les noms des variables CSS sont utilisés par le script : changer
+  leurs valeurs, pas leurs noms. Pas de « · » pour joindre des textes générés par la page. Vérifier l'aspect à 390 px de large :
+  la fenêtre de Chrome ne descend pas sous 500 px, passer par un Chrome headless (`Emulation.setDeviceMetricsOverride`).
 - **Étrave, audit du 26/11/2026 (27/11/2026)** : bouton « Arrêt d'urgence » (mot ARRET : les deux cases décochées et une clôture
   demandée à chaque EA en marche, `pont.arret_urgence`) ; « Autoriser ce compte réel » (mot REEL, seulement le numéro d'un EA en
   marche sur un compte réel, `pont.autoriser_compte_reel`) ; risque de 0,05 à 1 %, mot RISQUE au-delà de 0,5 % ; « Fermer
   MetaTrader » refusé aussi sur le dernier état connu d'un EA muet (mot FERMER pour passer outre) ; « Installer l'EA » refusé
   pendant un trade ; au double-clic, MetaTrader n'est pas lancé si la compilation a échoué (`lancement.json`) ; version compilée
   (`ea_build`) affichée ; taille estimée et lot minimum dans l'onglet Risque (`risque.estimer_taille`) ; valeurs non finies refusées.
+- **Vidéo de fin de journée** (`etrave/fin_de_journee.py`, demande de l'utilisateur du 27/11/2026 : « lancé en fin de journée quand
+  tout est clôturé ») : chaque minute, Étrave regarde si la séance est close (au moins 5 min après `sortie_ny`, aucun trade, ordre ou
+  jambe dans le dernier état de chaque EA, ligne « fin » du jour écrite par chaque EA en marche), puis lance une fois par jour de New
+  York `outil.py auto` de l'outil vidéo installé (`~/Library/Application Support/Etrave/outil-video`, même dossier et même Python
+  que `video/installation.py` ; un test le vérifie sur la branche de l'outil). Commande fixe en liste, sans shell, processus détaché,
+  sortie dans `recap-auto.log`, jour retenu dans `video-fin-de-journee.txt` (avant le lancement : un échec n'est pas relancé chaque
+  minute). La tâche programmée de l'outil (22:20 et 23:50) reste en secours. `/api/etat` renvoie `video` (installé, dernier
+  lancement, ce qu'on attend).
 - **Revues de code** : les constats corrigés portent leur numéro (EA-xx, X-xx, PINE-xx, ET-xx, VID-xx) dans un commentaire du code et
   un contrôle (`robot/test_robot.py`, `etrave/test_*.py`, `video/test_video.py`). Avant de déclarer un constat réglé, vérifie le code.
   - **Corrigés le 25/11/2026** : X-13 (stop des D compté depuis le déclenchement, comme le Pine et le simulateur ; testeur 12 mois
@@ -280,23 +296,24 @@ video/     (branche communication/outil-video) vidéos TikTok : récap de séanc
       par son numéro (V-04, le nom du processus Wine), launchd et les notifications. La présentation garde ses bruitages calés à la
       main, dont click-select-1109 et sweep-small-fast-166 (jugés synthétiques par earshot). Réglé le 26/11/2026 : chemin du prix et
       épingle en bleu (VID-31) ; une séance illisible et la semaine ou le mois qu'elle bloque envoient une notification (VID-32) ;
-- Test des stops (25/11/2026, pré-enregistré, historique déjà vu) : fermer B/D au stop de A ≈ neutre ; B/D à l'entrée dès +0,5R,
-  stop à +0,5R au lieu de l'entrée, A à l'entrée quand une jambe part : moins bons. Le 26/11/2026, le stop posé des D seules à
-  l'entrée de A a été retenu (V11) comme compromis : environ 15 % de gain en moins, environ 30 % de pire baisse en moins.
+- Stops : fermer B/D au stop de A, B/D à l'entrée dès +0,5R, stop à +0,5R, A à l'entrée quand une jambe part ont été testés et
+  rejetés (25/11/2026) ; ne pas les refaire.
 
-## Données et archives (hors dépôt)
-- **Sauvegarde complète de l'ancien dépôt** (recherche, rapports, simulateur, toutes les branches et étiquettes, avant le nouveau
-  départ du 25/11/2026) : `~/Desktop/Bot-Trading-sauvegarde-2026-11-25.bundle`. Pour la consulter :
-  `git clone ~/Desktop/Bot-Trading-sauvegarde-2026-11-25.bundle <dossier>`.
-- Archive de la recherche : `~/Desktop/Strategy v10.zip`. Nasdaq M1 Dukascopy 2018 → 18/11/2026 : `~/Desktop/Nasdaq 8 ans/`.
-- `donnees/` (ignoré par git) : données de travail locales.
+## Données hors dépôt
+- `donnees/` (ignoré par git, dans le clone `~/Documents/GitHub/Bot-Trading`) ne contient que `reference-v11/` : le calcul de
+  `etrave/reference.json` (scripts, simulateur, données M1 du courtier, `regenerer.sh`, notice `LISEZMOI.md`). Vérifié le
+  27/11/2026 : il redonne le fichier de `main` à l'octet près. **Seule copie : ne pas le supprimer.**
+- La recherche (ancien dépôt, archives, données Dukascopy, études du 24 au 26/11/2026) a été supprimée le 27/11/2026 à la demande
+  de l'utilisateur. Ne pas la reconstituer.
 
 ## Git
 - Le dépôt GitHub est **public**. Aucune donnée personnelle dans le code (chat ID, numéro de compte réel, jetons).
 - Historique repris à zéro le 25/11/2026 à la demande de l'utilisateur : `main` ne contient que la version finale.
 - Ne mettre sur `main` que le robot, Étrave et ce qui les sert. Pas de dossier de recherche.
-- `communication/roadmap-tiktok` : logo d'Étrave et roadmap TikTok de l'utilisateur, hors `main` à sa demande (PR #1 fermée sans
-  fusion le 25/11/2026). Elle part d'un ancien `main` (70a7576) : ses fichiers du robot sont périmés.
+- Logo d'Étrave : hors dépôt, dans `~/Documents/Etrave-communication/logo/`. La branche `communication/roadmap-tiktok` et sa
+  roadmap TikTok (périmée : V10, copy trading abandonné) ont été supprimées le 27/11/2026.
+- **Historique public** : les fichiers actuels sont propres, mais l'historique public n'a jamais été nettoyé : ne jamais affirmer
+  le contraire. L'utilisateur a décidé le 27/11/2026 de ne pas le réécrire.
 - `.gitattributes` : fins de ligne Windows pour `.bat`, `.cmd`, `.ini` et `.set` (à l'extraction et dans le zip de GitHub).
 - Le jeton `gh` n'a pas la portée `workflow` : pousser un fichier `.github/workflows` est refusé.
 - Pousser sur `main` ne déploie rien.
@@ -314,12 +331,20 @@ une session qui ne les voit pas (cloud, VPS), l'essentiel :
 - argent réel : aucune action sur un compte réel sans confirmation explicite de l'utilisateur ; mise en production dans l'ordre
   testeur MetaTrader → démo → réel.
 
-Si une règle commune contredit ce fichier, ce fichier tient (décision de l'utilisateur du 26/11/2026) : signale la contradiction,
-ne change pas le code pour elle. Contradictions connues :
+Si une règle commune contredit une décision du propriétaire écrite dans ce fichier, la décision tient (règle du 26/11/2026 de
+`~/.claude/CLAUDE.md`) : signale la contradiction, ne change pas le code pour elle. Une ligne écrite par Claude sans l'accord du
+propriétaire ne retire jamais une règle de sécurité. Contradictions connues :
 - **Perte journalière maximale** : absente de la V11. Le plafond de −2R par jour a été testé le 26/11/2026 et rejeté (gain −11 % sur
-  le Nasdaq, −23 % sur le S&P). Ne l'ajoute pas sans demande.
+  le Nasdaq, −23 % sur le S&P). L'utilisateur ne veut pas de seuil d'arrêt en dollars (sa décision du 25/11/2026). Ne l'ajoute pas
+  sans demande.
 - **Secrets** : pas de `.env`. Le jeton Telegram est dans `reglages.txt` d'Étrave (dossier commun de MetaTrader, hors dépôt) ou dans
   les entrées de l'EA.
 - **Heure de New York** : l'EA la calcule depuis l'heure du serveur et la règle d'heure d'été américaine (MQL5 n'a pas de base de
   fuseaux horaires).
 - **Période de test séparée** : il n'en reste plus sur le Nasdaq (voir « Discipline ») ; la seule donnée neuve est la démo.
+- **Taille de position maximale** : en lots fixes (`InpFixedLots` > 0), le plafond de 1 % ne s'applique pas. Pas de plafond sur les
+  lots fixes : décision de l'utilisateur du 27/11/2026.
+- **Commissions du backtest** : le Pine n'a pas de commission par défaut (limite du backtest TradingView, que l'utilisateur lit à la
+  main) ; l'EA et le simulateur comptent le spread réel et le glissement.
+- **Tests des règles de trading** : l'EA n'a que des contrôles du texte du code (`robot/test_robot.py`) et le testeur MetaTrader ;
+  pas de test de comportement en MQL5.

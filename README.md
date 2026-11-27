@@ -186,6 +186,11 @@ pas (l'EA saute alors l'entrée).
 
 L'interface et l'EA se parlent par des fichiers du dossier commun de MetaTrader (`…\MetaQuotes\Terminal\Common\Files\Etrave` ;
 sur Mac, le même dossier dans le Wine de MetaTrader 5 pour Mac).
+**Vidéo du jour** : si l'outil vidéo est installé (branche `communication/outil-video`, `python3 video/outil.py installer`), Étrave
+le lance elle-même une fois la séance close : au moins 5 minutes après la sortie de 15:50 (12:45 une demi-séance), sans aucun trade
+ni ordre en cours, et quand chaque EA a écrit sa ligne de fin de séance. Une fois par jour ; la tâche programmée de l'outil (22:20 et
+23:50) reste en secours si Étrave est fermée.
+
 L'interface ne passe aucun ordre : la fermer ne change rien à l'EA. Elle n'écoute que sur 127.0.0.1, avec un jeton tiré au hasard à
 chaque lancement ; n'ouvre jamais son port sur internet.
 
