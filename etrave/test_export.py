@@ -248,3 +248,53 @@ def test_seuils_de_l_interrupteur_par_marche_recalcules_depuis_la_reference():
     assert "AUD-09" in source and "déjà vues" in source and "pas une preuve" in source
     # le résumé écrit les seuils du marché, plus ceux de la V10 en dur
     assert "seuil 28 %" not in source and "(seuil −40 R)" not in source and "(seuil 66 R)" not in source
+
+
+# ───────────────────────── exports et journaux sur le Bureau (demande de l'utilisateur du 27/11/2026) ─────────────────────────
+def test_les_exports_vont_sur_le_bureau(tmp_path):
+    accueil = str(tmp_path / "moi")
+    os.makedirs(os.path.join(accueil, "Desktop"))
+    assert export.dossier_exports("/commun", env={"HOME": accueil}) == os.path.join(accueil, "Desktop", "Étrave exports")
+
+
+def test_les_exports_sur_le_bureau_windows():
+    attendu = os.path.join(r"C:\Users\trader", "Desktop", "Étrave exports")
+    assert export.dossier_exports("/commun", env={"USERPROFILE": r"C:\Users\trader"}, existe=lambda chemin: True) == attendu
+
+
+def test_sans_bureau_les_exports_restent_dans_le_dossier_commun(tmp_path):
+    assert export.dossier_exports("/commun", env={"HOME": str(tmp_path)}) == os.path.join("/commun", export.SOUS_DOSSIER)
+
+
+def test_un_dossier_d_exports_impose_passe_avant(tmp_path):
+    assert export.dossier_exports("/commun", env={"ETRAVE_EXPORTS": "/ailleurs", "HOME": str(tmp_path)}) == "/ailleurs"
+
+
+def test_copie_des_journaux(dossier, tmp_path):
+    cible = str(tmp_path / "bureau" / "journaux")
+    ecrire(os.path.join(dossier, "alertes-NDX100.csv"), ["1795800000;NDX100;STOP ABSENT"])
+    ecrire(os.path.join(dossier, "reglages.txt"), ["telegram_jeton=123456789:" + "A" * 35])           # le jeton : jamais copié
+    os.makedirs(os.path.join(dossier, "testeur"), exist_ok=True)
+    ecrire(os.path.join(dossier, "testeur", "trades-NDX100.csv"), ["ligne du testeur"])
+    sources = sorted(n for n in os.listdir(dossier) if n.split("-")[0] in ("trades", "execution", "seances", "alertes") and n.endswith(".csv"))
+    assert sources                                                                     # le dossier d'essai a bien des journaux
+    copies = export.copier_journaux(dossier, cible)
+    assert sorted(copies) == sources == sorted(os.listdir(cible))                       # ni réglages, ni état, ni testeur, ni .tmp
+    for nom in sources:
+        assert open(os.path.join(cible, nom), "rb").read() == open(os.path.join(dossier, nom), "rb").read()
+    assert export.copier_journaux(dossier, cible) == []                                  # rien n'a changé : rien n'est recopié
+    with open(os.path.join(dossier, "alertes-NDX100.csv"), "a", encoding="utf-8") as f:
+        f.write("1795800060;NDX100;FERMETURE DE SÉCURITÉ\r\n")
+    assert export.copier_journaux(dossier, cible) == ["alertes-NDX100.csv"]              # un journal a changé : recopié
+    assert "FERMETURE DE SÉCURITÉ" in open(os.path.join(cible, "alertes-NDX100.csv"), encoding="utf-8").read()
+
+
+def test_copie_des_journaux_par_defaut_a_cote_des_exports(dossier):
+    export.copier_journaux(dossier)
+    assert "trades-NDX100.csv" in os.listdir(os.path.join(export.dossier_exports(dossier), export.SOUS_DOSSIER_JOURNAUX))
+
+
+def test_copie_des_journaux_sans_journal(tmp_path):
+    vide = str(tmp_path / "vide")
+    os.makedirs(vide)
+    assert export.copier_journaux(vide, str(tmp_path / "cible")) == [] and not os.path.exists(str(tmp_path / "cible"))

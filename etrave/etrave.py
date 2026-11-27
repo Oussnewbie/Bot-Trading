@@ -331,8 +331,23 @@ class Application:
             self.journal(f"export trimestriel impossible ({type(erreur).__name__}), nouvel essai plus tard")
 
     def exports(self):
-        return {"exports": export.exports_faits(self.dossier), "dossier": export.dossier_exports(self.dossier),
+        racine = export.dossier_exports(self.dossier)
+        return {"exports": export.exports_faits(self.dossier), "dossier": racine,
+                "journaux": os.path.join(racine, export.SOUS_DOSSIER_JOURNAUX),
                 "enCours": export.trimestre_de(export.aujourdhui_ny())}
+
+    def sauvegarder_journaux(self):
+        """Copie les journaux de l'EA qui ont changé dans « Étrave exports/journaux/ » (demande de l'utilisateur du 27/11/2026).
+        Ne lève jamais d'erreur : une copie ratée est refaite au passage suivant."""
+        try:
+            os.makedirs(export.dossier_exports(self.dossier), exist_ok=True)   # visible sur le Bureau avant le premier trade
+            copies = export.copier_journaux(self.dossier)
+        except Exception as erreur:
+            self.journal(f"copie des journaux impossible ({type(erreur).__name__}), nouvel essai dans 10 minutes")
+            return []
+        if copies:
+            self.journal(f"journaux copiés dans {os.path.join(export.dossier_exports(self.dossier), export.SOUS_DOSSIER_JOURNAUX)} : {', '.join(copies)}")
+        return copies
 
     # ── routes
     def traiter(self, methode, chemin, parametres, corps):
@@ -642,6 +657,7 @@ def main(arguments=None):
 
     def verifier_interrupteur_puis_reprogrammer():      # AUD-09 : toutes les 10 minutes, comme l'export
         serveur.application.verifier_interrupteur()
+        serveur.application.sauvegarder_journaux()        # 27/11/2026 : copie des journaux sur le Bureau, s'ils ont changé
         minuterie = threading.Timer(INTERRUPTEUR_PERIODE_S, verifier_interrupteur_puis_reprogrammer)
         minuterie.daemon = True
         minuterie.start()

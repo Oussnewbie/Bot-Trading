@@ -1033,7 +1033,8 @@ function renderExports() {
   const n = exportsInfo ? exportsInfo.exports.length : 0;
   $('sum-exports').textContent = !exportsInfo ? '' : n ? `${n} export${n > 1 ? 's' : ''}` : 'aucun pour l’instant';
   if (!exportsInfo) return host.replaceChildren(el('div', { class: 'empty' }, 'Liste des exports indisponible.'));
-  const dossier = el('p', { class: 'hint' }, 'Dossier : ', el('span', { class: 'num' }, exportsInfo.dossier));
+  const dossier = el('p', { class: 'hint' }, 'Dossier : ', el('span', { class: 'num' }, exportsInfo.dossier),
+    exportsInfo.journaux ? [el('br'), 'Copie des journaux (mise à jour toutes les 10 minutes s’ils changent) : ', el('span', { class: 'num' }, exportsInfo.journaux)] : null);
   if (!exportsInfo.exports.length) return host.replaceChildren(dossier, el('div', { class: 'empty' }, `Aucun export pour l’instant. Le premier trimestre complet sera exporté tout seul ; « Exporter le trimestre en cours » écrit dès maintenant ${exportsInfo.enCours}.`));
   const rows = exportsInfo.exports.map((x) => el('tr', {},
     el('td', {}, x.nom),
@@ -1257,7 +1258,7 @@ function renderConnections() {
   }
   const sending = live.find((e) => e.telegram_envoi === 'bloque');
   const telegram = fold('telegram', 'Alertes Telegram', true, ready ? 'configuré' : 'non configuré',
-    el('div', { class: 'hint' }, 'Facultatif. Ordres placés, entrées, pyramide, stop déplacé et clôtures (en R, en % et en argent) arrivent sur ton téléphone.'),
+    el('div', { class: 'hint' }, 'Facultatif. Connexion réussie, ordres posés, entrées exécutées et clôtures (en R et en dollars) arrivent sur ton téléphone. Les alertes de sécurité s’affichent en tête de cette page, pas sur Telegram.'),
     statusLine(ready, ready ? (live.length && !live.some((e) => e.telegram) ? 'Configuré (l’EA le prend dans les 2 secondes)' : 'Configuré') : c.telegramJeton ? 'Jeton enregistré, discussion à choisir' : 'Non configuré'),
     sending ? el('div', { class: 'banner bad' }, MT5_BLOCKED) : null,
     // les cinq étapes : ouvertes tant que Telegram n'est pas configuré, puis repliées (le choix fait ici est retenu)

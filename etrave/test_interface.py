@@ -1285,3 +1285,45 @@ def test_la_page_affiche_les_alertes():
     assert "alerteMasquee(cle)" in bloc and "'Masquer'" in bloc and "class: 'banner bad'" in bloc
     assert "innerHTML" not in page                                                    # le texte de l'EA n'est jamais du HTML
     assert "const cle = `alerte:${a.quand}:${a.symbole}`;" in bloc
+
+
+# ───────────────────────── copie des journaux sur le Bureau (demande de l'utilisateur du 27/11/2026) ─────────────────────────
+def test_etrave_sauvegarde_les_journaux(dossier):
+    with open(os.path.join(dossier, "trades-NDX100.csv"), "w", encoding="utf-8", newline="") as f:
+        f.write("1763322600;2026-11-16;15:50;NDX100;1;1.50;1.3000;65.20;10000.00;Fin de journée;1;USD\r\n")
+    app = etrave.Application(dossier, mt5_ouvert=lambda: False, mt5_terminaux=lambda etats: [])
+    assert app.sauvegarder_journaux() == ["trades-NDX100.csv"]
+    assert app.sauvegarder_journaux() == []                                            # inchangé : pas recopié
+    assert app.exports()["journaux"] == os.path.join(export.dossier_exports(dossier), export.SOUS_DOSSIER_JOURNAUX)
+
+
+def test_une_copie_ratee_des_journaux_ne_bloque_rien(dossier, monkeypatch):
+    def en_panne(d):
+        raise OSError("disque plein")
+    monkeypatch.setattr(export, "copier_journaux", en_panne)
+    messages = []
+    app = etrave.Application(dossier, mt5_ouvert=lambda: False, mt5_terminaux=lambda etats: [], journal=messages.append)
+    assert app.sauvegarder_journaux() == [] and "copie des journaux impossible" in messages[0]
+
+
+def test_la_copie_des_journaux_tourne_toute_seule():
+    source = open(os.path.join(RACINE, "etrave", "etrave.py"), encoding="utf-8").read()
+    boucle = source[source.index("def verifier_interrupteur_puis_reprogrammer():"):]
+    assert "serveur.application.sauvegarder_journaux()" in boucle[:boucle.index("minuterie.start()")]
+    page = open(os.path.join(RACINE, "etrave", "page.html"), encoding="utf-8").read()
+    assert "exportsInfo.journaux" in page
+
+
+def test_le_dossier_d_exports_existe_des_le_depart(dossier):
+    """Plan du 27/11/2026 : « Étrave exports » est créé tout seul, avant le premier trade, pour que l'utilisateur sache où regarder."""
+    app = etrave.Application(dossier, mt5_ouvert=lambda: False, mt5_terminaux=lambda etats: [])
+    assert app.sauvegarder_journaux() == [] and os.path.isdir(export.dossier_exports(dossier))
+
+
+def test_la_page_dit_ce_que_telegram_recoit():
+    """Demande de l'utilisateur du 27/11/2026 : Telegram ne reçoit plus la pyramide ni le stop déplacé ; les alertes de sécurité
+    s'affichent dans Étrave."""
+    page = open(os.path.join(RACINE, "etrave", "page.html"), encoding="utf-8").read()
+    assert "pyramide, stop déplacé" not in page
+    assert "Connexion réussie, ordres posés, entrées exécutées et clôtures (en R et en dollars)" in page
+    assert "Les alertes de sécurité s’affichent en tête de cette page" in page

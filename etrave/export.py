@@ -6,7 +6,7 @@ L'EA écrit, dans le dossier commun de MetaTrader (`…\\Common\\Files\\Etrave`)
     seances-<symbole>.csv     une ligne « decision » à 9:35 et une ligne « fin » après la sortie, trade ou non (en-tête)
 Les journaux du testeur de stratégie vont dans le sous-dossier `testeur\\` : ils ne sont jamais exportés ici.
 
-`exporter()` écrit `exports/<trimestre>/` (2027-T1 = janvier à mars 2027, dates de New York) : les lignes du trimestre, un résumé
+`exporter()` écrit `<dossier_exports>/<trimestre>/`, « Étrave exports » sur le Bureau depuis le 27/11/2026 (2027-T1 = janvier à mars 2027, dates de New York) : les lignes du trimestre, un résumé
 lisible (resume.md), le même en données (resume.json) et la description des colonnes (colonnes.md). Le dossier est construit sous un
 nom provisoire puis renommé : on ne voit jamais un export à moitié écrit. `exporter_trimestres_finis()` fait l'export de chaque
 trimestre terminé qui n'en a pas encore ; Étrave l'appelle au démarrage puis toutes les 6 heures.
@@ -23,7 +23,10 @@ import time
 
 import pont
 
-SOUS_DOSSIER = "exports"
+SOUS_DOSSIER = "exports"                # ancien emplacement, gardé quand l'ordinateur n'a pas de Bureau
+NOM_BUREAU = "Étrave exports"           # demande de l'utilisateur du 27/11/2026 : exports et journaux sur le Bureau
+SOUS_DOSSIER_JOURNAUX = "journaux"
+JOURNAUX_COPIES = ("trades-*.csv", "execution-*.csv", "seances-*.csv", "alertes-*.csv")   # jamais reglages.txt : il a le jeton
 MARGE_JOURS = 3            # un trimestre est terminé 3 jours après sa fin : sa dernière séance a eu le temps d'être écrite
 # Interrupteur du robot, jugé marché par marché (ET-16) sur les 60 derniers jours de trade de chaque marché.
 JOURS_INTERRUPTEUR = 60
@@ -147,8 +150,42 @@ def termine(trimestre, aujourdhui):
     return aujourdhui > bornes(trimestre)[1] + datetime.timedelta(days=MARGE_JOURS)
 
 
-def dossier_exports(dossier):
-    return os.path.join(dossier, SOUS_DOSSIER)
+def dossier_exports(dossier, env=None, existe=os.path.isdir):
+    """Où vont les exports. `ETRAVE_EXPORTS` d'abord (essais), puis « Étrave exports » sur le Bureau (demande de l'utilisateur du
+    27/11/2026 ; Mac : ~/Desktop, Windows : %USERPROFILE%\\Desktop), sinon l'ancien sous-dossier `exports` du dossier commun de
+    MetaTrader (ordinateur sans Bureau)."""
+    env = os.environ if env is None else env
+    if env.get("ETRAVE_EXPORTS"):
+        return env["ETRAVE_EXPORTS"]
+    accueil = env.get("USERPROFILE") or env.get("HOME") or os.path.expanduser("~")
+    bureau = os.path.join(accueil, "Desktop")
+    return os.path.join(bureau, NOM_BUREAU) if existe(bureau) else os.path.join(dossier, SOUS_DOSSIER)
+
+
+def copier_journaux(dossier, destination=None):
+    """Demande de l'utilisateur du 27/11/2026 : une copie des journaux bruts de l'EA (trades, exécution, séances, alertes) dans
+    « Étrave exports/journaux/ », refaite dès qu'un journal a changé. Rien ne se perd si MetaTrader est réinstallé. Jamais les
+    réglages (ils contiennent le jeton Telegram), ni l'état, ni les journaux du testeur. Chaque fichier est copié sous un nom
+    provisoire puis renommé : jamais de copie à moitié écrite. Retourne les noms copiés."""
+    destination = destination or os.path.join(dossier_exports(dossier), SOUS_DOSSIER_JOURNAUX)
+    copies = []
+    for motif in JOURNAUX_COPIES:
+        for source in sorted(glob.glob(os.path.join(dossier, motif))):
+            nom = os.path.basename(source)
+            cible = os.path.join(destination, nom)
+            try:
+                origine = os.stat(source)
+                if os.path.exists(cible):
+                    copie = os.stat(cible)
+                    if copie.st_size == origine.st_size and copie.st_mtime >= origine.st_mtime:
+                        continue
+                os.makedirs(destination, exist_ok=True)
+                shutil.copy2(source, cible + ".tmp")
+                os.replace(cible + ".tmp", cible)
+                copies.append(nom)
+            except OSError:
+                continue                    # fichier verrouillé un instant : recopié au passage suivant
+    return copies
 
 
 def exports_faits(dossier):

@@ -205,7 +205,10 @@ chaque lancement ; n'ouvre jamais son port sur internet.
   sortie, les frais et le résultat ;
 - `seances-<symbole>.csv` : ce que l'EA a décidé à 9:35 et l'état du jour après la sortie, qu'il y ait eu un trade ou non.
 
-Après chaque trimestre (dates de New York), Étrave écrit tout seul `exports/<trimestre>/` : les lignes du trimestre, un résumé
+Les exports vont sur le Bureau, dans le dossier **« Étrave exports »** (créé tout seul ; sans Bureau, dans `exports/` du dossier
+d'Étrave). Toutes les 10 minutes, Étrave y recopie aussi, dans `journaux/`, chaque journal de l'EA qui a changé (trades,
+exécution, séances, alertes ; jamais les réglages, qui contiennent le jeton Telegram) : rien ne se perd si MetaTrader est
+réinstallé. Après chaque trimestre (dates de New York), Étrave écrit tout seul `Étrave exports/<trimestre>/` : les lignes du trimestre, un résumé
 (`resume.md`, et `resume.json` pour l'analyse), la description des colonnes, le rapprochement avec le journal des trades et l'état
 de l'interrupteur, marché par marché (ses seuils ont été calculés pour un marché). Le bouton « Exporter le trimestre en cours » le fait à la demande. Dans le testeur de stratégie, les journaux vont
 dans le sous-dossier `testeur\` et ne sont jamais exportés.
