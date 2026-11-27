@@ -22,6 +22,9 @@ chacun).
   dans Étrave (`objectif_r` : 0 = sans objectif, de 1 à 10 R), figé à l'exécution de A. Objectif de A touché : tout est clôturé (A, ajout, B,
   D) et plus aucune entrée ce jour-là. Simulation 2025-2026 (Nasdaq + S&P 500) : +146,4 R contre +156,4 R sans objectif, même pire baisse ;
   2019-2026 : +344,5 R contre +338,5 R. Données déjà vues : ce n'est pas un réglage tiré du backtest, c'est le choix de l'utilisateur.
+  Testeur MT5 (ticks réels, 01/01/2025 → 25/11/2026, 0,1 lot, 10 000 $) : objectif à 0, NDX100 +2 991,22 $ (identique au centime à la V11) ;
+  objectif 4 R, NDX100 +2 962,55 $ et SPX500 +389,45 $ (sans : +413,92 $). Objectif touché 3 fois (NDX100 21/09/2026, SPX500 21/02 et
+  09/04/2025), les mêmes jours que la simulation ; les jambes ouvertes fermées aussitôt, aucune entrée ensuite.
 - Hors sujet : bitcoin, or, devises, DAX.
 
 ## Échanges
