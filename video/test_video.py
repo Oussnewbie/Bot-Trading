@@ -1602,3 +1602,148 @@ def test_video_du_testeur_jamais_publiee(tmp_path, monkeypatch, garde_fous):
     assert faites == [D(2026, 11, 2)] and (vieux / "recap-2026-11-03.mp4").read_bytes() == b"\0"
     assert any("ranger" in t for t, _ in garde_fous)
     assert publication.COMPTE["testeur"] in (vieux / "description.txt").read_text(encoding="utf-8")
+
+
+@pytest.mark.skipif(not __import__("shutil").which("ffmpeg"), reason="ffmpeg absent")
+def test_v04_photo_de_la_fenetre_de_metatrader_et_pas_d_un_rectangle(tmp_path, monkeypatch):
+    """V-04 : sur Mac, `screencapture -R` photographiait un RECTANGLE de l'écran : une fenêtre posée sur MetaTrader, l'écran
+    verrouillé ou un dialogue partaient épinglés comme « Historique MetaTrader ». La fenêtre de MetaTrader est photographiée par son
+    numéro (`screencapture -l`, même recouverte), et une image presque unie ou noire est refusée. Aucune vraie capture ici."""
+    import historique
+    appels = []
+    liste = "Google Chrome|943|0|1440|778\nFinder|12|0|300|200\nMetaTrader 5|1300|0|1400|900\nMetaTrader 5|1301|3|200|100"
+
+    class Sortie:
+        def __init__(self, stdout=""):
+            self.stdout, self.stderr, self.returncode = stdout, "", 0
+
+    def faux(commande, **k):
+        appels.append(commande)
+        if commande[0] == "osascript":
+            return Sortie(liste)
+        open(commande[-1], "wb").write(b"\x89PNG")
+        return Sortie()
+    monkeypatch.setattr(historique.subprocess, "run", faux)
+    historique._fenetre_mac(str(tmp_path / "f.png"))
+    capture = next(c for c in appels if c[0] == "screencapture")
+    assert "-R" not in capture and capture[capture.index("-l") + 1] == "1300"
+    liste = "Google Chrome|943|0|1440|778"
+    with pytest.raises(historique.PhotoImpossible, match="introuvable"):
+        historique._fenetre_mac(str(tmp_path / "g.png"))
+    monkeypatch.undo()
+    noire, mire = str(tmp_path / "noire.png"), str(tmp_path / "mire.png")
+    _ffmpeg("-f", "lavfi", "-i", "color=c=black:s=800x400", "-frames:v", "1", noire)
+    _ffmpeg("-f", "lavfi", "-i", "testsrc2=s=800x400", "-frames:v", "1", mire)
+    assert historique.image_presque_unie(noire) and not historique.image_presque_unie(mire)
+    for source, attendu in ((noire, None), (mire, "photo")):
+        monkeypatch.setattr(historique, "photographier_fenetre", lambda png, s=source: __import__("shutil").copy(s, png))
+        lignes = []
+        cadre = {"historique": {"x": 0, "y": 10, "largeur": 600, "entete": 30, "ligne": 30}}
+        r = historique.photographier_jour(cadre, str(tmp_path), D(2026, 11, 18), 3, lignes.append,
+                                          datetime.datetime(2026, 11, 18, 21, 20, tzinfo=UTC))
+        assert (r is None and "presque unie" in " ".join(lignes)) if attendu is None else (r and os.path.exists(r)), lignes
+
+
+# ───────────────────────── V-27 : de bout en bout, sans Chrome ni réseau ─────────────────────────
+def _voix_simulee(monkeypatch, dossier):
+    """voix.replique remplacée par une voix SIMULÉE (un son par mot, un silence entre les scènes) au format d'ElevenLabs : aucun
+    appel réseau (voix.appeler interdit), aucun crédit. La découpe par scène (voix.recit) et le rythme (voix.rythmer) sont les vrais."""
+    import math
+    import struct
+    import wave
+    import voix
+    monkeypatch.setattr(voix, "appeler", lambda *a, **k: pytest.fail("appel réseau à ElevenLabs"))
+
+    def replique(texte, config, avant="", apres=""):
+        taux, mots, t, morceaux = 16000, [], 0.15, []
+        for scene in texte.split(voix.SEPARATEUR):
+            for m in scene.split():
+                mots.append({"mot": m, "debut": round(t, 3), "fin": round(t + 0.2, 3)})
+                t += 0.3
+            t += 0.6
+        n = int((t + 0.2) * taux)
+        echantillons = bytearray(2 * n)
+        for m in mots:
+            for i in range(int(m["debut"] * taux), int(m["fin"] * taux)):
+                v = int(9000 * math.sin(2 * math.pi * 180 * i / taux) * math.sin(math.pi * (i / taux - m["debut"]) / 0.2))
+                struct.pack_into("<h", echantillons, 2 * i, v)
+        chemin = os.path.join(dossier, f"voix-{len(texte)}.wav")
+        with wave.open(chemin, "wb") as w:
+            w.setnchannels(1)
+            w.setsampwidth(2)
+            w.setframerate(taux)
+            w.writeframes(bytes(echantillons))
+        return {"fichier": chemin, "duree": round(n / taux, 3), "mots": mots, "texte": texte}
+    monkeypatch.setattr(voix, "replique", replique)
+
+
+def _rendu_sans_chrome(monkeypatch):
+    """Le rendu HyperFrames (Chrome) remplacé par une image unie de la durée du projet ; tout le reste (voix, bruitages, musique,
+    mixage, contrôle, couverture, publication) tourne pour de vrai avec ffmpeg."""
+    def executer(commande, dossier, delai, quoi):
+        sortie = commande[commande.index("--output") + 1]
+        duree = float(re.search(r'data-composition-id="main" data-start="0" data-duration="([\d.]+)"',
+                                open(os.path.join(dossier, "index.html"), encoding="utf-8").read()).group(1)) if os.path.exists(
+            os.path.join(dossier, "index.html")) else 45.3
+        _ffmpeg("-f", "lavfi", "-i", f"color=c=white:s=108x192:d={duree}:r=30", "-pix_fmt", "yuv420p", sortie)
+    monkeypatch.setattr(recap, "executer", executer)
+
+
+def _sons(tmp_path):
+    """Le dossier des sons : un vrai fichier pour chaque nom du catalogue (un bruit bref), et une musique."""
+    import shutil
+    sons = tmp_path / "sons"
+    sons.mkdir()
+    _ffmpeg("-f", "lavfi", "-i", "anoisesrc=d=0.6:c=pink:r=48000:a=0.5", "-af", "afade=t=out:st=0.1:d=0.5", str(sons / "bref.wav"))
+    for s in mixage.catalogue().values():
+        shutil.copy(sons / "bref.wav", sons / s["fichier"])
+    _ffmpeg("-f", "lavfi", "-i", "sine=f=330:d=12:r=48000", "-ac", "2", str(tmp_path / "musique.wav"))
+    return str(sons), str(tmp_path / "musique.wav")
+
+
+def _duree(chemin):
+    import subprocess
+    return float(subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", chemin],
+                                capture_output=True, text=True, timeout=60).stdout)
+
+
+@pytest.mark.skipif(not __import__("shutil").which("ffmpeg"), reason="ffmpeg absent")
+def test_v27_de_bout_en_bout_sans_chrome(tmp_path, monkeypatch, garde_fous):
+    """V-27 : recap.fabriquer, recap_periode.fabriquer, presentation.fabriquer, voix.recit et rythmer, mixage (voix, bruitages,
+    musique, assemblage), le contrôle du son et la publication n'étaient jamais exécutés par les tests. Ici, tout tourne pour de vrai
+    (ffmpeg), du journal de l'EA au dossier de publication, avec une voix simulée et une image unie à la place de Chrome."""
+    import recap_periode
+    _voix_simulee(monkeypatch, str(tmp_path))
+    _rendu_sans_chrome(monkeypatch)
+    sons, musique = _sons(tmp_path)
+    journaux = tmp_path / "journaux"
+    journaux.mkdir()
+    ecrire_jours(str(journaux), [(D(2026, 11, 2), {"positions": ((-1, "A", 9, 36, 100, 10, 2, 112, "Stop"),
+                                                                 (-1, "D1", 9, 41, 99, 15, 50, 90, "Fin de journée"))})])
+    c = config_auto(tmp_path, sons=sons, musique=musique, police=os.path.expanduser(recap.POLICE), voix_id="simulee",
+                    cache_voix=str(tmp_path / "cache"))
+    dossiers = publication.auto(c, str(journaux), lambda t: None, D(2026, 11, 2))
+    assert len(dossiers) == 1
+    assert sorted(os.listdir(dossiers[0])) == ["avant-de-publier.txt", "couverture.jpg", "description.txt", "recap-2026-11-02.mp4"]
+    rendu = tmp_path / "rendus" / "recap-2026-11-02"
+    info = json.load(open(rendu / "recap.json", encoding="utf-8"))
+    assert abs(_duree(os.path.join(dossiers[0], "recap-2026-11-02.mp4")) - info["duree"]) < 0.2
+    assert "Niveau" in (rendu / "controle.txt").read_text(encoding="utf-8") and not (rendu / "son").exists()
+    assert any(t == "Étrave" for t, _ in garde_fous)                       # « prêt à publier »
+    # la semaine (sans publication : la fabrication seule)
+    semaine = tmp_path / "semaine"
+    semaine.mkdir()
+    ecrire_jours(str(semaine), [(D(2026, 11, 2), {}), (D(2026, 11, 3), {"positions": PERTE})])
+    p = recap_periode.charger(str(semaine), D(2026, 11, 2), D(2026, 11, 6), "semaine")
+    (tmp_path / "rendu-semaine").mkdir()
+    video = recap_periode.fabriquer(p, c, str(tmp_path / "rendu-semaine"), lambda t: None)
+    assert _duree(video) > 5 and os.path.exists(tmp_path / "rendu-semaine" / "son" / "controle.txt")
+    # la présentation, avec un profil d'essai FICTIF (aucune donnée personnelle)
+    (tmp_path / "repliques").mkdir()
+    for nom, _, _ in presentation.REPLIQUES:
+        _ffmpeg("-f", "lavfi", "-i", "sine=f=200:d=1.5:r=44100", "-f", "mp3", str(tmp_path / "repliques" / f"{nom}.mp3"))
+    _ffmpeg("-f", "lavfi", "-i", "testsrc2=s=600x450", "-frames:v", "1", str(tmp_path / "certificat.png"))
+    profil = {"nom": "Alex", "annees": 4, "montant": "1 000,00 $", "certificat": str(tmp_path / "certificat.png"),
+              "masques_certificat": [[10, 10, 200, 60]], "voix": str(tmp_path / "repliques")}
+    video = presentation.fabriquer(dict(c, presentation=profil), lambda t: None)
+    assert abs(_duree(video) - presentation.DUREE) < 0.2

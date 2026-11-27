@@ -104,28 +104,62 @@ def _fenetre_windows(png):
                     "-frames:v", "1", png], input=pixels.raw, check=True, timeout=60)
 
 
+# V-04 (audit du 27/11/2026) : la photo était un RECTANGLE de l'écran (`screencapture -R` à la place de la « fenêtre de devant ») :
+# une autre fenêtre posée sur MetaTrader, l'écran verrouillé ou un dialogue partaient épinglés comme « Historique MetaTrader ». La
+# fenêtre est maintenant trouvée par son numéro (CoreGraphics, lu par osascript en JavaScript : rien à installer) et photographiée
+# seule (`screencapture -l`, même recouverte par une autre fenêtre), puis l'image est contrôlée (presque unie ou noire : refusée).
+LISTE_FENETRES = """ObjC.import('CoreGraphics'); ObjC.import('Foundation');
+var l = ObjC.castRefToObject($.CGWindowListCopyWindowInfo($.kCGWindowListOptionAll | $.kCGWindowListExcludeDesktopElements, 0));
+var r = [];
+for (var i = 0; i < l.count; i++) { var w = l.objectAtIndex(i); var b = w.objectForKey('kCGWindowBounds');
+  r.push([ObjC.unwrap(w.objectForKey('kCGWindowOwnerName')), ObjC.unwrap(w.objectForKey('kCGWindowNumber')),
+          ObjC.unwrap(w.objectForKey('kCGWindowLayer')), ObjC.unwrap(b.objectForKey('Width')), ObjC.unwrap(b.objectForKey('Height'))].join('|')); }
+r.join('\\n');"""
+NOMS_METATRADER = ("metatrader", "terminal64", "wine")
+
+
+def fenetre_metatrader(liste):
+    """Le numéro de la plus grande fenêtre ordinaire (couche 0, au moins 400 x 300) de MetaTrader pour Mac dans la liste
+    « propriétaire|numéro|couche|largeur|hauteur » ; une fenêtre dont le propriétaire dit MetaTrader passe avant une fenêtre Wine."""
+    candidates = []
+    for ligne in liste.splitlines():
+        morceaux = ligne.split("|")
+        if len(morceaux) != 5:
+            continue
+        nom, numero, couche, l, h = morceaux
+        try:
+            numero, couche, l, h = int(numero), int(couche), float(l), float(h)
+        except ValueError:
+            continue
+        nom_ = nom.lower()
+        if couche == 0 and l >= 400 and h >= 300 and any(n in nom_ for n in NOMS_METATRADER):
+            candidates.append(("metatrader" in nom_ or "terminal64" in nom_, l * h, numero))
+    return max(candidates)[2] if candidates else None
+
+
 def _fenetre_mac(png):
-    """La fenêtre de MetaTrader pour Mac (Wine), par sa position à l'écran ; macOS demande une fois l'autorisation d'enregistrer
-    l'écran (et de piloter System Events)."""
-    script = ('tell application "System Events"\n'
-              '  repeat with p in (every process whose background only is false)\n'
-              '    if name of p contains "MetaTrader" or name of p contains "terminal64" or name of p contains "wine" then\n'
-              '      if (count of windows of p) > 0 then\n'
-              '        set w to front window of p\n'
-              '        set {x, y} to position of w\n'
-              '        set {l, h} to size of w\n'
-              '        return (x as text) & "," & (y as text) & "," & (l as text) & "," & (h as text)\n'
-              '      end if\n'
-              '    end if\n'
-              '  end repeat\n'
-              'end tell\nreturn ""')
-    r = subprocess.run(["osascript", "-e", script], capture_output=True, text=True, timeout=60)
-    cadre = r.stdout.strip()
-    if not cadre:
-        raise PhotoImpossible(f"Fenêtre de MetaTrader introuvable ({r.stderr.strip() or 'ouverte et visible ?'}).")
-    subprocess.run(["screencapture", "-x", "-R", cadre, png], check=True, timeout=60)
+    """La fenêtre de MetaTrader pour Mac (Wine), par son numéro ; macOS demande une fois l'autorisation d'enregistrer l'écran."""
+    r = subprocess.run(["osascript", "-l", "JavaScript", "-e", LISTE_FENETRES], capture_output=True, text=True, timeout=60)
+    numero = fenetre_metatrader(r.stdout or "")
+    if numero is None:
+        raise PhotoImpossible(f"Fenêtre de MetaTrader introuvable ({(r.stderr or '').strip()[:120] or 'ouverte, pas réduite ?'}).")
+    subprocess.run(["screencapture", "-x", "-o", "-l", str(numero), png], check=True, timeout=60)
     if not os.path.exists(png):
         raise PhotoImpossible("screencapture n'a rien écrit (autorisation « Enregistrement de l'écran » ?).")
+
+
+def image_presque_unie(chemin, ecart_min=6.0):
+    """V-04 : une image presque unie (écran noir d'une session verrouillée, fenêtre vide) : l'écart type de sa luminosité, sur une
+    réduction à 96 x 96, est sous `ecart_min` (sur 255), ou 97 % de ses points ont presque la même valeur."""
+    brut = subprocess.run(["ffmpeg", "-v", "error", "-i", chemin, "-vf", "scale=96:96,format=gray", "-frames:v", "1", "-f", "rawvideo", "-"],
+                          capture_output=True, timeout=60).stdout
+    if not brut:
+        return True
+    n = len(brut)
+    moyenne = sum(brut) / n
+    ecart = (sum((v - moyenne) ** 2 for v in brut) / n) ** 0.5
+    proches = sum(1 for v in brut if abs(v - moyenne) <= 6) / n
+    return ecart < ecart_min or proches > 0.97
 
 
 def photographier_fenetre(png):
@@ -198,8 +232,14 @@ def photographier_jour(config, dossier_journaux, jour, n_positions, journal=prin
         try:
             subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", plein, "-vf", f"crop={l}:{haut}:{x}:{y}", "-frames:v", "1", sortie],
                            check=True, timeout=60)
-        except (subprocess.CalledProcessError, OSError) as err:
+        except (subprocess.CalledProcessError, OSError, subprocess.TimeoutExpired) as err:
             journal(f"Photo de l'historique impossible (recadrage) : {err}")
+            return None
+        # V-04 : jamais une image noire ou vide épinglée comme preuve
+        if image_presque_unie(sortie):
+            os.remove(sortie)
+            journal("Photo de l'historique refusée : l'image est presque unie (écran verrouillé, fenêtre vide ou cachée ?) : "
+                    "la vidéo se fait sans.")
             return None
         return sortie
     finally:
