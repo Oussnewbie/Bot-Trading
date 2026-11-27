@@ -523,7 +523,7 @@ def test_l_ea_reste_lisible_par_metatrader():
         assert re.search(rf"^(void|double|string|bool)\s+{fonction}\(", code, re.M), f"{fonction} appelée mais pas définie"
     assert "void OnTimer()" in code and "EventSetTimer(UI_PERIOD)" in code and "EventKillTimer()" in code
     # les messages lents partent après les ordres : plus aucun envoi direct depuis Notify
-    notify = re.search(r"void Notify\(string msg\)(.*?)\n  }", EA, re.S).group(1)
+    notify = re.search(r"void Notify\(string msg, bool tg = false\)(.*?)\n  }", EA, re.S).group(1)   # signature du 27/11/2026
     assert "SendTelegram" not in notify and "SendWhatsApp" not in notify
     assert EA.index("CheckEntries();\n   SyncPosition();") < EA.index("   FlushNotifs();\n   Panel();")
 
@@ -1221,3 +1221,67 @@ def test_message_du_double_clic_efface_une_fois_l_ea_compile(dossier, monkeypatc
     monkeypatch.setattr(mt5, "ea_a_jour", lambda donnees, source: True)             # compilé avec F7
     assert app.ouvrir_mt5_si_demande(forcer=True) is False                          # MetaTrader déjà ouvert : rien à lancer
     assert app.etat()["lancement"] is None and not os.path.exists(os.path.join(dossier, etrave.FICHIER_LANCEMENT))
+
+
+# ───────────────────────── alertes de sécurité de l'EA (demande de l'utilisateur du 27/11/2026) ─────────────────────────
+# Elles ne vont plus sur Telegram : l'EA les écrit dans alertes-<symbole>.csv, Étrave les affiche en tête de page pendant 24 heures.
+def test_alertes_de_l_ea(dossier):
+    maintenant = 1795800000
+    with open(os.path.join(dossier, "alertes-NDX100.csv"), "w", encoding="utf-8", newline="") as f:
+        f.write(f"{maintenant - 90000};NDX100;HORLOGE : vieille de plus de 24 h\r\n")
+        f.write("ligne abîmée\r\n")
+        f.write(f"pas-un-nombre;NDX100;texte\r\n")
+        f.write(f"{maintenant - 3600};NDX100;STOP ABSENT chez le courtier, reposé à 21500.0\r\n")
+        f.write(f"{maintenant - 60};NDX100;\r\n")                                         # texte vide : ignoré
+        f.write(f"{maintenant - 30};NDX100;JOUR MANQUÉ aujourd'hui · trop tard ; reprise demain\r\n")   # « ; » dans le texte
+    with open(os.path.join(dossier, "alertes-SPX500.csv"), "w", encoding="utf-8", newline="") as f:
+        f.write(f"{maintenant - 600};SPX500;" + "x" * 5000 + "\r\n")
+        f.write(f"{maintenant + 86400};SPX500;dans le futur : horloge fausse\r\n")
+    alertes = pont.lire_alertes(dossier, maintenant=maintenant)
+    assert [a["quand"] for a in alertes] == [maintenant - 30, maintenant - 600, maintenant - 3600]   # la plus récente d'abord
+    assert alertes[0] == {"quand": maintenant - 30, "symbole": "NDX100", "texte": "JOUR MANQUÉ aujourd'hui · trop tard ; reprise demain"}
+    assert len(alertes[1]["texte"]) == pont.ALERTE_TEXTE_MAX
+
+
+def test_alertes_au_plus_dix(dossier):
+    maintenant = 1795800000
+    with open(os.path.join(dossier, "alertes-NDX100.csv"), "w", encoding="utf-8", newline="") as f:
+        for i in range(25):
+            f.write(f"{maintenant - i};NDX100;alerte {i}\r\n")
+    alertes = pont.lire_alertes(dossier, maintenant=maintenant)
+    assert len(alertes) == pont.ALERTES_MAX == 10 and alertes[0]["texte"] == "alerte 0"
+
+
+def test_alertes_sans_fichier(dossier):
+    assert pont.lire_alertes(dossier) == []
+
+
+def test_un_gros_fichier_d_alertes_n_est_lu_que_par_la_fin(dossier):
+    maintenant = 1795800000
+    with open(os.path.join(dossier, "alertes-NDX100.csv"), "w", encoding="utf-8", newline="") as f:
+        f.write(f"{maintenant - 100};NDX100;{'a' * 300}\r\n" * 5000)                  # environ 1,6 Mo d'anciennes lignes
+        f.write(f"{maintenant - 5};NDX100;la dernière\r\n")
+    assert pont.lire_alertes(dossier, maintenant=maintenant)[0]["texte"] == "la dernière"
+
+
+def test_l_etat_donne_les_alertes(dossier):
+    with open(os.path.join(dossier, "alertes-NDX100.csv"), "w", encoding="utf-8", newline="") as f:
+        f.write(f"{int(time.time()) - 10};NDX100;FERMETURE DE SÉCURITÉ : 1 position fermée au marché\r\n")
+    app = etrave.Application(dossier, mt5_ouvert=lambda: False, mt5_terminaux=lambda etats: [])
+    assert app.etat()["alertes"][0]["symbole"] == "NDX100"
+
+
+def test_accord_ea_etrave_sur_les_alertes():
+    """Le nom du fichier et l'ordre des colonnes écrits par l'EA sont ceux qu'Étrave lit."""
+    assert 'UI_DIR + "alertes-" + gSymFile + ".csv"' in EA
+    assert 'IntegerToString((long)TimeGMT()) + ";" + gSymFile + ";" + txt' in EA
+    assert pont.COLONNES_ALERTE == ("quand", "symbole", "texte")
+
+
+def test_la_page_affiche_les_alertes():
+    page = open(os.path.join(RACINE, "etrave", "page.html"), encoding="utf-8").read()
+    bloc = page[page.index("for (const a of state.alertes || [])"):]
+    bloc = bloc[:bloc.index("\n  }\n")]
+    assert "alerteMasquee(cle)" in bloc and "'Masquer'" in bloc and "class: 'banner bad'" in bloc
+    assert "innerHTML" not in page                                                    # le texte de l'EA n'est jamais du HTML
+    assert "const cle = `alerte:${a.quand}:${a.symbole}`;" in bloc

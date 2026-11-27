@@ -487,6 +487,8 @@ const pct = (v, d = 0) => `${v.toLocaleString('fr-FR', { minimumFractionDigits: 
 const riskText = (v) => `${v.toLocaleString('fr-FR', { maximumFractionDigits: 2 })} %`;
 const fmtDate = (ts) => new Date(ts * 1000).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: '2-digit' });
 /** La date du journal de l'EA (« 2026.11.11 ») au format français : 11/11/26. */
+const alerteMasquee = (cle) => { try { return localStorage.getItem(cle) === '1'; } catch (error) { return false; } };
+function masquerAlerte(cle) { try { localStorage.setItem(cle, '1'); } catch (error) { /* stockage indisponible : sans gravité */ } }
 const dateFr = (d) => { const m = /^(\d{4})[.-](\d{2})[.-](\d{2})/.exec(String(d || '')); return m ? `${m[3]}/${m[2]}/${m[1].slice(2)}` : String(d || ''); };
 /** Un résultat : flèche + signe + couleur, pour ne jamais reposer sur la couleur seule. */
 function delta(v, text) {
@@ -571,6 +573,15 @@ function renderHeader() {
   }
   // AUD-01 (audit du 26/11/2026) : sur un compte réel, l'EA ne prend aucun trade tant que ce compte n'est pas autorisé ici (mot
   // REEL). Une fois autorisé, une ligne le rappelle, avec de quoi retirer l'autorisation.
+  // Demande de l'utilisateur du 27/11/2026 : les alertes de sécurité de l'EA (stop absent chez le courtier, fermeture de sécurité,
+  // ordre refusé, jour manqué, heure fausse…) s'affichent ici, plus sur Telegram. Celles des dernières 24 heures, jusqu'à « Masquer ».
+  for (const a of state.alertes || []) {
+    const cle = `alerte:${a.quand}:${a.symbole}`;
+    if (alerteMasquee(cle)) continue;
+    const quand = new Date(a.quand * 1000).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+    banners.push(el('div', { class: 'banner bad' }, el('b', {}, `Alerte ${a.symbole}, ${quand} : `), `${a.texte} `,
+      el('button', { class: 'btn small', type: 'button', onclick: () => { masquerAlerte(cle); renderHeader(); } }, 'Masquer')));
+  }
   const autorise = state.reglages.reelAutorise;
   const nonAutorises = new Map(live.filter((e) => e.compte_type === 'reel' && e.compte_autorise === false).map((e) => [e.compte_login, e]));
   for (const login of nonAutorises.keys()) {

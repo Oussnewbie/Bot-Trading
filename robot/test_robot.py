@@ -7,6 +7,8 @@ import math
 import os
 import re
 
+import pytest
+
 ICI = os.path.dirname(os.path.abspath(__file__))
 EA = open(os.path.join(ICI, "Strategy-V11.mq5"), encoding="utf-8-sig").read()
 
@@ -584,7 +586,7 @@ def test_ex2_risque_reel_d_plafonne():
     corps = fonction("bool LegOpen(SLeg &g, int dir, double stop, string quoi, double ref = 0)")
     assert "MathAbs(px - gEntry) / ts * tv" in corps
     assert "double capR = MathFloor(gV8RiskMoney / perLotReal / step + 0.000001) * step;" in corps
-    assert "Money(-lots * (estD && perLotReal > 0 ? perLotReal : perLot))" in corps
+    assert "Dollars(-lots * (estD && perLotReal > 0 ? perLotReal : perLot))" in corps   # format des messages du 27/11/2026
 
 
 def test_ex3_journal_version_2():
@@ -833,3 +835,168 @@ def test_aud12_le_script_plafonne_le_risque_reel_des_d_comme_l_ea():
     assert "qD := math.min(qD, capD)" in PINE
     assert PINE.index("qD := math.min(qD, capD)") < PINE.index("if qD > 0 and (v8.dir == 1 ? high > cur.entry : low < cur.entry)")
     assert "float  lots = math.min(legLots(g.risk), legLots(math.abs(trig - slOrdre)))" in PINE
+
+
+# ───────────────────────── notifications (demande de l'utilisateur du 27/11/2026) ─────────────────────────
+# Telegram (et WhatsApp, push) ne reçoit plus que : la connexion réussie, les ordres posés, les entrées exécutées et les clôtures
+# avec leur résultat en R et en dollars. Les alertes de sécurité (⚠) vont dans Étrave. Le reste ne va plus que dans le journal.
+
+def appels(nom):
+    """Le texte de chaque appel `nom(...)` de l'EA (définition exclue), parenthèses des chaînes ignorées."""
+    resultat, debut = [], 0
+    while True:
+        i = EA.find(nom + "(", debut)
+        if i < 0:
+            return resultat
+        debut = i + 1
+        if EA[i - 1].isalnum() or EA[i - 1] == "_" or EA[max(0, i - 5):i] == "void ":
+            continue
+        profondeur, chaine, j = 0, False, i + len(nom)
+        while True:
+            c = EA[j]
+            if chaine:
+                if c == "\\":
+                    j += 1
+                elif c == '"':
+                    chaine = False
+            elif c == '"':
+                chaine = True
+            elif c == "(":
+                profondeur += 1
+            elif c == ")":
+                profondeur -= 1
+                if profondeur == 0:
+                    break
+            j += 1
+        resultat.append(EA[i:j + 1])
+
+
+def test_telegram_ne_recoit_que_connexion_ordres_entrees_et_clotures():
+    vers_telegram = [a for a in appels("Notify") if re.search(r",\s*true\)$", a)]
+    reperes = ["Connexion réussie", "ORDRES PLACÉS", "Notify(id + \" à \" + PxF(gEntry)", " exécuté(e) : ", "\"ACHAT CLÔTURÉ · \"", "\"ENTRÉE \" + g.nom + \" CLÔTURÉE · \""]
+    assert len(vers_telegram) == len(reperes)
+    for repere in reperes:
+        assert sum(repere in a for a in vers_telegram) == 1, repere
+    corps = fonction("void Notify(string msg, bool tg = false)")
+    # tout va au journal ; push, WhatsApp et Telegram seulement sur demande
+    assert corps.index("Print(full);") < corps.index("if(!tg)") < corps.index("SendNotification(") < corps.index("gQueue[n] = full;")
+
+
+def test_les_alertes_de_securite_vont_dans_etrave():
+    corps = fonction("void Notify(string msg, bool tg = false)")
+    assert "if(StringFind(msg, I_WARN) == 0)\n      AlerteEtrave(msg);" in corps
+    assert corps.index("AlerteEtrave(msg);") < corps.index("if(!tg)")
+    ecriture = fonction("void AlertesWrite(string line)")
+    assert 'UI_DIR + "alertes-" + gSymFile + ".csv"' in ecriture and "FileSeek(h, 0, SEEK_END);" in ecriture
+    assert "ArrayResize(gAlertWait, 0);" in ecriture                          # écrites, la file se vide
+    alerte = fonction("void AlerteEtrave(string msg)")
+    assert "string txt = StringSubstr(msg, StringLen(I_WARN));" in alerte      # sans le pictogramme ⚠ (la page n'en a pas)
+    # une ligne : secondes UTC ; symbole ; texte sans pictogramme, sans retour à la ligne ni point-virgule
+    assert "IntegerToString((long)TimeGMT()) + \";\" + gSymFile + \";\" + txt" in alerte
+    assert 'StringReplace(txt, ";", ",");' in alerte and 'StringReplace(txt, "\\n", " · ");' in alerte
+    assert "if(MQLInfoInteger(MQL_TESTER) || !InpUseUI)" in alerte
+    minuteur = fonction("void OnTimer()")
+    assert 'AlertesWrite("");' in minuteur                                   # fichier verrouillé : réessayé toutes les 2 s
+
+
+def test_aucune_alerte_de_securite_n_est_envoyee_sur_telegram():
+    for appel in appels("Notify"):
+        if appel.startswith("Notify(I_WARN"):
+            assert not re.search(r",\s*true\)$", appel), appel
+
+
+def test_message_de_connexion_une_fois_par_configuration():
+    lecture = fonction("void ReadSettings()")
+    assert 'if(gTgOn && gTgHello != gTgToken + "|" + gTgChat)' in lecture
+    bloc = lecture[lecture.index('if(gTgOn && gTgHello'):]
+    assert bloc.index('gTgHello = gTgToken + "|" + gTgChat;') < bloc.index("Notify(I_PLUG")
+    assert lecture.index("gRiskPct  = risk;") < lecture.index("if(gTgOn && gTgHello")   # le risque annoncé est celui appliqué
+    message = [a for a in appels("Notify") if "Connexion réussie" in a][0]
+    assert "ACCOUNT_LOGIN" not in message                                    # pas de numéro de compte sur Telegram
+
+
+def test_les_clotures_donnent_le_resultat_en_R_et_en_dollars():
+    for appel in appels("Notify"):
+        if "CLÔTUR" in appel and re.search(r",\s*true\)$", appel):
+            assert "RTxt2(r)" in appel and "Dollars(net)" in appel and "IcoSortie(why)" in appel
+
+
+def nombre_fr(v, dec):
+    """Copie en Python de Nombre() : valeur absolue, espaces entre milliers, virgule décimale."""
+    s = f"{abs(v):.{dec}f}"
+    ent, _, fra = s.partition(".")
+    groupes = []
+    while len(ent) > 3:
+        groupes.insert(0, ent[-3:])
+        ent = ent[:-3]
+    groupes.insert(0, ent)
+    return " ".join(groupes) + ("," + fra if fra else "")
+
+
+def signe(v, dec):
+    """Copie de Signe() : rien pour une valeur qui s'arrondit à zéro (jamais « -0,00 »)."""
+    a = round(v, dec)
+    return "+" if a > 0 else "-" if a < 0 else ""
+
+
+def dollars(v, devise="USD"):
+    return signe(v, 2) + nombre_fr(v, 2) + (" $" if devise == "USD" else " " + devise)
+
+
+@pytest.mark.parametrize("v, attendu", [(0, "0,00 $"), (-0.004, "0,00 $"), (0.004, "0,00 $"), (65.2, "+65,20 $"), (-51, "-51,00 $"),
+                                        (-1234.5, "-1 234,50 $"), (999.999, "+1 000,00 $"), (1e9, "+1 000 000 000,00 $")])
+def test_montant_en_dollars(v, attendu):
+    assert dollars(v) == attendu
+
+
+def test_montant_dans_une_autre_devise():
+    assert dollars(65.2, "EUR") == "+65,20 EUR"
+
+
+@pytest.mark.parametrize("r, attendu", [(0, "0,00 R"), (-0.001, "0,00 R"), (-1.02, "-1,02 R"), (2.5, "+2,50 R"), (12345.6, "+12 345,60 R")])
+def test_resultat_en_R(r, attendu):
+    assert signe(r, 2) + nombre_fr(r, 2) + " R" == attendu
+
+
+def test_les_textes_de_l_ea_sont_ceux_recopies_ici():
+    assert "string Signe(double v, int dec) { double a = NormalizeDouble(v, dec); return a > 0 ? \"+\" : a < 0 ? \"-\" : \"\"; }" in EA
+    assert "string RTxt2(double r)   { return Signe(r, 2) + Nombre(r, 2) + \" R\"; }" in EA
+    assert "return Signe(v, 2) + Nombre(v, 2) + (c == \"USD\" ? \" $\" : \" \" + c);" in fonction("string Dollars(double v)")
+    nombre = fonction("string Nombre(double v, int dec)")
+    assert "DoubleToString(MathAbs(v), dec)" in nombre and "(n - i) % 3 == 0" in nombre and '"," + StringSubstr(s, p + 1)' in nombre
+
+
+def utf16(code):
+    """Copie de Ico() : un pictogramme au-delà de 0xFFFF s'écrit en deux unités UTF-16 (paire de substitution)."""
+    if code <= 0xFFFF:
+        return [code]
+    return [0xD800 + ((code - 0x10000) >> 10), 0xDC00 + ((code - 0x10000) & 0x3FF)]
+
+
+@pytest.mark.parametrize("code", [0x26A0, 0x1F4CC, 0x1F3AF, 0x1F6D1, 0x1F552, 0x1F50C, 0x1F4C8])
+def test_pictogrammes_au_dela_de_0xffff(code):
+    unites = utf16(code)
+    assert b"".join(u.to_bytes(2, "little") for u in unites).decode("utf-16-le") == chr(code)
+    ico = fonction("string Ico(uint code)")
+    assert "0xD800 + ((code - 0x10000) >> 10)" in ico and "0xDC00 + ((code - 0x10000) & 0x3FF)" in ico
+
+
+def test_pictogramme_du_motif_de_sortie():
+    motif = fonction("string IcoSortie(string why)")
+    for why, ico in (("Objectif", "I_TARGET"), ("Stop", "I_STOP"), ("Stop à l'entrée", "I_SCALE"), ("Stop remonté", "I_LOCKED"),
+                     ("Fin de journée", "I_CLOCK"), ("Sortie au temps", "I_CLOCK"), ("Fermeture manuelle", "I_HAND")):
+        assert f'if(why == "{why}")\n      return {ico};' in motif, why
+    assert 'if(StringFind(why, "nterface") >= 0)\n      return I_HAND;' in motif   # clôture depuis Étrave
+    assert motif.rstrip().endswith("return I_WARN;\n  }")                       # filet de sécurité, stop absent chez le courtier
+
+
+def test_les_messages_telegram_sont_au_format_francais():
+    """Prix, points, pourcentages, lots, R et montants : espaces entre milliers et virgule, comme les R et les dollars."""
+    for appel in appels("Notify"):
+        if re.search(r",\s*true\)$", appel):
+            for ancien in ("Px(", "Pts(", "PctS(", "RTxt(", "RiskTxt(", "Money(", "DoubleToString("):
+                assert not re.search(r"(?<![A-Za-z])" + re.escape(ancien), appel), (ancien, appel[:60])
+            assert '" trades"' not in appel or "gN > 1" in appel                    # « 1 trade », « 2 trades »
+    assert "string PxF(double p)  { return (NormalizeDouble(p, _Digits) < 0 ? \"-\" : \"\") + Nombre(p, _Digits); }" in EA
+    assert "string PtsF(double d) { return (NormalizeDouble(d, _Digits) < 0 ? \"-\" : \"\") + Nombre(d, _Digits) + \" pts\"; }" in EA
+    assert "string PctF(double v) { return Signe(v, 2) + Nombre(v, 2) + \" %\"; }" in EA

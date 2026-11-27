@@ -298,6 +298,8 @@ bool     gTgOn      = false;    // Telegram actif
 string   gTgToken   = "", gTgChat = "";
 string   gTgLast    = "jamais"; // résultat du dernier envoi Telegram : ok, bloque (WebRequest interdit) ou refus <code>
 string   gTgTest    = "";       // réponse à la dernière demande d'essai : <numéro>:<résultat>
+string   gTgHello   = "";       // configuration Telegram (jeton|discussion) déjà saluée par le message de connexion
+string   gAlertWait[];          // alertes de sécurité pour Étrave pas encore écrites (fichier verrouillé)
 long     gTestSeen  = -1;       // dernière demande d'essai vue (-1 = fichier jamais lu)
 long     gCloseSeen = 0;        // dernière demande de clôture traitée
 bool     gCloseDue  = false;
@@ -557,8 +559,47 @@ string Pts(double d)  { return DoubleToString(d, _Digits) + " pts"; }
 string PctS(double v)   { return (v >= 0 ? "+" : "") + DoubleToString(v, 2) + " %"; }
 string RiskTxt(double v) { return DoubleToString(v, 2) + " %"; }
 string Money(double v)  { return (v >= 0 ? "+" : "") + DoubleToString(v, 2) + " " + AccountInfoString(ACCOUNT_CURRENCY); }
-// Pictogrammes des messages, écrits par leur numéro pour ne pas dépendre de l'encodage de ce fichier
-string Ico(ushort code) { return ShortToString(code) + " "; }
+// Messages Telegram (demande de l'utilisateur du 27/11/2026) : nombres à la française (espaces entre milliers, virgule décimale),
+// signe à part, jamais « -0,00 »
+string Nombre(double v, int dec)
+  {
+   string s = DoubleToString(MathAbs(v), dec);
+   int    p = StringFind(s, ".");
+   string ent = p < 0 ? s : StringSubstr(s, 0, p);
+   string out = "";
+   int    n = StringLen(ent);
+   for(int i = 0; i < n; i++)
+     {
+      if(i > 0 && (n - i) % 3 == 0)
+         out += " ";
+      out += StringSubstr(ent, i, 1);
+     }
+   return out + (p < 0 ? "" : "," + StringSubstr(s, p + 1));
+  }
+string Signe(double v, int dec) { double a = NormalizeDouble(v, dec); return a > 0 ? "+" : a < 0 ? "-" : ""; }
+string RTxt2(double r)   { return Signe(r, 2) + Nombre(r, 2) + " R"; }
+string Dollars(double v)
+  {
+   string c = AccountInfoString(ACCOUNT_CURRENCY);
+   return Signe(v, 2) + Nombre(v, 2) + (c == "USD" ? " $" : " " + c);
+  }
+string PxF(double p)  { return (NormalizeDouble(p, _Digits) < 0 ? "-" : "") + Nombre(p, _Digits); }
+string PtsF(double d) { return (NormalizeDouble(d, _Digits) < 0 ? "-" : "") + Nombre(d, _Digits) + " pts"; }
+string PctF(double v) { return Signe(v, 2) + Nombre(v, 2) + " %"; }
+string SoldeTxt()
+  {
+   double b = AccountInfoDouble(ACCOUNT_BALANCE);
+   string c = AccountInfoString(ACCOUNT_CURRENCY);
+   return (b < 0 ? "-" : "") + Nombre(b, 2) + (c == "USD" ? " $" : " " + c);
+  }
+// Pictogrammes des messages, écrits par leur numéro pour ne pas dépendre de l'encodage de ce fichier. Au-delà de 0xFFFF
+// (punaise, cible, panneau stop…), deux unités UTF-16 (paire de substitution) : les chaînes MQL5 sont en UTF-16.
+string Ico(uint code)
+  {
+   if(code <= 0xFFFF)
+      return ShortToString((ushort)code) + " ";
+   return ShortToString((ushort)(0xD800 + ((code - 0x10000) >> 10))) + ShortToString((ushort)(0xDC00 + ((code - 0x10000) & 0x3FF))) + " ";
+  }
 #define I_ORDERS  Ico(0x23F0)   // réveil
 #define I_BUY     Ico(0x2B06)   // flèche vers le haut
 #define I_SELL    Ico(0x2B07)   // flèche vers le bas
@@ -571,6 +612,38 @@ string Ico(ushort code) { return ShortToString(code) + " "; }
 #define I_WARN    Ico(0x26A0)   // attention
 #define I_GEAR    Ico(0x2699)   // réglage
 #define I_HAND    Ico(0x270B)   // main
+#define I_PIN     Ico(0x1F4CC)  // punaise : ordres posés
+#define I_UP      Ico(0x1F4C8)  // courbe qui monte : achat exécuté
+#define I_DOWN    Ico(0x1F4C9)  // courbe qui descend : vente exécutée
+#define I_PLUG    Ico(0x1F50C)  // prise : connexion réussie
+#define I_TARGET  Ico(0x1F3AF)  // cible : objectif atteint
+#define I_STOP    Ico(0x1F6D1)  // panneau stop : stop touché
+#define I_SCALE   Ico(0x2696)   // balance : stop au prix d'entrée
+#define I_LOCKED  Ico(0x1F512)  // cadenas : stop remonté après la pyramide
+#define I_CLOCK   Ico(0x1F552)  // horloge : sortie de fin de journée
+#define I_BANK    Ico(0x1F4B0)  // sac d'argent : solde
+
+// Pictogramme du motif de sortie, dans les messages Telegram des clôtures
+string IcoSortie(string why)
+  {
+   if(why == "Objectif")
+      return I_TARGET;
+   if(why == "Stop")
+      return I_STOP;
+   if(why == "Stop à l'entrée")
+      return I_SCALE;
+   if(why == "Stop remonté")
+      return I_LOCKED;
+   if(why == "Fin de journée")
+      return I_CLOCK;
+   if(why == "Sortie au temps")
+      return I_CLOCK;
+   if(why == "Fermeture manuelle")
+      return I_HAND;
+   if(StringFind(why, "nterface") >= 0)
+      return I_HAND;
+   return I_WARN;
+  }
 
 //+------------------------------------------------------------------+
 //| Notifications : journal, push MT5, WhatsApp (CallMeBot), Telegram |
@@ -634,13 +707,20 @@ string SendTelegram(string msg)   // "ok", "bloque" (MetaTrader interdit l'adres
    return "ok";
   }
 
-// Journal et notification push tout de suite ; WhatsApp et Telegram passent par une file, vidée par FlushNotifs()
-// en fin de OnTick, un message par appel : un envoi lent (WebRequest attend jusqu'à 3 secondes) ne retarde ni l'entrée ni un stop.
-void Notify(string msg)
+// Tout message va au journal. Demande de l'utilisateur du 27/11/2026 : la notification push, WhatsApp et Telegram ne reçoivent que
+// les messages marqués tg (connexion réussie, ordres posés, entrées exécutées, clôtures en R et en dollars) ; les alertes de
+// sécurité (pictogramme ⚠ en tête) vont dans Étrave (AlerteEtrave). WhatsApp et Telegram passent par une file, vidée par
+// FlushNotifs() en fin de OnTick, un message par appel : un envoi lent (WebRequest attend jusqu'à 3 secondes) ne retarde ni
+// l'entrée ni un stop.
+void Notify(string msg, bool tg = false)
   {
    string full = BOT + " · " + _Symbol + "\n" + msg;
    Print(full);
    if(MQLInfoInteger(MQL_TESTER) || MQLInfoInteger(MQL_OPTIMIZATION))
+      return;
+   if(StringFind(msg, I_WARN) == 0)
+      AlerteEtrave(msg);
+   if(!tg)
       return;
    if(InpPush)
      {
@@ -1246,11 +1326,11 @@ bool RecordClose(bool force)   // false = un deal de sortie n'est pas encore dan
    Txt(GV + "res_" + (string)gPosId, tx, px > 0 ? px : gEntry, " " + RTxt(r), r > 0.05 ? clrSeaGreen : r < -0.05 ? clrTomato : clrGray, ANCHOR_LEFT);
    double pct = gBalStart > 0 ? 100.0 * net / gBalStart : 0;
    AppendTrade(tx, r, net, why);
-   Notify((r > 0.05 ? I_WIN : r < -0.05 ? I_LOSS : I_FLAT) + (gDir == 1 ? "ACHAT CLÔTURÉ : " : "VENTE CLÔTURÉE : ") + RTxt(r) + " · " + PctS(pct) + " · " + Money(net) +
-          "\n" + why + (gPyr ? ", avec pyramide" : "") + (px > 0 ? " · sortie à " + Px(px) : "") +
-          "\nSolde : " + DoubleToString(AccountInfoDouble(ACCOUNT_BALANCE), 2) + " " + AccountInfoString(ACCOUNT_CURRENCY) +
-          "\nDepuis le début : " + (string)gN + " trades · " + RTxt(gSumR) +
-          (InpUseMem && gSkipNext ? "\nRègle mémoire : trade gagnant, le prochain signal ne sera pas pris" : ""));
+   Notify((r > 0.05 ? I_WIN : r < -0.05 ? I_LOSS : I_FLAT) + (gDir == 1 ? "ACHAT CLÔTURÉ · " : "VENTE CLÔTURÉE · ") + RTxt2(r) + " · " + Dollars(net) +
+          "\n" + IcoSortie(why) + why + (gPyr ? ", avec pyramide" : "") + (px > 0 ? " · sortie à " + PxF(px) : "") + " · " + PctF(pct) +
+          "\n" + I_BANK + "Solde : " + SoldeTxt() +
+          "\nDepuis le début : " + (string)gN + (gN > 1 ? " trades · " : " trade · ") + RTxt2(gSumR) +
+          (InpUseMem && gSkipNext ? "\nRègle mémoire : trade gagnant, le prochain signal ne sera pas pris" : ""), true);
    gDayTxt = id + " terminé (" + why + ") : " + RTxt(r);
    // journal d'exécution : une ligne par position (départ et ajout), après la comptabilité du trade
    double lvl = (gOrH > gOrL && gPosDay == gDay) ? (gDir == 1 ? gOrH : gOrL) : 0;
@@ -1327,14 +1407,14 @@ void SyncPosition()
       gCloseWhy = "";
       gBalStart = AccountInfoDouble(ACCOUNT_BALANCE);
       DropPendingDraw();
-      string id = gDir == 1 ? I_BUY + "ACHAT exécuté" : I_SELL + "VENTE exécutée";
+      string id = gDir == 1 ? I_UP + "ACHAT exécuté (cassure A)" : I_DOWN + "VENTE exécutée (cassure A)";
       double lvlIn = gDir == 1 ? gOrH : gOrL;
-      Notify(id + " à " + Px(gEntry) + " (glissement " + Pts((gEntry - lvlIn) * gDir) + " par rapport au niveau " + Px(lvlIn) + ")" +
-             "\nStop : " + Px(gSL) + " (" + Money(-gRiskMoney) + ")" +
-             (InpBeR > 0 ? "\nStop au prix d'entrée dès " + Px(gEntry + gDir * InpBeR * gRisk) + " (+" + DoubleToString(InpBeR, 1) + "R)" : "") +
-             (InpUsePyr ? "\nPyramide : ajout si une bougie clôture à " + Px(gEntry + gDir * InpPyrR * gRisk) + " (" + RTxt(InpPyrR) + "), stop de l'ensemble " + DoubleToString(InpPyrGap, 1) + "R sous l'ajout" : "") +
-             (InpTgtR > 0 ? "\nObjectif : " + Px(gEntry + gDir * InpTgtR * gRisk) : "") +
-             (ShortDay(ToNY(t)) ? "\n" + I_WARN + "Jour férié ou demi-séance : sortie à " + InpFlatShort + " NY" : "\nSortie à " + InpFlat + " NY"));
+      Notify(id + " à " + PxF(gEntry) + " (glissement " + PtsF((gEntry - lvlIn) * gDir) + " par rapport au niveau " + PxF(lvlIn) + ")" +
+             "\nStop : " + PxF(gSL) + " (" + Dollars(-gRiskMoney) + ")" +
+             (InpBeR > 0 ? "\nStop au prix d'entrée dès " + PxF(gEntry + gDir * InpBeR * gRisk) + " (+" + Nombre(InpBeR, 1) + "R)" : "") +
+             (InpUsePyr ? "\nPyramide : ajout si une bougie clôture à " + PxF(gEntry + gDir * InpPyrR * gRisk) + " (" + RTxt2(InpPyrR) + "), stop de l'ensemble " + Nombre(InpPyrGap, 1) + "R sous l'ajout" : "") +
+             (InpTgtR > 0 ? "\nObjectif : " + PxF(gEntry + gDir * InpTgtR * gRisk) : "") +
+             (ShortDay(ToNY(t)) ? "\n" + I_WARN + "Jour férié ou demi-séance : sortie à " + InpFlatShort + " NY" : "\nSortie à " + InpFlat + " NY"), true);
       gDayTxt = (gDir == 1 ? "Achat" : "Vente") + " en cours";
       SaveState();
      }
@@ -1605,15 +1685,15 @@ bool Setup()   // true = terminé (trade préparé ou pas de trade), false = don
    gDayTxt = (gPendDir == 1 ? "Achat stop " + Px(gOrH) : gPendDir == -1 ? "Vente stop " + Px(gOrL) : "Achat " + Px(gOrH) + " · Vente " + Px(gOrL)) + " · jusqu'à " + endT;
    string ccy = AccountInfoString(ACCOUNT_CURRENCY);
    double realPct = bal > 0 ? 100.0 * gRiskMoney / bal : 0;
-   Notify(I_ORDERS + "ORDRES PLACÉS\nRange 9:30 : " + Px(gOrL) + " – " + Px(gOrH) + " (" + Pts(dist) + ") · 1R = " + Pts(dist * gStopMult) + (gStopMult > InpStopMult + 1e-9 ? " (plancher de bruit : stop à " + DoubleToString(gStopMult, 2) + " ranges)" : "") +
-          (gPendDir != -1 ? "\nAchat stop : " + Px(gOrH) + " · stop " + Px(StopA(1)) : "\nAchat bloqué (" + whyL + ")") +
-          (gPendDir != 1 ? "\nVente stop : " + Px(gOrL) + " · stop " + Px(StopA(-1)) : "\nVente bloquée (" + whyS + ")") +
-          "\nTaille : " + DoubleToString(lots, vd) + " lot · " + DoubleToString(gRiskMoney, 2) + " " + ccy + " risqués (" + RiskTxt(realPct) + ")" +
+   Notify(I_PIN + "ORDRES PLACÉS\nRange 9:30 : " + PxF(gOrL) + " – " + PxF(gOrH) + " (" + PtsF(dist) + ") · 1R = " + PtsF(dist * gStopMult) + (gStopMult > InpStopMult + 1e-9 ? " (plancher de bruit : stop à " + Nombre(gStopMult, 2) + " ranges)" : "") +
+          (gPendDir != -1 ? "\nAchat stop : " + PxF(gOrH) + " · stop " + PxF(StopA(1)) : "\nAchat bloqué (" + whyL + ")") +
+          (gPendDir != 1 ? "\nVente stop : " + PxF(gOrL) + " · stop " + PxF(StopA(-1)) : "\nVente bloquée (" + whyS + ")") +
+          "\nTaille : " + Nombre(lots, vd) + " lot · " + Nombre(gRiskMoney, 2) + (ccy == "USD" ? " $" : " " + ccy) + " risqués (" + Nombre(realPct, 2) + " %" + ")" +
           (InpFixedLots > 0 ? " · lots fixes" : "") +
-          (cut ? "\n" + I_WARN + "Taille réduite par la marge : " + (InpFixedLots > 0 ? DoubleToString(InpFixedLots, vd) + " lot fixés" : RiskTxt(gRiskPct) + " demandés") + ", il aurait fallu " + DoubleToString(want, vd) + " lot" : "") +
+          (cut ? "\n" + I_WARN + "Taille réduite par la marge : " + (InpFixedLots > 0 ? Nombre(InpFixedLots, vd) + " lot fixés" : Nombre(gRiskPct, 2) + " %" + " demandés") + ", il aurait fallu " + Nombre(want, vd) + " lot" : "") +
           "\nValables jusqu'à " + endT + " NY." + (gPendDir == 0 ? " Le premier déclenché annule l'autre." : " Annulé si le côté bloqué est touché d'abord.") +
           ((gPendDir != -1 && !gSrvL) || (gPendDir != 1 && !gSrvS) ? "\n" + I_WARN + "Prix déjà au niveau ou trop près pour un ordre en attente : ce côté est surveillé par l'EA (entrée au marché)" :
-           "\nOrdres posés chez le courtier"));
+           "\nOrdres posés chez le courtier"), true);
    SaveState();
    return true;
   }
@@ -2258,12 +2338,12 @@ bool LegOpen(SLeg &g, int dir, double stop, string quoi, double ref = 0)
       g.id = HistoryDealGetInteger(deal, DEAL_POSITION_ID);
    if(g.id == 0)
       LegIds(g);
-   Notify((dir == 1 ? I_BUY + "ACHAT " : I_SELL + "VENTE ") + g.nom + " exécuté(e) : " + quoi +
-          "\nEntrée : " + Px(g.entry) + " · stop : " + Px(sl) + (estD ? " (entrée de A, " + Pts(MathAbs(g.entry - sl)) + ")" : " (" + Pts(g.risk) + ")") +
-          "\nTaille : " + DoubleToString(lots, vd) + " lot · risque " + Money(-lots * (estD && perLotReal > 0 ? perLotReal : perLot)) + " (au plus celui de la cassure : " + Money(-gV8RiskMoney) + ")" +
-          (InpBeR > 0 ? "\nStop au prix d'entrée dès " + Px(g.entry + dir * InpBeR * g.risk) : "") +
-          ((g.pyrOk && InpUsePyr) ? "\nPyramide si une bougie clôture à " + Px(g.entry + dir * InpPyrR * g.risk) : "") +
-          "\nSortie à " + InpFlat + " NY");
+   Notify((dir == 1 ? I_UP + "ACHAT " : I_DOWN + "VENTE ") + g.nom + " exécuté(e) : " + quoi +
+          "\nEntrée : " + PxF(g.entry) + " · stop : " + PxF(sl) + (estD ? " (entrée de A, " + PtsF(MathAbs(g.entry - sl)) + ")" : " (" + PtsF(g.risk) + ")") +
+          "\nTaille : " + Nombre(lots, vd) + " lot · risque " + Dollars(-lots * (estD && perLotReal > 0 ? perLotReal : perLot)) + " (au plus celui de la cassure : " + Dollars(-gV8RiskMoney) + ")" +
+          (InpBeR > 0 ? "\nStop au prix d'entrée dès " + PxF(g.entry + dir * InpBeR * g.risk) : "") +
+          ((g.pyrOk && InpUsePyr) ? "\nPyramide si une bougie clôture à " + PxF(g.entry + dir * InpPyrR * g.risk) : "") +
+          "\nSortie à " + InpFlat + " NY", true);
    // repères sur le graphique : lettre de l'entrée et stop de départ
    color lc = g.nom == "B" ? clrDodgerBlue : StringSubstr(g.nom, 0, 1) == "D" ? clrTeal : clrMediumOrchid;
    Txt(GV + "in" + g.nom + "_" + (string)g.day, t, g.entry, " " + g.nom + " " + Px(g.entry), lc, (ENUM_ANCHOR_POINT)(dir == 1 ? ANCHOR_LEFT_UPPER : ANCHOR_LEFT_LOWER));
@@ -2431,9 +2511,10 @@ bool LegRecord(SLeg &g, bool force)
    double pct = g.balStart > 0 ? 100.0 * net / g.balStart : 0;
    Txt(GV + "res" + g.nom + "_" + (string)g.day, tx, px > 0 ? px : g.entry, " " + g.nom + " " + RTxt(r), r > 0.05 ? clrSeaGreen : r < -0.05 ? clrTomato : clrGray, ANCHOR_LEFT);
    AppendLegTrade(g, tx, r, net, why);
-   Notify((r > 0.05 ? I_WIN : r < -0.05 ? I_LOSS : I_FLAT) + "ENTRÉE " + g.nom + " CLÔTURÉE : " + RTxt(r) + " · " + PctS(pct) + " · " + Money(net) +
-          "\n" + why + (g.pyr ? ", avec pyramide" : "") + (px > 0 ? " · sortie à " + Px(px) : "") +
-          "\nDepuis le début : " + (string)gN + " trades · " + RTxt(gSumR));
+   Notify((r > 0.05 ? I_WIN : r < -0.05 ? I_LOSS : I_FLAT) + "ENTRÉE " + g.nom + " CLÔTURÉE · " + RTxt2(r) + " · " + Dollars(net) +
+          "\n" + IcoSortie(why) + why + (g.pyr ? ", avec pyramide" : "") + (px > 0 ? " · sortie à " + PxF(px) : "") + " · " + PctF(pct) +
+          "\n" + I_BANK + "Solde : " + SoldeTxt() +
+          "\nDepuis le début : " + (string)gN + (gN > 1 ? " trades · " : " trade · ") + RTxt2(gSumR), true);
    // journal d'exécution : une ligne par position de la jambe (départ et ajout)
    ExecQueue(g.id, g.nom, g.dir, g.plan, g.vstop, why, g.riskMoney);
    if(g.id2 != 0 && g.id2 != g.id)
@@ -3080,6 +3161,17 @@ void ReadSettings()
    gRiskSrc  = src;
    gActive   = active;
    gUiLoaded = true;
+   // Message de connexion (demande de l'utilisateur du 27/11/2026) : une fois par configuration Telegram (jeton et discussion), au
+   // démarrage de l'EA ou quand la discussion change. Ni numéro de compte ni jeton dans le message.
+   if(gTgOn && gTgHello != gTgToken + "|" + gTgChat)
+     {
+      gTgHello = gTgToken + "|" + gTgChat;
+      ENUM_ACCOUNT_TRADE_MODE tm = (ENUM_ACCOUNT_TRADE_MODE)AccountInfoInteger(ACCOUNT_TRADE_MODE);
+      Notify(I_PLUG + "Connexion réussie\nCompte " + (tm == ACCOUNT_TRADE_MODE_REAL ? "RÉEL" : tm == ACCOUNT_TRADE_MODE_CONTEST ? "concours" : "démo") +
+             (gActive ? " · marché actif" : " · marché désactivé dans Étrave") +
+             "\nRisque : " + (InpFixedLots > 0 ? Nombre(InpFixedLots, 2) + " lot fixes" : Nombre(gRiskPct, 2) + " % par trade") +
+             "\nTu recevras ici les ordres posés, les entrées et les clôtures (en R et en dollars). Les alertes de sécurité s'affichent dans Étrave.", true);
+     }
   }
 
 // Demande « Clôturer » de l'interface : ferme le trade au marché, ou annule les ordres du jour
@@ -3325,6 +3417,47 @@ void TradesWrite(string line)
       FileWrite(h, gTradeWait[i]);
    FileClose(h);
    ArrayResize(gTradeWait, 0);
+  }
+
+// Alerte de sécurité pour Étrave (demande de l'utilisateur du 27/11/2026, au lieu de Telegram) : une ligne de
+// Etrave\alertes-<symbole>.csv, « secondes UTC ; symbole ; texte », affichée en tête de la page pendant 24 heures. Le
+// pictogramme ⚠ est retiré : la page n'en affiche pas.
+void AlerteEtrave(string msg)
+  {
+   if(MQLInfoInteger(MQL_TESTER) || !InpUseUI)
+      return;
+   string txt = StringSubstr(msg, StringLen(I_WARN));
+   StringReplace(txt, "\r", " ");
+   StringReplace(txt, "\n", " · ");
+   StringReplace(txt, ";", ",");
+   AlertesWrite(IntegerToString((long)TimeGMT()) + ";" + gSymFile + ";" + txt);
+  }
+
+// Comme TradesWrite (X-20) : un fichier verrouillé ne perd pas l'alerte, elle est réécrite toutes les 2 secondes (OnTimer).
+// Au plus 100 en attente.
+void AlertesWrite(string line)
+  {
+   int n = ArraySize(gAlertWait);
+   if(line != "" && n < 100)
+     {
+      ArrayResize(gAlertWait, n + 1);
+      gAlertWait[n] = line;
+      n++;
+     }
+   if(n == 0)
+      return;
+   int h = FileOpen(UI_DIR + "alertes-" + gSymFile + ".csv", FILE_READ | FILE_WRITE | FILE_TXT | FILE_ANSI | FILE_COMMON | FILE_SHARE_READ, 0, CP_UTF8);
+   if(h == INVALID_HANDLE)
+     {
+      if(line != "")
+         PrintFormat("Alertes d'Étrave : écriture impossible (erreur %d), nouvel essai toutes les 2 s", GetLastError());
+      return;
+     }
+   FileSeek(h, 0, SEEK_END);
+   for(int i = 0; i < n; i++)
+      FileWrite(h, gAlertWait[i]);
+   FileClose(h);
+   ArrayResize(gAlertWait, 0);
   }
 
 //+------------------------------------------------------------------+
@@ -3961,6 +4094,7 @@ void OnTimer()
    CheckClock();
    FlushNotifs();
    TradesWrite("");   // X-20 : lignes du journal des trades en attente
+   AlertesWrite("");  // alertes de sécurité pour Étrave en attente
    FlushState();
    WriteState();
    Panel();

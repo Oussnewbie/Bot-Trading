@@ -410,3 +410,36 @@ def lire_trades(dossier):
             })
     trades.sort(key=lambda t: t["sortie"])
     return trades
+
+
+# Alertes de sécurité de l'EA (demande de l'utilisateur du 27/11/2026 : dans Étrave, plus sur Telegram). L'EA ajoute une ligne à
+# alertes-<symbole>.csv : secondes UTC ; symbole ; texte.
+COLONNES_ALERTE = ("quand", "symbole", "texte")
+ALERTES_FENETRE_S = 24 * 3600      # affichées pendant 24 heures
+ALERTES_MAX = 10
+ALERTE_TEXTE_MAX = 400
+ALERTES_LECTURE_MAX = 256 * 1024   # un vieux fichier n'est lu que par sa fin
+
+
+def lire_alertes(dossier, maintenant=None):
+    """Les alertes des dernières 24 heures, la plus récente d'abord (10 au plus). Une ligne abîmée est ignorée, jamais devinée."""
+    maintenant = time.time() if maintenant is None else maintenant
+    alertes = []
+    for chemin in glob.glob(os.path.join(dossier, "alertes-*.csv")):
+        try:
+            with open(chemin, "rb") as f:
+                f.seek(max(0, os.path.getsize(chemin) - ALERTES_LECTURE_MAX))
+                lignes = f.read().decode("utf-8-sig", errors="replace").splitlines()
+        except OSError:
+            continue
+        for ligne in lignes:
+            champs = ligne.split(";", len(COLONNES_ALERTE) - 1)
+            if len(champs) != len(COLONNES_ALERTE):
+                continue
+            quand, symbole, texte = _nombre(champs[0]), champs[1].strip(), champs[2].strip()
+            # une heure dans le futur (horloge fausse) ou plus vieille que 24 h : pas affichée
+            if quand is None or not (maintenant - ALERTES_FENETRE_S <= quand <= maintenant + 300) or not symbole or not texte:
+                continue
+            alertes.append({"quand": int(quand), "symbole": symbole[:32], "texte": texte[:ALERTE_TEXTE_MAX]})
+    alertes.sort(key=lambda a: a["quand"], reverse=True)
+    return alertes[:ALERTES_MAX]

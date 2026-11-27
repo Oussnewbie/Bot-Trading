@@ -119,6 +119,7 @@ class Application:
             "lancement": self.lancement(self._mt5_terminaux(etats)),
             # AUD-09 : la dernière vérification de l'interrupteur (None avant la première), par symbole et avec son marché
             "interrupteur": self._interrupteur,
+            "alertes": pont.lire_alertes(self.dossier),     # alertes de sécurité de l'EA (27/11/2026 : ici, plus sur Telegram)
             "video": self.video(),
         }
 

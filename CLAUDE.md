@@ -34,7 +34,7 @@ etrave/    interface web locale de l'EA (Python sans dépendance), export.py (ex
 .claude/   commands/audit.md (/audit) et agents/auditeur.md (auditeur adapté au robot) ; rapports dans audits/ (ignoré)
 video/     (branche communication/outil-video) vidéos TikTok : récap de séance et présentation, `python3 video/outil.py` ; README
 ```
-- Tests : `.venv/bin/python -m pytest robot etrave -q` (176 tests et 1 ignoré sans l'outil vidéo au 27/11/2026 ; sur la branche
+- Tests : `.venv/bin/python -m pytest robot etrave -q` (212 tests et 1 ignoré sans l'outil vidéo au 27/11/2026 ; sur la branche
   `communication/outil-video`, ajouter `video`). Le `.venv` (Python 3.15) n'existe que dans le clone principal
   `~/Documents/GitHub/Bot-Trading` : depuis un worktree (dont `Bot-Trading-main`), utiliser `~/Documents/GitHub/Bot-Trading/.venv/bin/python`.
 - Étrave en essai : `.venv/bin/python etrave/etrave.py --sans-navigateur --port 8799 --dossier <dossier jetable>`, puis
