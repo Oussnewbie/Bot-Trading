@@ -100,6 +100,40 @@ def e(texte):
     return html.escape(str(texte), quote=True)
 
 
+# ───────────────────────── les bruitages ─────────────────────────
+# V-16, V-17 (audit du 27/11/2026) : earshot jugeait click-select-1109 et sweep-small-fast-166 synthétisés (et la sonnerie
+# bell-notification-933, swoosh-wind-short-1461 et whoosh-air-1489 incertains) ; le même swoosh revenait à chaque volet. Trois
+# familles de sons répétés, dont les prises tournent dans l'ordre de la vidéo (sans aléatoire : refaire la vidéo redonne le même son),
+# toutes de vrais enregistrements déjà dans le dossier des sons (earshot realness ≥ 0,77, « p_reel » de sons.json), rien de
+# téléchargé. (prise, demi-tons)
+PRISES = {
+    "clic": [("click-typewriter-soft-1125", 0), ("click-classic-1117", 0), ("water-bubble-1317", 0), ("click-typewriter-soft-1125", -2),
+             ("click-classic-1117", 2)],
+    "camera": [("swoosh-wind-cinematic-1471", 0), ("air-zoom-vacuum-2608", 0), ("swoosh-wind-cinematic-1471", -2)],
+    "volet": [("swoosh-fast-transitions-3115", 0), ("whoosh-fast-transition-1490", 0)],
+}
+
+
+def distribuer_prises(reperes):
+    """Chaque son de famille (« @clic », « @camera », « @volet ») reçoit la prise suivante de sa famille, dans l'ordre de la vidéo."""
+    compte = {}
+    for r in sorted(reperes, key=lambda r: r["t"]):
+        if r["son"].startswith("@"):
+            famille = r["son"][1:]
+            k = compte.get(famille, 0)
+            compte[famille] = k + 1
+            son, demi_tons = PRISES[famille][k % len(PRISES[famille])]
+            r.update(son=son, famille=famille)
+            if demi_tons:
+                r["demi_tons"] = r.get("demi_tons", 0) + demi_tons
+    return reperes
+
+
+def pan_ecran(x):
+    """V-18 : le panoramique léger d'un bruitage, d'après la place de l'action à l'écran (x de 0 à 1080)."""
+    return round(max(-0.35, min(0.35, 0.35 * (x - 540) / 440)), 2)
+
+
 def couleur(v):
     """Vert pour un gain, rouge pour une perte, encre pour zéro ou une valeur inconnue."""
     if v is None or round(v, 2) == 0:
@@ -513,10 +547,11 @@ def scene_titre(j, rep, unite):
     // la couleur de la journée tombe sur « rouge » / « verte » : un tampon posé de travers
     tl.fromTo("#ti-badge", {{ opacity: 0, scale: 1.12, rotation: -7, transformOrigin: "0% 50%" }}, {{ opacity: 1, scale: 1, rotation: -3, duration: 0.3, ease: "back.out(1.8)" }}, {t_badge:.2f});
     tl.to("#ti-date", {{ y: 6, duration: 0.06, yoyo: true, repeat: 1, ease: "power1.inOut" }}, {t_badge + 0.22:.2f});"""
-    reperes = [{"t": 0.05, "son": "swoosh-fast-transitions-3115", "gain_db": -6},
-               {"t": 0.4, "son": "water-splash-1311", "gain_db": -12, "max_dur": 1.0},
-               {"t": t_date + 0.2, "son": "typewriter-mechanical-hit-1365", "gain_db": -6},
-               {"t": t_badge + 0.2, "son": "hit-wood-hard-2182", "gain_db": -3, "passe_haut": 120}]
+    # V-15 : chaque instant est celui de l'image (le pic du son y tombe) ; V-17 : les coups secondaires plus bas ; V-18 : la place
+    reperes = [{"t": 0.12, "son": "@volet", "gain_db": -6, "pan": -0.15},
+               {"t": 0.55, "son": "water-splash-1311", "gain_db": -12, "max_dur": 0.6, "secondaire": True, "pan": -0.2},
+               {"t": t_date + 0.2, "son": "typewriter-mechanical-hit-1365", "gain_db": -6, "secondaire": True, "pan": -0.15},
+               {"t": t_badge + 0.08, "son": "hit-wood-hard-2182", "gain_db": -3, "passe_haut": 120, "pan": -0.1}]
     return style, corps, script, reperes, t_badge + 1.6
 
 
@@ -838,6 +873,7 @@ def scene_marche(j, m, k, rep, unite, duree, expliquer_r=False, precedent=None):
         a["cam"] = cam
         px, py = a["ancre"]
         fx, fy = cam[2] * px + cam[0], cam[2] * py + cam[1]
+        a["fx"] = fx                     # V-18 : la place de l'action à l'écran, pour le panoramique de ses bruitages
         i_b = min(len(b) - 1, max(0, int((px - X0) / pas)))
         cb = X0 + pas * (i_b + 0.5)
         # la colonne jaune passe sous les bougies ; la bougie surlignée, le chemin du prix et l'onde passent dessus
@@ -902,14 +938,15 @@ def scene_marche(j, m, k, rep, unite, duree, expliquer_r=False, precedent=None):
     tl.to("#{ident}-heures", {{ opacity: 1, duration: 0.3 }}, 0.5);
     tl.to(".{ident}-b", {{ opacity: 1, scaleY: 1, duration: 0.14, ease: "power2.out", stagger: {duree_b / max(1, len(b)):.4f} }}, {debut_b});
     tl.to("#{ident}-legende", {{ opacity: 1, duration: 0.3 }}, {t_zone:.2f});"""]
-    reperes = [{"t": 0.1, "son": "paper-quick-movement-2380", "gain_db": -9, "max_dur": 0.6},
-               {"t": debut_b, "son": "tick-wall-clock-fast-1063", "gain_db": -13, "max_dur": duree_b}]
+    reperes = [{"t": 0.2, "son": "paper-quick-movement-2380", "gain_db": -9, "max_dur": 0.3, "secondaire": True, "pan": -0.2},
+               {"t": debut_b, "son": "tick-wall-clock-fast-1063", "gain_db": -13, "max_dur": duree_b, "secondaire": True}]
     if zone:
         # la zone apparaît avec un léger reflet bleu, fini avant que la caméra ne zoome
         script.append(f"""    gsap.set("#{ident}-zone", {{ scaleX: 0, transformOrigin: "0% 50%" }});
     tl.to("#{ident}-zone", {{ scaleX: 1, duration: 0.45, ease: "power2.inOut" }}, {t_zone:.2f});
     tl.fromTo("#{ident}-zone rect", {{ fill: "#b9d3f0" }}, {{ fill: "{COUL['eau']}", duration: 0.5, ease: "power1.out", immediateRender: false }}, {t_zone + 0.25:.2f});""")
-        reperes.append({"t": t_zone, "son": "whoosh-cinematic-fast-1492", "gain_db": -13, "max_dur": 0.7})
+        reperes.append({"t": t_zone + 0.22, "son": "whoosh-cinematic-fast-1492", "gain_db": -13, "max_dur": 0.3, "secondaire": True,
+                        "pan": 0.15})
     for d in dessinees:
         script.append(f"""    gsap.set(["#{ident}-p{d['i']} .{ident}-entree", "#{ident}-p{d['i']} .{ident}-trait"], {{ opacity: 0 }});""")
     if ronds:
@@ -937,7 +974,7 @@ def scene_marche(j, m, k, rep, unite, duree, expliquer_r=False, precedent=None):
             t_ex = next(q[4] for q in a["pastilles"] if q[0] == "exc")
             script.append(f"""    tl.fromTo("#{ident}-x{a_i}", {{ opacity: 0 }}, {{ opacity: 1, duration: 0.25, immediateRender: false }}, {t_ex - 0.1:.2f});
     tl.to("#{ident}-x{a_i}", {{ opacity: 0, duration: 0.2 }}, {fin:.2f});""")
-            reperes.append({"t": t_ex, "son": "click-select-1109", "gain_db": -10, "max_dur": 0.3})
+            reperes.append({"t": t_ex, "son": "@clic", "gain_db": -10, "max_dur": 0.25, "secondaire": True, "pan": pan_ecran(a["fx"])})
         if a_i == 0:
             script.append(f"""    tl.to("#{ident}-bougies", {{ opacity: 0.3, duration: 0.3 }}, {t_cam:.2f});
     tl.to("#{ident}-heures", {{ opacity: 0, duration: 0.2 }}, {t_cam:.2f});""")
@@ -950,22 +987,23 @@ def scene_marche(j, m, k, rep, unite, duree, expliquer_r=False, precedent=None):
                               f'\n    tl.to("#{ident}-p{d["i"]} .{ident}-trait", {{ opacity: 1, duration: 0.3 }}, {t_e + 0.1 * min(rang, 8) + 0.2:.2f});')
             if resume:
                 script.append(f'    pop("#{ident}-r-entree", {t_e:.2f}, 0.34, "0% 50%");')
-            reperes += [{"t": t_cam, "son": "whoosh-air-1489", "gain_db": -12, "max_dur": 0.9},
-                        {"t": t, "son": "click-metal-button-1830", "gain_db": -7},
-                        {"t": t_e, "son": "click-select-1109", "gain_db": -6, "max_dur": 0.3}]
+            reperes += [{"t": t_cam + 0.3, "son": "@camera", "gain_db": -12, "max_dur": 0.4, "secondaire": True, "pan": pan_ecran(a["fx"])},
+                        {"t": t, "son": "click-metal-button-1830", "gain_db": -7, "secondaire": True, "pan": pan_ecran(a["fx"])},
+                        {"t": t_e, "son": "@clic", "gain_db": -6, "max_dur": 0.25, "secondaire": True, "pan": pan_ecran(a["fx"])}]
         else:
             for rang, g_i in enumerate(a["ronds"]):
                 script.append(f'    pop("#{ident}-s{g_i}", {t_choc + 0.07 * min(rang, 8):.2f}, 0.3);')
             if resume:
                 script.append(f'    pop("#{ident}-r-{a["nom"]}", {t_choc:.2f}, 0.34, "0% 50%");')
             stop_perdant = a["nom"] == "stop" and next(q[2] for q in a["pastilles"] if q[0] == "sortie") == COUL["rouge"]
-            reperes += [{"t": t_cam, "son": "sweep-small-fast-166", "gain_db": -13},
+            reperes += [{"t": t_cam + 0.25, "son": "@camera", "gain_db": -13, "max_dur": 0.35, "secondaire": True, "pan": pan_ecran(a["fx"])},
                         {"t": t_choc, "son": "hit-wood-hard-2182" if stop_perdant else "click-light-switch-2585",
-                         "gain_db": -4 if stop_perdant else -8, **({"passe_haut": 140} if stop_perdant else {})}]
+                         "gain_db": -4 if stop_perdant else -8, "pan": pan_ecran(a["fx"]),
+                         **({"passe_haut": 140} if stop_perdant else {"secondaire": True})}]
     if arrets:
         script.append(f"""    tl.to("#{ident}-cam", {{ x: 0, y: 0, scale: 1, duration: 0.55, ease: "power3.inOut" }}, {t_recul:.2f});
     tl.to(["#{ident}-bougies", "#{ident}-heures"], {{ opacity: 1, duration: 0.35 }}, {t_recul + 0.2:.2f});""")
-        reperes.append({"t": t_recul, "son": "swoosh-wind-short-1461", "gain_db": -13, "max_dur": 0.8})
+        reperes.append({"t": t_recul + 0.27, "son": "@camera", "gain_db": -13, "max_dur": 0.4, "secondaire": True})
         montres = {g for a in arrets[1:] for g in a["ronds"]}       # un rond sans arrêt (rare) apparaît au recul
         for g_i in range(len(ronds)):
             if g_i not in montres:
@@ -977,8 +1015,8 @@ def scene_marche(j, m, k, rep, unite, duree, expliquer_r=False, precedent=None):
     pop("#{ident}-res", {t_res:.2f}, 0.4, "0% 50%");
     compte("#{ident}-res", {vr}, {DECIMALES[unite]}, "{SUFFIXE[unite]}", {t_res:.2f}, 0.8);
     tl.to("#{ident}-res", {{ scale: 1.08, duration: 0.12, yoyo: true, repeat: 1, ease: "power1.inOut" }}, {t_res + 0.82:.2f});""")
-        reperes += [{"t": t_res, "son": "ticking-timer-1056", "gain_db": -16, "max_dur": 0.8},
-                    {"t": t_res + 0.8, "son": "hit-deep-heartbeat-498", "gain_db": -6, "passe_haut": 160, "max_dur": 1.2}]
+        reperes += [{"t": t_res, "son": "ticking-timer-1056", "gain_db": -16, "max_dur": 0.8, "secondaire": True, "pan": -0.2},
+                    {"t": t_res + 0.8, "son": "hit-deep-heartbeat-498", "gain_db": -6, "passe_haut": 160, "max_dur": 1.1, "pan": -0.15}]
         fin_min = t_res + 0.8 + 1.8
         if t_rappel is not None:
             script.append(f'    wipe("#{ident}-rappel", {t_rappel:.2f});')
@@ -986,7 +1024,7 @@ def scene_marche(j, m, k, rep, unite, duree, expliquer_r=False, precedent=None):
     if sans:
         t_sans = max(voix.instant(rep, "robot", defaut=2.3), t_zone + 0.4)
         script.append(f'    wipe("#{ident}-sans1", {t_sans:.2f});\n    wipe("#{ident}-sans2", {max(t_sans + 0.5, voix.instant(rep, "aujourd", defaut=t_sans + 1.0)):.2f});')
-        reperes.append({"t": t_sans, "son": "click-light-switch-2585", "gain_db": -10})
+        reperes.append({"t": t_sans, "son": "click-light-switch-2585", "gain_db": -10, "secondaire": True, "pan": -0.2})
         fin_min = max(fin_min, t_sans + 2.5)
     return style, corps, "\n".join(script), reperes, fin_min
 
@@ -995,7 +1033,7 @@ def scene_bilan(j, rep, unite, texte):
     t = total(j, unite)
     mot = mot_du_jour(j, t)
     k_mot = len(texte.split(mot)[0].split())          # le rang du premier mot du petit mot dans la réplique
-    lignes, script, reperes = [], [], [{"t": 0.05, "son": "paper-page-turn-1104", "gain_db": -6}]
+    lignes, script, reperes = [], [], [{"t": 0.15, "son": "paper-page-turn-1104", "gain_db": -6, "secondaire": True, "pan": -0.15}]
     for i, m in enumerate(j["marches"]):
         v = valeur(m, unite)
         vr = round(v, DECIMALES[unite]) if v is not None else None
@@ -1005,7 +1043,7 @@ def scene_bilan(j, rep, unite, texte):
         lignes.append(f'<div id="bi-l{i}" class="bi-ligne" style="top:{475 + 76 * i}px">{e(m["nom"])}</div>'
                       + _pastille(f"bi-v{i}", txt, fond, encre, 46, 520, 470 + 76 * i))
         script.append(f'    wipe("#bi-l{i}", {0.3 + 0.18 * i:.2f});\n    pop("#bi-v{i}", {0.42 + 0.18 * i:.2f}, 0.32, "0% 50%");')
-        reperes.append({"t": 0.42 + 0.18 * i, "son": "click-select-1109", "gain_db": -9, "max_dur": 0.3})
+        reperes.append({"t": 0.5 + 0.18 * i, "son": "@clic", "gain_db": -9, "max_dur": 0.25, "secondaire": True, "pan": 0.05})
     y_total = 475 + 76 * len(j["marches"]) + 16
     t_total = max(voix.instant(rep, "moins", "plus", "zéro", "pas", "journée", defaut=1.0), 0.9)
     if t is not None:
@@ -1016,14 +1054,14 @@ def scene_bilan(j, rep, unite, texte):
     pop("#bi-total", {t_total:.2f}, 0.4, "0% 50%");
     compte("#bi-total", {tr}, {DECIMALES[unite]}, "{SUFFIXE[unite]}", {t_total:.2f}, 0.9);
     tl.to("#bi-total", {{ scale: 1.08, duration: 0.12, yoyo: true, repeat: 1, ease: "power1.inOut" }}, {t_total + 0.92:.2f});""")
-        reperes += [{"t": t_total, "son": "ticking-timer-1056", "gain_db": -15, "max_dur": 0.9},
-                    {"t": t_total + 0.9, "son": "hit-deep-heartbeat-498", "gain_db": -5, "passe_haut": 180, "max_dur": 1.3}]
+        reperes += [{"t": t_total, "son": "ticking-timer-1056", "gain_db": -15, "max_dur": 0.9, "secondaire": True, "pan": -0.2},
+                    {"t": t_total + 0.9, "son": "hit-deep-heartbeat-498", "gain_db": -5, "passe_haut": 180, "max_dur": 1.2, "pan": -0.15}]
     else:
         verdict = "Pas de trade" if not j["trades"] else f"Journée {j['verdict'] or 'terminée'}"
         gros = _pastille("bi-total", verdict, COUL["grille"] if not j["trades"] else couleur(j["net"]),
                          COUL["encre"] if not j["trades"] else COUL["blanc"], 80, 120, y_total + 20)
         script.append(f'    pop("#bi-total", {t_total:.2f}, 0.4, "0% 50%");')
-        reperes.append({"t": t_total, "son": "hit-deep-heartbeat-498", "gain_db": -6, "passe_haut": 180, "max_dur": 1.3})
+        reperes.append({"t": t_total + 0.1, "son": "hit-deep-heartbeat-498", "gain_db": -6, "passe_haut": 180, "max_dur": 1.2, "pan": -0.15})
     mots = (rep or {}).get("mots", [])
     t_mot = mots[k_mot]["debut"] if len(mots) > k_mot else t_total + 1.4
     t_mot = max(t_mot, t_total + 1.0)
@@ -1067,14 +1105,15 @@ def scene_bilan(j, rep, unite, texte):
         t_k = max(mots[rang]["debut"] if len(mots) > rang else t_mot + 1.4 * k, t_mot + 0.6 * k)
         script.append(f'    gsap.set(".bi-p{k}", {{ opacity: 0 }});\n    tl.to(".bi-p{k}", {{ opacity: 1, duration: 0.2 }}, {t_k:.2f});'
                       f'\n    tl.to("#bi-mot", {{ scale: 1.05, duration: 0.1, yoyo: true, repeat: 1 }}, {t_k:.2f});')
-        reperes.append({"t": t_k, "son": "click-typewriter-soft-1125", "gain_db": -10, "max_dur": 0.3})
+        reperes.append({"t": t_k, "son": "@clic", "gain_db": -10, "max_dur": 0.25, "secondaire": True, "pan": -0.1})
     script.append(f"""    tl.fromTo("#bi-mot", {{ opacity: 0, scale: 1.4, rotation: 4, transformOrigin: "20% 50%" }}, {{ opacity: 1, scale: 1, rotation: -2, duration: 0.32, ease: "back.out(1.8)" }}, {t_mot:.2f});
     wipe("#bi-tel", {t_tel - 0.1:.2f});
     pop("#bi-bio", {t_bio:.2f}, 0.36, "0% 50%");
     tl.to("#bi-bio", {{ scale: 1.07, duration: 0.28, yoyo: true, repeat: 3, ease: "sine.inOut", transformOrigin: "0% 50%" }}, {t_bio + 0.5:.2f});
     tl.to("#bi-mention", {{ opacity: 1, duration: 0.3 }}, {t_tel:.2f});""")      # la mention reste au moins 3,5 s à l'écran
-    reperes += [{"t": t_mot, "son": "paper-slide-1530", "gain_db": -8, "max_dur": 0.6},
-                {"t": t_bio, "son": "bell-notification-933", "gain_db": -6, "max_dur": 2.0}]
+    # V-16 : plus de sonnerie (bell-notification-933, incertaine pour earshot, proscrite par sound.md) : une bulle qui éclate
+    reperes += [{"t": t_mot + 0.12, "son": "paper-slide-1530", "gain_db": -8, "max_dur": 0.4, "secondaire": True, "pan": -0.1},
+                {"t": t_bio + 0.15, "son": "water-bubble-1317", "gain_db": -6, "max_dur": 0.3, "pan": -0.15}]
     return style, corps, script_tete + "\n" + "\n".join(script), reperes, max(t_bio + 2.4, t_tel + 3.9)
 
 
@@ -1124,8 +1163,8 @@ def scene_preuve(ident, preuve, rep, date_txt, titre="Dans MetaTrader"):
         script.append(f'''    gsap.set("#{ident}-c{i}", {{ rotation: {rot} }});
     tl.fromTo("#{ident}-c{i}", {{ opacity: 0, y: -70, scale: 1.05, rotation: {rot - 6} }}, {{ opacity: 1, y: 0, scale: 1, rotation: {rot}, duration: 0.45, ease: "back.out(1.5)" }}, {t:.2f});
     pop("#{ident}-e{i}", {t + 0.38:.2f}, 0.25);''')
-        reperes += [{"t": t, "son": "paper-slide-1530", "gain_db": -9, "max_dur": 0.5},
-                    {"t": t + 0.38, "son": "click-metal-button-1830", "gain_db": -8}]
+        reperes += [{"t": t + 0.3, "son": "paper-slide-1530", "gain_db": -9, "max_dur": 0.4, "secondaire": True, "pan": -0.05},
+                    {"t": t + 0.45, "son": "click-metal-button-1830", "gain_db": -8, "secondaire": True}]
         y += hauteur + 40
         t += 0.8
     # les résultats en R, épinglés sous la photo comme des notes
@@ -1134,7 +1173,7 @@ def scene_preuve(ident, preuve, rep, date_txt, titre="Dans MetaTrader"):
     for k in range(len(preuve["notes"])):
         script.append(f'''    gsap.set("#{ident}-n{k}", {{ rotation: {(-2, 1.5, -1)[k % 3]} }});
     pop("#{ident}-n{k}", {t + 0.35 * k:.2f}, 0.34, "0% 50%");''')
-        reperes.append({"t": t + 0.35 * k, "son": "click-select-1109", "gain_db": -8, "max_dur": 0.3})
+        reperes.append({"t": t + 0.35 * k + 0.1, "son": "@clic", "gain_db": -8, "max_dur": 0.25, "secondaire": True, "pan": -0.15 + 0.12 * k})
     style = f"""    #{ident}-nom {{ position: absolute; left: 120px; top: 340px; font-size: 92px; line-height: 1; }}
     .{ident}-carte {{ position: absolute; background: #ffffff; padding: 14px 14px 0; border-radius: 6px;
       box-shadow: 0 18px 40px rgba(24,34,46,0.28), 0 2px 6px rgba(24,34,46,0.18); }}
@@ -1280,8 +1319,9 @@ def fabriquer(j, config, dossier_sortie, journal=print, rendre=True, exiger_voix
         scenes.append({"id": ident, "debut": round(debut, 3), "duree": d, "texte": t, "rep": r, "offset": offset[i], "fin_min": fin_min})
         debut += d
     duree = round(debut, 3)
-    for s in scenes[1:]:            # le volet entre deux scènes
-        reperes.append({"t": round(s["debut"] - VOLET - 0.05, 3), "son": "swoosh-fast-transitions-3115", "gain_db": -11})
+    for k, s in enumerate(scenes[1:]):            # le volet entre deux scènes : son pic sur la coupe (V-15), prises en rotation (V-17)
+        reperes.append({"t": round(s["debut"], 3), "son": "@volet", "gain_db": -11, "pan": 0.15 if k % 2 else -0.15})
+    distribuer_prises(reperes)
     with open(os.path.join(projet, "index.html"), "w", encoding="utf-8") as f:
         f.write(_index(scenes, duree))
     json.dump({"jour": j["jour"].isoformat(), "source": j["source"], "unite": unite, "duree": duree,
@@ -1298,7 +1338,7 @@ def fabriquer(j, config, dossier_sortie, journal=print, rendre=True, exiger_voix
     os.makedirs(travail, exist_ok=True)
     piste_v = mixage.piste_voix([{"fichier": s["rep"]["fichier"], "t": s["debut"] + s["offset"]} for s in scenes if s["rep"]],
                                 duree, os.path.join(travail, "voix.wav"))
-    piste_b, manquants = mixage.piste_bruitages(reperes, config.get("sons"), duree, os.path.join(travail, "bruitages.wav"))
+    piste_b, manquants = mixage.piste_bruitages(reperes, config.get("sons"), duree, os.path.join(travail, "bruitages.wav"), caler=True)
     if manquants:
         journal(f"{len(manquants)} bruitage(s) absent(s) du dossier de sons ({', '.join(manquants[:4])}…) : `outil.py sons` les télécharge.")
     piste_m = mixage.piste_musique(config.get("musique"), j["jour"], duree, os.path.join(travail, "musique.wav"), journal)

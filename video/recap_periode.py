@@ -231,9 +231,10 @@ def scene_titre(p, rep):
     wipe("#pt-gros", {t_date:.2f}, 0.4);
     wipe("#pt-bas", {t_date + 0.3:.2f});
     tl.fromTo("#pt-badge", {{ opacity: 0, scale: 1.12, rotation: -7, transformOrigin: "0% 50%" }}, {{ opacity: 1, scale: 1, rotation: -3, duration: 0.3, ease: "back.out(1.8)" }}, {t_badge:.2f});"""
-    reperes = [{"t": 0.05, "son": "swoosh-fast-transitions-3115", "gain_db": -6},
-               {"t": t_date, "son": "typewriter-mechanical-hit-1365", "gain_db": -6},
-               {"t": t_badge + 0.2, "son": "hit-wood-hard-2182", "gain_db": -3, "passe_haut": 120}]
+    # V-15 à V-18 : instants de l'image (le pic y tombe), prises en rotation, coups secondaires plus bas, panoramique léger
+    reperes = [{"t": 0.12, "son": "@volet", "gain_db": -6, "pan": -0.15},
+               {"t": t_date + 0.1, "son": "typewriter-mechanical-hit-1365", "gain_db": -6, "secondaire": True, "pan": -0.15},
+               {"t": t_badge + 0.08, "son": "hit-wood-hard-2182", "gain_db": -3, "passe_haut": 120, "pan": -0.1}]
     return style, corps, script, reperes, t_badge + 1.6
 
 
@@ -291,9 +292,9 @@ def scene_barres(p, rep):
             etiquettes.append(f'<text x="{cx:.1f}" y="{Y_BAS + 36}" font-size="28" fill="{COUL["encre2"]}" text-anchor="middle">'
                               f'{e(_jour_court(d["jour"]) if semaine else str(d["jour"].day))}</text>')
         if semaine and i < 5:
-            reperes.append({"t": t_i, "son": "click-select-1109", "gain_db": -8, "max_dur": 0.3})
+            reperes.append({"t": t_i + 0.1, "son": "@clic", "gain_db": -8, "max_dur": 0.25, "secondaire": True, "pan": recap.pan_ecran(cx)})
     if not semaine:
-        reperes.append({"t": 0.6, "son": "tick-wall-clock-fast-1063", "gain_db": -13, "max_dur": 1.6})
+        reperes.append({"t": 0.6, "son": "tick-wall-clock-fast-1063", "gain_db": -13, "max_dur": 1.6, "secondaire": True})
     textes_svg = "".join(x for x in etiquettes if x.startswith("<text"))
     pastilles = "\n    ".join(x for x in etiquettes if not x.startswith("<text"))
     # sous le graphique : jours de trade, gagnants, perdants (sous y = 840, à gauche de x = 780)
@@ -323,7 +324,7 @@ def scene_barres(p, rep):
     pop("#pb-r-trade", {t_resume:.2f}, 0.34, "0% 50%");
     pop("#pb-r-g", {t_resume + 0.25:.2f}, 0.34, "0% 50%");
     pop("#pb-r-p", {t_resume + 0.5:.2f}, 0.34, "0% 50%");"""
-    reperes.append({"t": t_resume, "son": "click-light-switch-2585", "gain_db": -9})
+    reperes.append({"t": t_resume, "son": "click-light-switch-2585", "gain_db": -9, "secondaire": True, "pan": -0.15})
     return style, corps, script_tete + "\n" + "\n".join(script), reperes, t_resume + 2.4
 
 
@@ -397,9 +398,9 @@ def scene_courbe(p, rep):
     tl.to("#pc-total", {{ scale: 1.08, duration: 0.12, yoyo: true, repeat: 1, ease: "power1.inOut" }}, {t_total + 0.92:.2f});
     wipe("#pc-rappel", {t_rappel:.2f});
 """ + "\n".join(script_m)
-    reperes += [{"t": 0.5, "son": "whoosh-cinematic-fast-1492", "gain_db": -13, "max_dur": 0.7},
-                {"t": t_total, "son": "ticking-timer-1056", "gain_db": -15, "max_dur": 0.9},
-                {"t": t_total + 0.9, "son": "hit-deep-heartbeat-498", "gain_db": -5, "passe_haut": 180, "max_dur": 1.3}]
+    reperes += [{"t": 0.5 + duree_trace / 2, "son": "whoosh-cinematic-fast-1492", "gain_db": -13, "max_dur": 0.4, "secondaire": True},
+                {"t": t_total, "son": "ticking-timer-1056", "gain_db": -15, "max_dur": 0.9, "secondaire": True, "pan": -0.2},
+                {"t": t_total + 0.9, "son": "hit-deep-heartbeat-498", "gain_db": -5, "passe_haut": 180, "max_dur": 1.2, "pan": -0.15}]
     return style, corps, script, reperes, max(t_total + 3.0, t_rappel + 2.0)
 
 
@@ -407,7 +408,7 @@ def scene_bilan(p, rep, texte):
     """Les records de la période, le petit mot, l'abonnement et la mention : la même fin que le récap de chaque séance."""
     ident = "pi"
     entete, script_entete = _entete(ident, p, "Bilan de la semaine" if p["genre"] == "semaine" else "Bilan du mois")
-    lignes, script, reperes = [], [], [{"t": 0.05, "son": "paper-page-turn-1104", "gain_db": -6}]
+    lignes, script, reperes = [], [], [{"t": 0.15, "son": "paper-page-turn-1104", "gain_db": -6, "secondaire": True, "pan": -0.15}]
     k_t, n = len(p["avec"]), len(p["jours"])
     rangs = [("Jours de trade", f"{k_t} sur {n}", COUL["encre"]), ("Jours gagnants", str(len(p["gagnants"])), COUL["vert"])]
     if p["meilleur"] and p["meilleur"]["total"] > 0:
@@ -424,7 +425,7 @@ def scene_bilan(p, rep, texte):
         if nom == "Pire jour":
             t_i = max(voix.instant(rep, "pire", defaut=t_i), t_i)
         script.append(f'    wipe("#pi-l{i}", {t_i:.2f});\n    pop("#pi-v{i}", {t_i + 0.12:.2f}, 0.32, "0% 50%");')
-        reperes.append({"t": t_i + 0.12, "son": "click-select-1109", "gain_db": -9, "max_dur": 0.3})
+        reperes.append({"t": t_i + 0.2, "son": "@clic", "gain_db": -9, "max_dur": 0.25, "secondaire": True, "pan": 0.05})
     mot = mot_periode(p)
     k_mot = len(texte.split(mot)[0].split())
     mots = (rep or {}).get("mots", [])
@@ -455,8 +456,8 @@ def scene_bilan(p, rep, texte):
     pop("#pi-bio", {t_bio:.2f}, 0.36, "0% 50%");
     tl.to("#pi-bio", {{ scale: 1.07, duration: 0.28, yoyo: true, repeat: 3, ease: "sine.inOut", transformOrigin: "0% 50%" }}, {t_bio + 0.5:.2f});
     tl.to("#pi-mention", {{ opacity: 1, duration: 0.3 }}, {t_tel:.2f});""")
-    reperes += [{"t": t_mot, "son": "paper-slide-1530", "gain_db": -8, "max_dur": 0.6},
-                {"t": t_bio, "son": "bell-notification-933", "gain_db": -6, "max_dur": 2.0}]
+    reperes += [{"t": t_mot + 0.12, "son": "paper-slide-1530", "gain_db": -8, "max_dur": 0.4, "secondaire": True, "pan": -0.1},
+                {"t": t_bio + 0.15, "son": "water-bubble-1317", "gain_db": -6, "max_dur": 0.3, "pan": -0.15}]      # V-16 : plus de sonnerie
     return style, corps, script_tete + "\n" + "\n".join(script), reperes, max(t_bio + 2.4, t_tel + 3.9)
 
 
@@ -514,12 +515,14 @@ def fabriquer(p, config, dossier_sortie, journal=print, rendre=True, exiger_voix
         scenes.append({"id": idents[i], "debut": round(debut, 3), "duree": d, "texte": t, "rep": r, "offset": offset[i], "fin_min": fin_min})
         debut += d
     duree = round(debut, 3)
-    for s in scenes[1:]:
-        reperes.append({"t": round(s["debut"] - recap.VOLET - 0.05, 3), "son": "swoosh-fast-transitions-3115", "gain_db": -11})
+    for k, s in enumerate(scenes[1:]):            # V-15, V-17 : le pic du volet sur la coupe, prises en rotation
+        reperes.append({"t": round(s["debut"], 3), "son": "@volet", "gain_db": -11, "pan": 0.15 if k % 2 else -0.15})
+    recap.distribuer_prises(reperes)
     with open(os.path.join(projet, "index.html"), "w", encoding="utf-8") as f:
         f.write(recap._index(scenes, duree))
     json.dump({"genre": p["genre"], "debut": p["debut"].isoformat(), "fin": p["fin"].isoformat(), "duree": duree,
                "couverture": recap.couverture_titre(scenes[0]),          # V-21
+               "bruitages": sorted(reperes, key=lambda r: r["t"]),
                "scenes": [{k: s[k] for k in ("id", "debut", "duree", "texte")} for s in scenes]},
               open(os.path.join(dossier_sortie, "recap.json"), "w", encoding="utf-8"), ensure_ascii=False, indent=1)
     if not rendre:
@@ -532,7 +535,7 @@ def fabriquer(p, config, dossier_sortie, journal=print, rendre=True, exiger_voix
     os.makedirs(travail, exist_ok=True)
     piste_v = mixage.piste_voix([{"fichier": s["rep"]["fichier"], "t": s["debut"] + s["offset"]} for s in scenes if s["rep"]],
                                 duree, os.path.join(travail, "voix.wav"))
-    piste_b, _ = mixage.piste_bruitages(reperes, config.get("sons"), duree, os.path.join(travail, "bruitages.wav"))
+    piste_b, _ = mixage.piste_bruitages(reperes, config.get("sons"), duree, os.path.join(travail, "bruitages.wav"), caler=True)
     piste_m = mixage.piste_musique(config.get("musique"), p["fin"], duree, os.path.join(travail, "musique.wav"), journal)
     finale = os.path.join(dossier_sortie, ("recap-semaine-" if p["genre"] == "semaine" else "recap-mois-") + p["debut"].isoformat()[:10 if p["genre"] == "semaine" else 7] + ".mp4")
     mixage.assembler(muette, piste_v, piste_b, finale, travail, piste_m)

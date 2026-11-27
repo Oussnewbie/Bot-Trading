@@ -3,127 +3,225 @@
  "sons": {
   "air-zoom-vacuum-2608": {
    "fichier": "air-zoom-vacuum-2608.wav",
-   "url": "https://assets.mixkit.co/active_storage/sfx/2608/2608.wav"
+   "url": "https://assets.mixkit.co/active_storage/sfx/2608/2608.wav",
+   "pic": 0.43,
+   "attaque": 0.319,
+   "p_reel": 0.83
   },
   "bell-notification-933": {
    "fichier": "bell-notification-933.wav",
-   "url": "https://assets.mixkit.co/active_storage/sfx/933/933.wav"
+   "url": "https://assets.mixkit.co/active_storage/sfx/933/933.wav",
+   "pic": 0.099,
+   "attaque": 0.086,
+   "p_reel": 0.21
   },
   "click-classic-1117": {
    "fichier": "click-classic-1117.wav",
-   "url": "https://assets.mixkit.co/active_storage/sfx/1117/1117.wav"
+   "url": "https://assets.mixkit.co/active_storage/sfx/1117/1117.wav",
+   "pic": 0.135,
+   "attaque": 0.098,
+   "p_reel": 0.89
   },
   "click-interface-device-2577": {
    "fichier": "click-interface-device-2577.wav",
-   "url": "https://assets.mixkit.co/active_storage/sfx/2577/2577.wav"
+   "url": "https://assets.mixkit.co/active_storage/sfx/2577/2577.wav",
+   "pic": 0.01,
+   "attaque": 0.0,
+   "p_reel": 0.16
   },
   "click-light-switch-2585": {
    "fichier": "click-light-switch-2585.wav",
-   "url": "https://assets.mixkit.co/active_storage/sfx/2585/2585.wav"
+   "url": "https://assets.mixkit.co/active_storage/sfx/2585/2585.wav",
+   "pic": 0.0,
+   "attaque": 0.0,
+   "p_reel": 0.86
   },
   "click-metal-button-1830": {
    "fichier": "click-metal-button-1830.wav",
-   "url": "https://assets.mixkit.co/active_storage/sfx/1830/1830.wav"
+   "url": "https://assets.mixkit.co/active_storage/sfx/1830/1830.wav",
+   "pic": 0.113,
+   "attaque": 0.106,
+   "p_reel": 0.92
   },
   "click-mouse-close-1113": {
    "fichier": "click-mouse-close-1113.wav",
-   "url": "https://assets.mixkit.co/active_storage/sfx/1113/1113.wav"
+   "url": "https://assets.mixkit.co/active_storage/sfx/1113/1113.wav",
+   "pic": 0.14,
+   "attaque": 0.008,
+   "p_reel": 0.09
   },
   "click-select-1109": {
    "fichier": "click-select-1109.wav",
-   "url": "https://assets.mixkit.co/active_storage/sfx/1109/1109.wav"
+   "url": "https://assets.mixkit.co/active_storage/sfx/1109/1109.wav",
+   "pic": 0.067,
+   "attaque": 0.0,
+   "p_reel": 0.13
   },
   "click-typewriter-soft-1125": {
    "fichier": "click-typewriter-soft-1125.wav",
-   "url": "https://assets.mixkit.co/active_storage/sfx/1125/1125.wav"
+   "url": "https://assets.mixkit.co/active_storage/sfx/1125/1125.wav",
+   "pic": 0.111,
+   "attaque": 0.105,
+   "p_reel": 0.89
   },
   "clock-knob-spin-1064": {
    "fichier": "clock-knob-spin-1064.wav",
-   "url": "https://assets.mixkit.co/active_storage/sfx/1064/1064.wav"
+   "url": "https://assets.mixkit.co/active_storage/sfx/1064/1064.wav",
+   "pic": 0.396,
+   "attaque": 0.177,
+   "p_reel": 0.76,
+   "lit": true
   },
   "hit-deep-heartbeat-498": {
    "fichier": "hit-deep-heartbeat-498.wav",
-   "url": "https://assets.mixkit.co/active_storage/sfx/498/498.wav"
+   "url": "https://assets.mixkit.co/active_storage/sfx/498/498.wav",
+   "pic": 0.08,
+   "attaque": 0.043,
+   "p_reel": 0.85
   },
   "hit-wood-hard-2182": {
    "fichier": "hit-wood-hard-2182.wav",
-   "url": "https://assets.mixkit.co/active_storage/sfx/2182/2182.wav"
+   "url": "https://assets.mixkit.co/active_storage/sfx/2182/2182.wav",
+   "pic": 0.059,
+   "attaque": 0.053,
+   "p_reel": 0.98
   },
   "impact-intro-presentation-2902": {
    "fichier": "impact-intro-presentation-2902.wav",
-   "url": "https://assets.mixkit.co/active_storage/sfx/2902/2902.wav"
+   "url": "https://assets.mixkit.co/active_storage/sfx/2902/2902.wav",
+   "pic": 1.308,
+   "attaque": 0.146,
+   "p_reel": 0.97
   },
   "paper-page-turn-1104": {
    "fichier": "paper-page-turn-1104.wav",
-   "url": "https://assets.mixkit.co/active_storage/sfx/1104/1104.wav"
+   "url": "https://assets.mixkit.co/active_storage/sfx/1104/1104.wav",
+   "pic": 0.142,
+   "attaque": 0.122,
+   "p_reel": 0.96
   },
   "paper-quick-movement-2380": {
    "fichier": "paper-quick-movement-2380.wav",
-   "url": "https://assets.mixkit.co/active_storage/sfx/2380/2380.wav"
+   "url": "https://assets.mixkit.co/active_storage/sfx/2380/2380.wav",
+   "pic": 0.423,
+   "attaque": 0.182,
+   "p_reel": 0.95
   },
   "paper-slide-1530": {
    "fichier": "paper-slide-1530.wav",
-   "url": "https://assets.mixkit.co/active_storage/sfx/1530/1530.wav"
+   "url": "https://assets.mixkit.co/active_storage/sfx/1530/1530.wav",
+   "pic": 0.359,
+   "attaque": 0.164,
+   "p_reel": 0.93
   },
   "papers-moved-2379": {
    "fichier": "papers-moved-2379.wav",
-   "url": "https://assets.mixkit.co/active_storage/sfx/2379/2379.wav"
+   "url": "https://assets.mixkit.co/active_storage/sfx/2379/2379.wav",
+   "pic": 0.958,
+   "attaque": 0.098,
+   "p_reel": 0.88,
+   "lit": true
   },
   "sweep-small-fast-166": {
    "fichier": "sweep-small-fast-166.wav",
-   "url": "https://assets.mixkit.co/active_storage/sfx/166/166.wav"
+   "url": "https://assets.mixkit.co/active_storage/sfx/166/166.wav",
+   "pic": 0.336,
+   "attaque": 0.136,
+   "p_reel": 0.16
   },
   "swoosh-fast-transitions-3115": {
    "fichier": "swoosh-fast-transitions-3115.wav",
-   "url": "https://assets.mixkit.co/active_storage/sfx/3115/3115.wav"
+   "url": "https://assets.mixkit.co/active_storage/sfx/3115/3115.wav",
+   "pic": 0.114,
+   "attaque": 0.076,
+   "p_reel": 0.99
   },
   "swoosh-wind-cinematic-1471": {
    "fichier": "swoosh-wind-cinematic-1471.wav",
-   "url": "https://assets.mixkit.co/active_storage/sfx/1471/1471.wav"
+   "url": "https://assets.mixkit.co/active_storage/sfx/1471/1471.wav",
+   "pic": 0.434,
+   "attaque": 0.236,
+   "p_reel": 0.8
   },
   "swoosh-wind-short-1461": {
    "fichier": "swoosh-wind-short-1461.wav",
-   "url": "https://assets.mixkit.co/active_storage/sfx/1461/1461.wav"
+   "url": "https://assets.mixkit.co/active_storage/sfx/1461/1461.wav",
+   "pic": 0.164,
+   "attaque": 0.081,
+   "p_reel": 0.27
   },
   "tick-clock-single-1061": {
    "fichier": "tick-clock-single-1061.wav",
-   "url": "https://assets.mixkit.co/active_storage/sfx/1061/1061.wav"
+   "url": "https://assets.mixkit.co/active_storage/sfx/1061/1061.wav",
+   "pic": 0.672,
+   "attaque": 0.185,
+   "p_reel": 0.81
   },
   "tick-wall-clock-fast-1063": {
    "fichier": "tick-wall-clock-fast-1063.wav",
-   "url": "https://assets.mixkit.co/active_storage/sfx/1063/1063.wav"
+   "url": "https://assets.mixkit.co/active_storage/sfx/1063/1063.wav",
+   "pic": 0.408,
+   "attaque": 0.107,
+   "p_reel": 0.97,
+   "lit": true
   },
   "ticking-timer-1056": {
    "fichier": "ticking-timer-1056.wav",
-   "url": "https://assets.mixkit.co/active_storage/sfx/1056/1056.wav"
+   "url": "https://assets.mixkit.co/active_storage/sfx/1056/1056.wav",
+   "pic": 9.477,
+   "attaque": 0.0,
+   "p_reel": 0.95,
+   "lit": true
   },
   "typewriter-mechanical-hit-1365": {
    "fichier": "typewriter-mechanical-hit-1365.wav",
-   "url": "https://assets.mixkit.co/active_storage/sfx/1365/1365.wav"
+   "url": "https://assets.mixkit.co/active_storage/sfx/1365/1365.wav",
+   "pic": 0.179,
+   "attaque": 0.132,
+   "p_reel": 0.99
   },
   "water-bubble-1317": {
    "fichier": "water-bubble-1317.wav",
-   "url": "https://assets.mixkit.co/active_storage/sfx/1317/1317.wav"
+   "url": "https://assets.mixkit.co/active_storage/sfx/1317/1317.wav",
+   "pic": 0.122,
+   "attaque": 0.065,
+   "p_reel": 0.96
   },
   "water-sea-splash-1198": {
    "fichier": "water-sea-splash-1198.wav",
-   "url": "https://assets.mixkit.co/active_storage/sfx/1198/1198.wav"
+   "url": "https://assets.mixkit.co/active_storage/sfx/1198/1198.wav",
+   "pic": 0.601,
+   "attaque": 0.058,
+   "p_reel": 0.97
   },
   "water-splash-1311": {
    "fichier": "water-splash-1311.wav",
-   "url": "https://assets.mixkit.co/active_storage/sfx/1311/1311.wav"
+   "url": "https://assets.mixkit.co/active_storage/sfx/1311/1311.wav",
+   "pic": 0.471,
+   "attaque": 0.203,
+   "p_reel": 1.0
   },
   "whoosh-air-1489": {
    "fichier": "whoosh-air-1489.wav",
-   "url": "https://assets.mixkit.co/active_storage/sfx/1489/1489.wav"
+   "url": "https://assets.mixkit.co/active_storage/sfx/1489/1489.wav",
+   "pic": 0.719,
+   "attaque": 0.317,
+   "p_reel": 0.76
   },
   "whoosh-cinematic-fast-1492": {
    "fichier": "whoosh-cinematic-fast-1492.wav",
-   "url": "https://assets.mixkit.co/active_storage/sfx/1492/1492.wav"
+   "url": "https://assets.mixkit.co/active_storage/sfx/1492/1492.wav",
+   "pic": 1.081,
+   "attaque": 0.56,
+   "p_reel": 0.96
   },
   "whoosh-fast-transition-1490": {
    "fichier": "whoosh-fast-transition-1490.wav",
-   "url": "https://assets.mixkit.co/active_storage/sfx/1490/1490.wav"
+   "url": "https://assets.mixkit.co/active_storage/sfx/1490/1490.wav",
+   "pic": 0.724,
+   "attaque": 0.426,
+   "p_reel": 0.84
   }
- }
+ },
+ "mesures": "pic, attaque : instants (s) du pic et de l'attaque dans le fichier, mesurés une fois par earshot measure (peak_at, attack_at) le 27/11/2026 ; le mixage des récaps pose le PIC une image après l'instant voulu (V-15), ou l'attaque pour un lit (« lit » : un son continu, tic-tac ou froissement, qui accompagne un mouvement au lieu de le ponctuer). p_reel : earshot realness (vrai enregistrement au-dessus de 0,77, synthétisé sous 0,17) ; les récaps n'utilisent aucun son sous 0,77 (V-16)."
 }

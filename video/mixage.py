@@ -86,33 +86,77 @@ def piste_voix(repliques, duree, sortie):
     return sortie
 
 
-def piste_bruitages(reperes, dossier_sons, duree, sortie):
-    """Les bruitages posés : {"t" (départ), "son", "gain_db", "max_dur", "passe_haut", "tranche", "demi_tons", "avance"}.
-    Rend (fichier, sons manquants)."""
+# V-15 (audit du 27/11/2026) : le début du fichier tombait sur l'image, alors que la plupart des sons culminent après leur début
+# (whoosh-cinematic-fast-1492 à 1,081 s, coupé à 0,7 s : jamais entendu à son pic). Avec `caler` (les récaps), le pic mesuré une fois
+# par earshot (sons.json, « pic ») tombe une image après l'instant voulu (la lumière arrive avant le son : HyperFrames, sound.md) ;
+# un lit (« lit » : tic-tac, froissement continu) part sur son attaque. La montée gardée avant le pic est d'au plus AVANT_PIC_MAX s,
+# et un repère trop proche du début de la vidéo rogne le début du fichier au lieu de retarder le pic. max_dur compte alors ce qui
+# sonne APRÈS le pic.
+UNE_IMAGE = 1 / 30
+AVANT_PIC_MAX = 0.45
+# V-17 : les coups secondaires (clics des étiquettes, papier, tic-tac, mouvements de caméra) 4 dB sous les coups principaux (le
+# tampon de la couleur, le stop perdant, le résultat, le volet) : 1,98 coup saillant par seconde, contre 0,10 à 1,66 dans les films
+# de référence d'earshot.
+BAISSE_SECONDAIRE = -4.0
+# V-18 : un léger panoramique (au plus ±PAN_MAX), qui suit la place de l'action à l'écran
+PAN_MAX = 0.35
+
+
+def _pan(pan):
+    """Le filtre ffmpeg d'un panoramique léger (gauche négatif) : le côté opposé baisse, le côté de l'action garde son niveau."""
+    pan = max(-PAN_MAX, min(PAN_MAX, float(pan)))
+    return f",pan=stereo|c0={min(1.0, 1 - pan):.3f}*c0|c1={min(1.0, 1 + pan):.3f}*c1"
+
+
+def piste_bruitages(reperes, dossier_sons, duree, sortie, caler=False):
+    """Les bruitages posés : {"t" (l'image visée), "son", "gain_db", "max_dur", "passe_haut", "tranche", "demi_tons", "avance",
+    "secondaire", "pan"}. caler (V-15) : le pic du son sur l'image ; sans caler (la présentation, calée à la main), le début du
+    fichier à t - avance. Rend (fichier, sons manquants)."""
     sons = catalogue()
     entrees, filtres, noms, manquants = [], [], [], []
     for r in reperes:
-        nom = sons.get(r["son"], {}).get("fichier", r["son"] + ".wav")
+        info = sons.get(r["son"], {})
+        nom = info.get("fichier", r["son"] + ".wav")
         fichier = os.path.join(os.path.expanduser(dossier_sons or ""), nom)
         if not os.path.exists(fichier):
             manquants.append(nom)
             continue
         i = len(noms)
         entrees += ["-i", fichier]
-        gain = -6.0 - _pic(fichier) + r.get("gain_db", 0.0)
+        gain = -6.0 - _pic(fichier) + r.get("gain_db", 0.0) + (BAISSE_SECONDAIRE if r.get("secondaire") else 0.0)
         chaine = f"[{i}]aresample=48000,aformat=channel_layouts=stereo"
-        if r.get("tranche"):                    # un morceau du fichier : [début, durée] en secondes
-            d0, dl = r["tranche"]
-            chaine += f",atrim=start={d0:.3f}:duration={dl:.3f},asetpts=PTS-STARTPTS"
-        if r.get("demi_tons"):                  # hauteur changée, durée gardée
-            f = 2 ** (r["demi_tons"] / 12)
-            chaine += f",asetrate={48000 * f:.0f},aresample=48000,atempo={1 / f:.5f}"
-        if r.get("max_dur"):
-            d = r["max_dur"]
-            chaine += f",atrim=0:{d:.3f},afade=t=out:st={max(0, d - 0.06):.3f}:d=0.06"
+        if caler and not r.get("tranche") and (info.get("pic") is not None or info.get("attaque") is not None):
+            lit = bool(info.get("lit"))
+            ancre = float(info.get("attaque") if lit else info.get("pic") if info.get("pic") is not None else info.get("attaque"))
+            tete = max(0.0, ancre - (0.02 if lit else AVANT_PIC_MAX))
+            depart = r["t"] - (ancre - tete) + (0.0 if lit else UNE_IMAGE)
+            if depart < 0:
+                tete, depart = tete - depart, 0.0
+            fin = ancre + r["max_dur"] if r.get("max_dur") else None
+            chaine += f",atrim=start={tete:.3f}" + (f":end={max(fin, tete + 0.05):.3f}" if fin else "") + ",asetpts=PTS-STARTPTS"
+            if tete > 0:
+                chaine += ",afade=t=in:d=0.015"
+            if fin:
+                chaine += f",afade=t=out:st={max(0.0, fin - tete - 0.06):.3f}:d=0.06"
+            if r.get("demi_tons"):                  # hauteur changée, durée gardée
+                f = 2 ** (r["demi_tons"] / 12)
+                chaine += f",asetrate={48000 * f:.0f},aresample=48000,atempo={1 / f:.5f}"
+            t = depart
+        else:
+            if r.get("tranche"):                    # un morceau du fichier : [début, durée] en secondes
+                d0, dl = r["tranche"]
+                chaine += f",atrim=start={d0:.3f}:duration={dl:.3f},asetpts=PTS-STARTPTS"
+            if r.get("demi_tons"):                  # hauteur changée, durée gardée
+                f = 2 ** (r["demi_tons"] / 12)
+                chaine += f",asetrate={48000 * f:.0f},aresample=48000,atempo={1 / f:.5f}"
+            if r.get("max_dur"):
+                d = r["max_dur"]
+                chaine += f",atrim=0:{d:.3f},afade=t=out:st={max(0, d - 0.06):.3f}:d=0.06"
+            t = max(0.0, r["t"] - r.get("avance", 0.0))
         if r.get("passe_haut"):
             chaine += f",highpass=f={int(r['passe_haut'])}"
-        t = max(0.0, r["t"] - r.get("avance", 0.0))
+        if r.get("pan"):
+            chaine += _pan(r["pan"])
         chaine += f",volume={gain:.2f}dB,adelay={int(round(t * 1000))}:all=1"
         filtres.append(chaine + f"[s{i}]")
         noms.append(f"[s{i}]")

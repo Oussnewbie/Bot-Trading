@@ -224,7 +224,8 @@ def test_les_scenes_n_affichent_pas_le_type_d_entree(tmp_path):
     j = _journee(tmp_path, positions=((1, "D2", 9, 40, 100, 15, 50, 110, "Fin de journée"),))
     style, corps, script, reperes, fin = recap.scene_marche(j, j["marches"][0], 0, None, "r", 7.0)
     assert "D2" not in corps and "Le prix casse par le haut" in corps and "Achat 15:40" in corps
-    assert all(r["son"] in mixage.catalogue() for r in reperes)
+    # 27/11/2026 : les sons répétés sont désignés par leur famille (« @clic »), dont la prise est choisie au montage (V-17)
+    assert all(r["son"] in mixage.catalogue() for r in recap.distribuer_prises([dict(r) for r in reperes]))
 
 
 PASTILLE = re.compile(r'class="pastille[^"]*" style="left:(\d+)px; top:(\d+)px; font-size:(\d+)px[^"]*">([^<]+)<')
@@ -1373,3 +1374,100 @@ def test_v28_pas_de_le_prix_repete_ni_de_plus_loin_minuscule():
     assert "jusqu'à zéro" not in recap.phrase_fins(petit) and recap.phrase_fins(petit).startswith("Sortie en fin de séance")
     gain = recap.faits({"positions": [_pos(1, 13, 101.2, 100.0, "Stop remonté", 1.5, 30.0)]})
     assert "jusqu'à" not in recap.phrase_stops(gain)
+
+
+# ───────────────────────── le son (V-15 à V-18) ─────────────────────────
+SYNTHETIQUES = {"click-select-1109", "sweep-small-fast-166", "bell-notification-933", "swoosh-wind-short-1461"}
+
+
+def _bruitages_d_une_journee(tmp_path):
+    """Les bruitages d'un récap de séance (deux marchés, stops et sorties de fin de séance, photo) et d'un récap de semaine, tels que
+    la fabrication les écrit dans recap.json (sans rendu ni voix)."""
+    import recap_periode
+    j = _journee(tmp_path, positions=((-1, "A", 9, 36, 100, 10, 2, 112, "Stop"), (-1, "D1", 9, 41, 99, 15, 50, 90, "Fin de journée"),
+                                      (-1, "B", 9, 55, 98, 15, 50, 90, "Fin de journée")))
+    j["marches"].append(dict(j["marches"][0], nom="S&P 500", voix="S et P cinq cents", symbole="SPX500", ordre=1))
+    (tmp_path / "captures").mkdir(exist_ok=True)
+    _png(tmp_path / "captures" / "h.png", 760, 142)
+    j["historique"] = str(tmp_path / "captures" / "h.png")
+    config = {"police": os.path.expanduser(recap.POLICE), "unite": "r"}
+    sortie = tmp_path / "rendu"
+    sortie.mkdir(exist_ok=True)
+    recap.fabriquer(j, config, str(sortie), lambda t: None, rendre=False, exiger_voix=False)
+    jour = json.load(open(sortie / "recap.json", encoding="utf-8"))["bruitages"]
+    semaine = tmp_path / "semaine"
+    semaine.mkdir(exist_ok=True)
+    ecrire_jours(str(semaine), [(D(2026, 11, 2), {}), (D(2026, 11, 3), {"positions": PERTE}), (D(2026, 11, 4), {"positions": ()})])
+    p = recap_periode.charger(str(semaine), D(2026, 11, 2), D(2026, 11, 6), "semaine")
+    s2 = tmp_path / "rendu-semaine"
+    s2.mkdir(exist_ok=True)
+    recap_periode.fabriquer(p, config, str(s2), lambda t: None, rendre=False, exiger_voix=False)
+    return jour, json.load(open(s2 / "recap.json", encoding="utf-8")).get("bruitages", [])
+
+
+@pytest.mark.skipif(not __import__("shutil").which("ffmpeg"), reason="ffmpeg absent")
+def test_v15_le_pic_de_chaque_bruitage_tombe_sur_l_image(tmp_path, monkeypatch):
+    """V-15 : l'outil posait le DÉBUT du fichier sur l'image, alors que le pic vient après (whoosh-cinematic-fast-1492 culmine à
+    1,081 s et était coupé à 0,7 s : jamais entendu à son pic). Le pic mesuré une fois par earshot (sons.json) tombe une image après
+    l'instant voulu ; la coupe garde le pic ; un repère près du début de la vidéo rogne le début du fichier au lieu de retarder le pic."""
+    import controle
+    catalogue = mixage.catalogue()
+    jour, semaine = _bruitages_d_une_journee(tmp_path)
+    for r in jour + semaine:
+        assert catalogue[r["son"]].get("pic") is not None, r["son"]
+    assert catalogue["whoosh-cinematic-fast-1492"]["pic"] == pytest.approx(1.081, abs=0.02)
+    _ffmpeg("-f", "lavfi", "-i", "aevalsrc='exp(-pow((t-0.5)/0.02,2))*sin(2*PI*800*t)':d=1:s=48000", str(tmp_path / "essai.wav"))
+    monkeypatch.setattr(mixage, "catalogue", lambda: {"essai": {"fichier": "essai.wav", "pic": 0.5, "attaque": 0.46}})
+    for t, max_dur in ((1.0, 0.2), (0.1, None)):
+        sortie = str(tmp_path / f"pic-{t}.wav")
+        mixage.piste_bruitages([dict({"t": t, "son": "essai"}, **({"max_dur": max_dur} if max_dur else {}))], str(tmp_path), 2.0, sortie,
+                               caler=True)
+        v = controle.niveaux(sortie, 0.005)
+        assert v.index(max(v)) * 0.005 == pytest.approx(t + 1 / 30, abs=0.012), t
+
+
+def test_v16_aucun_bruitage_synthetique(tmp_path):
+    """V-16 : earshot realness jugeait click-select-1109 (0,13, 8 fois par vidéo) et sweep-small-fast-166 (0,16) « likely
+    code-synthesized », bell-notification-933 incertain (une sonnerie, proscrite par sound.md), swoosh-wind-short-1461 incertain.
+    Remplacés par de vrais enregistrements déjà dans le dossier des sons (rien de téléchargé) ; p_reel mesuré par earshot dans sons.json."""
+    catalogue = mixage.catalogue()
+    jour, semaine = _bruitages_d_une_journee(tmp_path)
+    for r in jour + semaine:
+        assert r["son"] not in SYNTHETIQUES, r
+        assert catalogue[r["son"]]["p_reel"] >= 0.77, r["son"]
+    assert all(catalogue[n]["p_reel"] < 0.5 for n in ("click-select-1109", "sweep-small-fast-166"))
+
+
+def test_v17_prises_en_rotation_et_coups_secondaires_plus_bas(tmp_path, monkeypatch):
+    """V-17 : le même swoosh à chaque volet (« the most common tell ») et 1,98 coup saillant par seconde (références 0,10 à 1,66) :
+    les prises tournent (deux ou trois par famille, sans aléatoire) et les coups secondaires sont 4 dB plus bas."""
+    jour, semaine = _bruitages_d_une_journee(tmp_path)
+    assert semaine
+    for liste in (jour, semaine):
+        volets = [r["son"] for r in liste if r.get("famille") == "volet"]
+        assert len(volets) >= 3 and len(set(volets)) >= 2 and all(a != b for a, b in zip(volets, volets[1:]))
+        clics = [r for r in liste if r.get("famille") == "clic"]
+        assert len({(r["son"], r.get("demi_tons", 0)) for r in clics}) >= 2
+        assert sum(1 for r in liste if r.get("secondaire")) >= len(liste) // 2
+    vus = []
+    monkeypatch.setattr(mixage, "_pic", lambda f: -6.0)
+    monkeypatch.setattr(mixage.subprocess, "run", lambda commande, **k: vus.append(commande[commande.index("-filter_complex") + 1]))
+    monkeypatch.setattr(mixage.os.path, "exists", lambda chemin: True)
+    mixage.piste_bruitages([{"t": 1, "son": "hit-wood-hard-2182", "gain_db": -6}, {"t": 2, "son": "hit-wood-hard-2182", "gain_db": -6,
+                                                                                  "secondaire": True}], "/sons", 3.0, "x.wav", caler=True)
+    gains = [float(x) for x in re.findall(r"volume=(-?[\d.]+)dB", vus[0])]
+    assert gains[0] - gains[1] == pytest.approx(4.0)
+
+
+def test_v18_panoramique_leger_des_bruitages(tmp_path, monkeypatch):
+    """V-18 : voix mono et bruitages mono, earshot « nearly mono » (côté −18,4 dB, corrélation 0,97). Un léger panoramique suit la
+    place de l'action à l'écran (au plus ±0,35)."""
+    jour, _ = _bruitages_d_une_journee(tmp_path)
+    pans = [r.get("pan", 0) for r in jour]
+    assert any(p > 0.05 for p in pans) and any(p < -0.05 for p in pans) and all(abs(p) <= 0.35 for p in pans)
+    vus = []
+    monkeypatch.setattr(mixage, "_pic", lambda f: -6.0)
+    monkeypatch.setattr(mixage.subprocess, "run", lambda commande, **k: vus.append(commande[commande.index("-filter_complex") + 1]))
+    monkeypatch.setattr(mixage.os.path, "exists", lambda chemin: True)
+    mixage.piste_bruitages([{"t": 1, "son": "hit-wood-hard-2182", "pan": 0.3}], "/sons", 3.0, "x.wav", caler=True)
+    assert "pan=stereo|c0=0.700*c0|c1=1.000*c1" in vus[0]
