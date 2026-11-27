@@ -35,8 +35,14 @@ ICI = os.path.dirname(os.path.abspath(__file__))
 HYPERFRAMES = [shutil.which("npx") or "npx", "-y", "hyperframes@0.9.94"]
 # Zones sûres de TikTok en 1080 x 1920 (celles du contrôle HyperFrames) : le texte entre y = 240 et y = 1260 ; jusqu'à x = 960 au-dessus
 # de y = 840 ; sous y = 840, rien à droite de x = 780 (les boutons j'aime, commentaires, partage). Le graphique tient au-dessus de 840.
-X0, X1, Y_HAUT, Y_BAS = 100, 950, 480, 820          # le graphique
+# V-14 (audit du 27/11/2026) : le graphique faisait 850 x 340 px, la moitié basse de l'écran restait vide presque toute la scène.
+# Il fait 850 x 440 px (la date et le nom du marché remontent, la légende passe dans la ligne de la date) ; dessous, les sous-titres
+# (calés sur les mots de la voix), puis le résumé et le résultat.
+X0, X1, Y_HAUT, Y_BAS = 100, 950, 400, 840          # le graphique
+Y_SOUS_TITRES = Y_BAS + 64                           # le haut des sous-titres (deux lignes de 40 px au plus)
+Y_RESUME = Y_BAS + 176                               # les pastilles du résumé, puis le résultat
 X_DROITE, X_DROITE_BAS, Y_FIN = 960, 780, 1260       # bords des zones sûres
+X_GAUCHE = 120                                       # le bord gauche de la zone sûre de TikTok (check HyperFrames : 80 px sur 720)
 # VID-26 (audit du 26/11/2026) : la dernière bougie finissait sur le bord droit, et les ronds des sorties de 21:50 (rayon 11, décalés
 # de 7 quand un vert et un rouge se partagent l'endroit) étaient coupés à moitié par le cadre. Les bougies s'arrêtent avant.
 GOUTTIERE = 22
@@ -535,17 +541,20 @@ def scene_titre(j, rep, unite):
     <div id="ti-date" class="ti-ligne">{e(jour_mois)}</div>
     <div id="ti-annee" class="ti-ligne">{e(annee)}</div>
     {_pastille("ti-badge", texte_badge, coul, COUL["blanc"], taille_badge, 120, 960)}"""
+    # V-13 (audit du 27/11/2026) : l'image 0 est la vignette du fil TikTok ; elle était vide (tout arrivait en volet) et la couleur du
+    # jour n'arrivait qu'à 1,5-2 s. La date et la couleur sont posées dès l'image 0 ; le logo se trace, puis le jour et le tampon de
+    # la couleur bougent sur les mots de la voix.
     script = f"""    const traits = ["#ti-tige", "#ti-v", "#ti-vagues"].map((id) => document.querySelector(id));
     traits.forEach((p) => {{ const l = p.getTotalLength(); gsap.set(p, {{ strokeDasharray: l, strokeDashoffset: l, opacity: 0 }}); }});
-    gsap.set(".ti-ligne", {{ clipPath: "inset(-30% 100% -40% 0)" }});
+    gsap.set("#ti-recap", {{ clipPath: "inset(-30% 100% -40% 0)" }});
+    gsap.set("#ti-badge", {{ rotation: -3, transformOrigin: "0% 50%" }});
     // le bout arrondi d'un trait pas encore tracé ferait un point : le trait n'apparaît qu'au début de son tracé
     traits.forEach((p, i) => {{ tl.set(p, {{ opacity: i === 2 ? 0.55 : 1 }}, 0.05 + i * 0.18); tl.to(p, {{ strokeDashoffset: 0, duration: 0.34, ease: "power1.inOut" }}, 0.05 + i * 0.18); }});
     wipe("#ti-recap", 0.15);
-    wipe("#ti-jour", {t_date:.2f});
-    wipe("#ti-date", {t_date + 0.2:.2f}, 0.35);
-    wipe("#ti-annee", {t_date + 0.4:.2f});
-    // la couleur de la journée tombe sur « rouge » / « verte » : un tampon posé de travers
-    tl.fromTo("#ti-badge", {{ opacity: 0, scale: 1.12, rotation: -7, transformOrigin: "0% 50%" }}, {{ opacity: 1, scale: 1, rotation: -3, duration: 0.3, ease: "back.out(1.8)" }}, {t_badge:.2f});
+    tl.to("#ti-jour", {{ scale: 1.06, transformOrigin: "0% 50%", duration: 0.14, yoyo: true, repeat: 1, ease: "power1.inOut" }}, {t_date:.2f});
+    tl.to("#ti-date", {{ scale: 1.04, transformOrigin: "0% 50%", duration: 0.16, yoyo: true, repeat: 1, ease: "power1.inOut" }}, {t_date + 0.2:.2f});
+    // la couleur de la journée, déjà posée, est tamponnée sur « rouge » / « verte »
+    tl.fromTo("#ti-badge", {{ scale: 1.12, rotation: -7 }}, {{ scale: 1, rotation: -3, duration: 0.3, ease: "back.out(1.8)", immediateRender: false }}, {t_badge:.2f});
     tl.to("#ti-date", {{ y: 6, duration: 0.06, yoyo: true, repeat: 1, ease: "power1.inOut" }}, {t_badge + 0.22:.2f});"""
     # V-15 : chaque instant est celui de l'image (le pic du son y tombe) ; V-17 : les coups secondaires plus bas ; V-18 : la place
     reperes = [{"t": 0.12, "son": "@volet", "gain_db": -6, "pan": -0.15},
@@ -582,6 +591,17 @@ def _echelles(m):
     return x, y, pas, indice
 
 
+def onde_repetee(ident, a_i, t_choc, fin, pas=2.2):
+    """V-14 : l'onde du point repart toutes les 2,2 s pendant un long arrêt de la caméra (le check HyperFrames voyait 4,6 s sans
+    aucun changement à l'écran)."""
+    morceaux, tk = [], t_choc + pas
+    while tk < fin - 0.6:
+        morceaux.append(f'\n    tl.set("#{ident}-o{a_i}", {{ attr: {{ r: 4 }}, opacity: 1 }}, {tk:.2f});'
+                        f'\n    tl.to("#{ident}-o{a_i}", {{ attr: {{ r: 34 }}, opacity: 0, duration: 0.75, ease: "power2.out" }}, {tk + 0.01:.2f});')
+        tk += pas
+    return "".join(morceaux)
+
+
 def camera(px, py, s=ZOOM):
     """La caméra qui cadre le point (px, py) au zoom s sans sortir du graphique : (x, y, échelle) à donner à GSAP (origine 0 0), et la
     place du point à l'écran une fois cadré."""
@@ -602,7 +622,7 @@ def _bulle(ident, pastilles, fx, fy, taille=34):
     haut = min(max(haut, Y_HAUT + 8), Y_BAS - H - 8)
     a_gauche = fx > (X0 + X1) / 2
     gauche = fx - 48 - W if a_gauche else fx + 48
-    gauche = min(max(gauche, X0 + 8), X_DROITE - W)
+    gauche = min(max(gauche, X_GAUCHE), X_DROITE - W)
     html_, ids = [], []
     for k, ((pid, texte, fond, encre), w) in enumerate(zip(pastilles, largeurs)):
         g = gauche + (W - w if a_gauche else 0)
@@ -682,9 +702,10 @@ def scene_marche(j, m, k, rep, unite, duree, expliquer_r=False, precedent=None):
     for i, c in enumerate(b):
         h = c["heure"]
         xh = X0 + pas * i
-        if (i == ouverture or (h.minute == 0 and h.hour % 2 == 0)) and xh - derniere > 110 and xh + 40 <= X_DROITE_BAS:
+        # V-14 : ni sous les boutons de TikTok (à droite), ni contre le bord gauche (le check HyperFrames signalait « 14:00 »)
+        if (i == ouverture or (h.minute == 0 and h.hour % 2 == 0)) and xh - derniere > 110 and xh + 40 <= X_DROITE_BAS and xh - 34 >= X_GAUCHE:
             derniere = xh
-            etiquettes.append(f'<text x="{xh:.1f}" y="{Y_BAS + 50}" font-size="28" fill="{COUL["encre2"]}" text-anchor="middle">{h:%H:%M}</text>')
+            etiquettes.append(f'<text x="{xh:.1f}" y="{Y_BAS + 44}" font-size="28" fill="{COUL["encre2"]}" text-anchor="middle">{h:%H:%M}</text>')
     # les positions : triangle d'entrée (bleu pour un achat, encre pour une vente) et trait jusqu'à la sortie
     marques, dessinees = [], []
     for i, p in enumerate(ps):
@@ -797,19 +818,23 @@ def scene_marche(j, m, k, rep, unite, duree, expliquer_r=False, precedent=None):
     t_recul = max(t_res_mot - 0.2, (derniere_etiquette + ARRET) if arrets else 0, (arrets[0]["t"] + 2.3) if arrets else 0)
     t_res = t_recul + 0.4
 
-    # ── ce qui est écrit sous le graphique : la légende, les pastilles qui comptent, le résultat ──
-    yl = Y_BAS + 98
+    # ── la légende (V-14 : dans la ligne de la date, à droite), puis sous le graphique les pastilles qui comptent et le résultat ──
+    yl, tl_ = 276, 28                                  # ligne de base et taille de la légende (28 px : ce qu'un téléphone lit)
+    gauche_min = 124 + police.largeur(nombres.date_courte(j["jour"]), 36, POLICE) + 28
     legende = []
 
     def item(dessin, texte, largeur_dessin=26):
         return (dessin, texte, largeur_dessin)
 
     def poser(items):
-        xl, blocs = 124, []
+        k = tl_ / 28
+        larg = sum(ld * k + 6 + police.largeur(t, tl_, POLICE) for _, t, ld in items) + 18 * max(0, len(items) - 1)
+        xl, blocs = X1 - larg, []
         for dessin, texte, ld in items:
-            blocs.append(f'<g transform="translate({xl:.0f},{yl})">{dessin}<text x="{ld + 8}" y="0" font-size="28" fill="{COUL["encre2"]}">{e(texte)}</text></g>')
-            xl += ld + 8 + police.largeur(texte, 28, POLICE) + 22
-        return blocs, xl - 22
+            blocs.append(f'<g transform="translate({xl:.0f},{yl})"><g transform="scale({k:.3f})">{dessin}</g>'
+                         f'<text x="{ld * k + 6:.0f}" y="0" font-size="{tl_}" fill="{COUL["encre2"]}">{e(texte)}</text></g>')
+            xl += ld * k + 6 + police.largeur(texte, tl_, POLICE) + 18
+        return blocs, X1 - larg
     if ps:
         if 1 in f["sens"]:
             legende.append(item(f'<polygon points="13,-21 2,-1 24,-1" fill="{COUL["bleu"]}" />', "achat"))
@@ -823,16 +848,18 @@ def scene_marche(j, m, k, rep, unite, duree, expliquer_r=False, precedent=None):
     if zone:
         legende.append(item(f'<rect x="0" y="-21" width="30" height="20" fill="{COUL["eau"]}" stroke="{COUL["encre2"]}" stroke-width="2" stroke-dasharray="6 4" />',
                             f"zone de {b[ouverture]['heure']:%H:%M}", 30))
-    # la légende tient sur une ligne : sinon « gain / perte » au lieu de « sortie gagnante / perdante », sinon sans elles
-    blocs, droite = poser(legende)
-    if droite > X_DROITE_BAS:
+    # la légende tient à droite de la date : sinon « gain / perte » au lieu de « sortie gagnante / perdante », sinon sans elles
+    blocs, gauche = poser(legende)
+    if gauche < gauche_min:
         legende = [(d, {"sortie gagnante": "gain", "sortie perdante": "perte"}.get(t, t), ld) for d, t, ld in legende]
-        blocs, droite = poser(legende)
-    if droite > X_DROITE_BAS:
-        blocs, droite = poser([x for x in legende if x[1] not in ("gain", "perte")])
+        blocs, gauche = poser(legende)
+    if gauche < gauche_min:
+        blocs, gauche = poser([x for x in legende if x[1] not in ("gain", "perte")])
+    if gauche < gauche_min:
+        blocs = []
     legende = blocs
 
-    resume, bas_resume = "", Y_BAS + 128
+    resume, bas_resume = "", Y_RESUME - 4
     if ps:
         n_e = len(ps)
         entree_txt = (f"{n_e} achat{_s(n_e)}" if f["sens"] == {1} else f"{n_e} vente{_s(n_e)}" if f["sens"] == {-1} else f"{n_e} positions")
@@ -845,12 +872,12 @@ def scene_marche(j, m, k, rep, unite, duree, expliquer_r=False, precedent=None):
                          "fin": f"{n} sortie{_s(n)} à {hs.pop()}" if len(hs) == 1 else f"{n} en fin de séance",
                          "autre": f"{n} autre{_s(n)} sortie{_s(n)}"}[nom]
                 pastilles.append((f"{ident}-r-{nom}", texte, couleur_groupe(liste), COUL["blanc"]))
-        resume, bas_resume = _rangee(pastilles, 34, Y_BAS + 132)
+        resume, bas_resume = _rangee(pastilles, 34, Y_RESUME)
     v = valeur(m, unite)
     resultat, t_rappel = "", None
     if ps and v is not None:
-        y_label = bas_resume + 26
-        place = Y_FIN - (y_label + 46)
+        y_label = bas_resume + 20
+        place = Y_FIN - (y_label + 42)
         taille = min(104, int((place - 8) / 1.34))
         vr = round(v, DECIMALES[unite])
         rappel = ""
@@ -858,11 +885,11 @@ def scene_marche(j, m, k, rep, unite, duree, expliquer_r=False, precedent=None):
             rappel = f'<div id="{ident}-rappel" class="rappel" style="top:{y_label + 4}px">1 R = le risque pris sur un trade</div>'
             t_rappel = max(t_res + 0.6, _mot(rep, ancres.get("r"), t_res + 1.0) - 0.2)
         resultat = (f'<div id="{ident}-res-t" class="label" style="top:{y_label}px">Résultat</div>{rappel}'
-                    + _pastille(f"{ident}-res", ecran(vr, unite), couleur(vr), COUL["blanc"], taille, 120, y_label + 46))
+                    + _pastille(f"{ident}-res", ecran(vr, unite), couleur(vr), COUL["blanc"], taille, 120, y_label + 42))
     sans = ""
     if not ps:           # V-10 : ce que dit la voix, sans raison
-        sans = (f'<div id="{ident}-sans1" class="{ident}-sans" style="top:{Y_BAS + 150}px; font-size:56px">Le robot n\'a pas tradé</div>'
-                f'<div id="{ident}-sans2" class="{ident}-sans" style="top:{Y_BAS + 226}px; font-size:56px">aujourd\'hui.</div>')
+        sans = (f'<div id="{ident}-sans1" class="{ident}-sans" style="top:{Y_RESUME}px; font-size:56px">Le robot n\'a pas tradé</div>'
+                f'<div id="{ident}-sans2" class="{ident}-sans" style="top:{Y_RESUME + 70}px; font-size:56px">aujourd\'hui.</div>')
 
     # les arrêts : cadrage, bougie surlignée, onde, chemin du prix en vert, étiquettes posées là où la caméra met le point
     colonnes, focus, bulles = [], [], []
@@ -893,7 +920,8 @@ def scene_marche(j, m, k, rep, unite, duree, expliquer_r=False, precedent=None):
         for q in a["pastilles"]:
             q.append(f"{ident}-a{a_i}-{q[0]}")
         bulles.append(html_b)
-    style = f"""    #{ident}-nom {{ position: absolute; left: 120px; top: 340px; font-size: 92px; line-height: 1; }}
+    style = f"""    #{ident}-date {{ top: 244px; }}
+    #{ident}-nom {{ position: absolute; left: 120px; top: 284px; font-size: 76px; line-height: 1; }}
     #{ident} .label, .label {{ position: absolute; left: 124px; font-size: 34px; color: {COUL['encre2']}; line-height: 1; }}
     .rappel {{ position: absolute; left: 290px; font-size: 28px; color: {COUL['encre2']}; line-height: 1; }}
     .{ident}-sans {{ position: absolute; left: 124px; line-height: 1; }}
@@ -965,7 +993,7 @@ def scene_marche(j, m, k, rep, unite, duree, expliquer_r=False, precedent=None):
     tl.to("#{ident}-f{a_i}", {{ opacity: 1, duration: 0.2 }}, {t:.2f});
     tl.to("#{ident}-c{a_i}", {{ opacity: 0.55, duration: 0.2 }}, {t:.2f});
     tl.set("#{ident}-o{a_i}", {{ attr: {{ r: 4 }}, opacity: 1 }}, {t_choc:.2f});
-    tl.to("#{ident}-o{a_i}", {{ attr: {{ r: 34 }}, opacity: 0, duration: 0.75, ease: "power2.out" }}, {t_choc + 0.01:.2f});
+    tl.to("#{ident}-o{a_i}", {{ attr: {{ r: 34 }}, opacity: 0, duration: 0.75, ease: "power2.out" }}, {t_choc + 0.01:.2f});{onde_repetee(ident, a_i, t_choc, fin)}
     tl.to(["#{ident}-f{a_i}", "#{ident}-c{a_i}"], {{ opacity: 0, duration: 0.2 }}, {fin:.2f});
     tl.to({json.dumps(['#' + i for i in ids])}, {{ opacity: 0, duration: 0.15 }}, {fin:.2f});""")
         for q in a["pastilles"]:
@@ -1198,6 +1226,49 @@ def nombres_tz():
     return journee.NEW_YORK
 
 
+# ───────────────────────── les sous-titres (V-14) ─────────────────────────
+GRIS_A_DIRE = "#768396"          # un mot pas encore dit (contraste 3,6:1) ; il passe à l'encre quand la voix le dit
+
+
+def scene_sous_titres(scenes):
+    """V-14 (audit du 27/11/2026) : les sous-titres des scènes de marché, dans une seule composition (la piste « captions » de
+    HyperFrames), sous le graphique et dans la zone sûre de TikTok (x de 124 à 780, sous les heures de l'axe). Un groupe à la fois,
+    calé sur les mots de la voix (sous_titres.py), éteint d'un coup à sa fin ; aucun pendant le volet. Les scènes du titre, de la
+    photo et du bilan montrent déjà à l'écran ce que dit la voix. scenes : [{"id", "debut", "duree", "rep", "offset"}] ; rend
+    (style, corps, script, groupes) avec les instants dans le temps de la vidéo."""
+    import sous_titres
+    groupes, corps, script = [], [], []
+    for s in scenes:
+        rep, off = s.get("rep"), s.get("offset", 0.0)
+        if not rep or not rep.get("mots"):
+            continue
+        mots = [dict(m, debut=m["debut"] + off, fin=m["fin"] + off) for m in rep["mots"]]
+        liste = sous_titres.groupes(mots, POLICE, X_DROITE_BAS - 124, sous_titres.TAILLE)
+        fin_scene = s["debut"] + s["duree"] - VOLET - 0.05
+        for k, g in enumerate(liste):
+            debut = max(s["debut"] + 0.15, s["debut"] + g["debut"] - 0.06)
+            suivant = s["debut"] + liste[k + 1]["debut"] - 0.06 if k + 1 < len(liste) else fin_scene
+            fin = min(max(s["debut"] + g["fin"] + 0.35, debut + 0.5), suivant, fin_scene)
+            if fin - debut < 0.2:
+                continue
+            gid = f"st-{s['id']}-{k}"
+            textes = [t for t, _ in g["jetons"]]
+            html_lignes = "<br>".join(" ".join(f'<span id="{gid}-{i}" class="st-m">{e(textes[i])}</span>' for i in ligne)
+                                      for ligne in g["lignes"])
+            corps.append(f'<div id="{gid}" class="st-g" style="top:{Y_SOUS_TITRES}px">{html_lignes}</div>')
+            script.append(f'    tl.set("#{gid}", {{ visibility: "visible" }}, {debut:.2f});\n'
+                          f'    tl.to("#{gid}", {{ opacity: 1, duration: 0.08 }}, {debut:.2f});')
+            for i, (_, t_mot) in enumerate(g["jetons"]):
+                script.append(f'    tl.to("#{gid}-{i}", {{ color: "{COUL["encre"]}", duration: 0.06 }}, {max(debut, s["debut"] + t_mot):.2f});')
+            script.append(f'    tl.to("#{gid}", {{ opacity: 0, duration: 0.1, ease: "power2.in" }}, {fin - 0.1:.2f});\n'
+                          f'    tl.set("#{gid}", {{ opacity: 0, visibility: "hidden" }}, {fin:.2f});')
+            groupes.append({"id": gid, "texte": " ".join(textes), "lignes": [" ".join(textes[i] for i in l) for l in g["lignes"]],
+                            "taille": sous_titres.TAILLE, "haut": Y_SOUS_TITRES, "debut": round(debut, 3), "fin": round(fin, 3)})
+    style = f"""    .st-g {{ position: absolute; left: 124px; width: {X_DROITE_BAS - 124}px; font-size: {sous_titres.TAILLE}px; line-height: 1.2;
+      white-space: nowrap; color: {GRIS_A_DIRE}; opacity: 0; visibility: hidden; }}"""
+    return style, "\n    ".join(corps), "\n".join(script), groupes
+
+
 # ───────────────────────── fabrication ─────────────────────────
 VOLET = 0.17       # le volet bleu qui passe entre deux scènes : il couvre l'écran 0,17 s avant la coupe et repart en 0,2 s
 
@@ -1207,12 +1278,16 @@ def couverture_titre(titre):
     return round(max(0.5, min(titre["fin_min"] - 1.1, titre["duree"] - VOLET - 0.15)), 3)
 
 
-def _index(scenes, duree):
+def _index(scenes, duree, sous_titres=False):
     hotes = []
     for i, s in enumerate(scenes):
         hotes.append(f'      <div id="{s["id"]}" data-composition-id="{s["id"]}" data-composition-src="compositions/{s["id"]}.html" '
                      f'data-start="{s["debut"]:.3f}" data-duration="{s["duree"]:.3f}" data-track-index="{i + 1}" data-track-kind="graphics" '
                      f'data-width="1080" data-height="1920" style="z-index: {i + 2}"></div>')
+    if sous_titres:                 # V-14 : un seul hôte pour tous les sous-titres (piste « captions »), sous le volet
+        hotes.append(f'      <div id="sous-titres" data-composition-id="sous-titres" data-composition-src="compositions/sous-titres.html" '
+                     f'data-start="0" data-duration="{duree:.3f}" data-track-index="{len(scenes) + 2}" data-track-kind="captions" '
+                     f'data-width="1080" data-height="1920" style="z-index: 30"></div>')
     coupes = [s["debut"] for s in scenes[1:]]
     volets = "\n".join(f'      tl.to("#volet-panneau", {{ xPercent: 0, duration: {VOLET}, ease: "power2.in" }}, {c - VOLET:.3f});\n'
                        f'      tl.to("#volet-panneau", {{ xPercent: 115, duration: 0.2, ease: "power2.out" }}, {c:.3f});\n'
@@ -1322,8 +1397,12 @@ def fabriquer(j, config, dossier_sortie, journal=print, rendre=True, exiger_voix
     for k, s in enumerate(scenes[1:]):            # le volet entre deux scènes : son pic sur la coupe (V-15), prises en rotation (V-17)
         reperes.append({"t": round(s["debut"], 3), "son": "@volet", "gain_db": -11, "pan": 0.15 if k % 2 else -0.15})
     distribuer_prises(reperes)
+    st_style, st_corps, st_script, groupes = scene_sous_titres([s for s in scenes if s["id"].startswith("m")])
+    if groupes:
+        with open(os.path.join(projet, "compositions", "sous-titres.html"), "w", encoding="utf-8") as f:
+            f.write(_composition("sous-titres", st_style, "    " + st_corps, st_script))
     with open(os.path.join(projet, "index.html"), "w", encoding="utf-8") as f:
-        f.write(_index(scenes, duree))
+        f.write(_index(scenes, duree, bool(groupes)))
     json.dump({"jour": j["jour"].isoformat(), "source": j["source"], "unite": unite, "duree": duree,
                "couverture": couverture_titre(scenes[0]),
                "scenes": [{k: s[k] for k in ("id", "debut", "duree", "texte")} for s in scenes],

@@ -224,13 +224,14 @@ def scene_titre(p, rep):
     <div id="pt-gros" class="pt-ligne">{e(gros)}</div>
     <div id="pt-bas" class="pt-ligne">{e(bas)}</div>
     {_pastille("pt-badge", texte_badge, coul, COUL["blanc"], 84, 120, 960)}"""
-    script = f"""    gsap.set(".pt-ligne", {{ clipPath: "inset(-30% 100% -40% 0)" }});
+    # V-13 (audit du 27/11/2026) : les dates et la couleur de la période dès l'image 0 (la vignette du fil TikTok)
+    script = f"""    gsap.set("#pt-haut", {{ clipPath: "inset(-30% 100% -40% 0)" }});
+    gsap.set("#pt-badge", {{ rotation: -3, transformOrigin: "0% 50%" }});
     gsap.set("#pt-logo path", {{ opacity: 0 }});
     tl.to("#pt-logo path", {{ opacity: 1, duration: 0.3, stagger: 0.12 }}, 0.05);
     wipe("#pt-haut", 0.15);
-    wipe("#pt-gros", {t_date:.2f}, 0.4);
-    wipe("#pt-bas", {t_date + 0.3:.2f});
-    tl.fromTo("#pt-badge", {{ opacity: 0, scale: 1.12, rotation: -7, transformOrigin: "0% 50%" }}, {{ opacity: 1, scale: 1, rotation: -3, duration: 0.3, ease: "back.out(1.8)" }}, {t_badge:.2f});"""
+    tl.to("#pt-gros", {{ scale: 1.05, transformOrigin: "0% 50%", duration: 0.16, yoyo: true, repeat: 1, ease: "power1.inOut" }}, {t_date:.2f});
+    tl.fromTo("#pt-badge", {{ scale: 1.12, rotation: -7 }}, {{ scale: 1, rotation: -3, duration: 0.3, ease: "back.out(1.8)", immediateRender: false }}, {t_badge:.2f});"""
     # V-15 à V-18 : instants de l'image (le pic y tombe), prises en rotation, coups secondaires plus bas, panoramique léger
     reperes = [{"t": 0.12, "son": "@volet", "gain_db": -6, "pan": -0.15},
                {"t": t_date + 0.1, "son": "typewriter-mechanical-hit-1365", "gain_db": -6, "secondaire": True, "pan": -0.15},

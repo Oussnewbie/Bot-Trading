@@ -1471,3 +1471,85 @@ def test_v18_panoramique_leger_des_bruitages(tmp_path, monkeypatch):
     monkeypatch.setattr(mixage.os.path, "exists", lambda chemin: True)
     mixage.piste_bruitages([{"t": 1, "son": "hit-wood-hard-2182", "pan": 0.3}], "/sons", 3.0, "x.wav", caler=True)
     assert "pan=stereo|c0=0.700*c0|c1=1.000*c1" in vus[0]
+
+
+# ───────────────────────── l'image sur un téléphone (V-13, V-14) ─────────────────────────
+def _rep_fictive(texte, debut=0.4, pas=0.3):
+    """Une réplique aux heures de mots régulières (une pause de 0,25 s après chaque phrase), pour caler une scène sans voix."""
+    mots, t = [], debut
+    for m in texte.split():
+        mots.append({"mot": m, "debut": round(t, 3), "fin": round(t + pas * 0.8, 3)})
+        t += pas + (0.25 if m.endswith((".", "!", "?", "…")) else 0.0)
+    return {"mots": mots, "duree": round(t, 3), "fichier": "x.wav", "texte": texte}
+
+
+def _caches_a_zero(script):
+    """Les éléments cachés à l'image 0 : gsap.set à l'opacité 0 ou au volet fermé, et les apparitions (wipe, pop, fromTo depuis
+    l'opacité 0) dont GSAP pose l'état de départ dès l'image 0."""
+    caches = set()
+    for cibles, options in re.findall(r"gsap\.set\((\[[^\]]*\]|\"[^\"]+\"), \{([^}]*)\}", script):
+        if "opacity: 0" in options or "inset(-30% 100%" in options:
+            caches.update(re.findall(r'"([^"]+)"', cibles))
+    caches.update(re.findall(r'(?:wipe|pop)\("([^"]+)"', script))
+    for cible, depart, reste in re.findall(r'tl\.fromTo\("([^"]+)", \{([^}]*)\}, \{([^}]*)\}', script):
+        if "opacity: 0" in depart and "immediateRender: false" not in reste:
+            caches.add(cible)
+    return caches
+
+
+def test_v13_date_et_couleur_du_jour_des_la_premiere_image(tmp_path):
+    """V-13 : l'image 0 était vide (le titre arrivait ensuite), alors que c'est la vignette du fil TikTok ; la couleur du jour
+    n'arrivait qu'à 1,5-2 s. La date et la couleur sont là dès l'image 0 ; le tampon de la couleur bouge sur le mot de la voix."""
+    import recap_periode
+    j = _journee(tmp_path, positions=GAIN)
+    style, corps, script, reperes, fin = recap.scene_titre(j, _rep_fictive(recap.repliques(j, "r")[0]), "r")
+    caches = _caches_a_zero(script)
+    assert not caches & {"#ti-jour", "#ti-date", "#ti-annee", "#ti-badge"}, caches
+    assert "Journée verte" in corps and "#ti-badge" in script
+    semaine = tmp_path / "semaine"
+    semaine.mkdir()
+    ecrire_jours(str(semaine), [(D(2026, 11, 2), {}), (D(2026, 11, 3), {})])
+    p = recap_periode.charger(str(semaine), D(2026, 11, 2), D(2026, 11, 6), "semaine")
+    script = recap_periode.scene_titre(p, None)[2]
+    assert not _caches_a_zero(script) & {"#pt-gros", "#pt-bas", "#pt-badge"}
+
+
+def _instants(script):
+    """Les instants où quelque chose bouge dans le script d'une scène (débuts des animations)."""
+    t = [float(x) for x in re.findall(r'(?:wipe|pop)\("[^"]+", ([\d.]+)', script)]
+    t += [float(x) for x in re.findall(r"\}, ([\d.]+)\);", script)]
+    return sorted(t)
+
+
+def test_v14_graphique_plus_grand_sous_titres_et_mouvement(tmp_path):
+    """V-14 : graphique de 850 x 340 px, moitié basse vide pendant presque toute la scène, aucun sous-titre alors que l'histoire
+    en points n'est dite qu'à la voix, et 4,6 s sans aucun changement (check HyperFrames, dead_stretch). Graphique plus haut,
+    sous-titres calés sur les mots de la voix (chiffres comme à l'écran), dans la zone sûre de TikTok sous le graphique, un
+    mouvement au moins toutes les 3 s."""
+    assert recap.Y_BAS - recap.Y_HAUT >= 420 and recap.Y_BAS <= 840 and recap.X1 <= 960
+    recap.POLICE = os.path.expanduser(recap.POLICE)
+    j = _journee(tmp_path, positions=((-1, "A", 9, 36, 100, 10, 2, 112, "Stop"), (-1, "D1", 9, 41, 99, 15, 50, 90, "Fin de journée"),
+                                      (-1, "B", 9, 55, 98, 15, 50, 90, "Fin de journée")))
+    for p in j["marches"][0]["positions"]:
+        p["mfe"], p["risque"] = 103.0, 18.0
+    texte = recap.repliques(j, "r")[1]
+    rep = _rep_fictive(texte)
+    style, corps, script, reperes, fin = recap.scene_marche(j, j["marches"][0], 0, rep, "r", rep["duree"] + 1, True)
+    duree = max(fin, rep["duree"] + 0.6)
+    st_style, st_corps, st_script, groupes = recap.scene_sous_titres([{"id": "m0", "debut": 0.0, "duree": duree, "rep": rep}])
+    assert groupes and any("103 pts" in g["texte"] for g in groupes) and not any("cent trois" in g["texte"] for g in groupes)
+    precedent_fin = 0.0
+    for g in groupes:
+        assert len(g["lignes"]) <= 2 and all(recap.police.largeur(l, g["taille"], recap.POLICE) <= 656 for l in g["lignes"])
+        assert recap.Y_BAS + 40 <= g["haut"] and g["haut"] + len(g["lignes"]) * g["taille"] * 1.2 <= 1260
+        assert g["debut"] >= precedent_fin - 0.001 and g["debut"] >= 0.1 and g["fin"] > g["debut"]
+        precedent_fin = g["fin"]
+    assert st_script.count('visibility: "hidden"') >= len(groupes)                 # extinction dure de chaque groupe
+    for secret in ("RSI", "D1", " B ", "élan", "testeur"):
+        assert secret not in st_corps
+    for x in re.findall(r'<text x="([\d.]+)" y="[\d.]+" font-size="28"[^>]*text-anchor="middle">\d\d:\d\d<', corps):
+        assert float(x) - 34 >= 120, x                     # ni « 14:00 » contre le bord gauche (zone sûre de TikTok)
+    assert all(int(g) >= 120 for g, _, _, _ in PASTILLE.findall(corps))
+    instants = sorted(set(_instants(script) + [g["debut"] for g in groupes]))
+    trous = [b - a for a, b in zip([0.0] + instants, instants + [duree]) if a < duree - 1.0]
+    assert max(trous) <= 3.0, max(trous)
