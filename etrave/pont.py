@@ -36,6 +36,9 @@ FICHIER_REGLAGES = "reglages.txt"
 RISQUE_MIN, RISQUE_MAX = 0.05, 20.0
 # Au-delà de ce risque, il faut confirmer en toutes lettres (AUD-05 : 0,5 %, avant 1 %). La page lit ce seuil ici (bornes).
 RISQUE_A_CONFIRMER = 0.5
+# Objectif de la cassure A, en R (décision de l'utilisateur du 27/11/2026) : 0 = sans objectif, sinon de OBJECTIF_MIN à OBJECTIF_MAX.
+# Mêmes bornes que TGT_MIN / TGT_MAX de l'EA ; sans réglage, l'EA prend InpTgtR (4 R).
+OBJECTIF_MIN, OBJECTIF_MAX, OBJECTIF_DEFAUT = 1.0, 10.0, 4.0
 LEVIER_MAX = 2000.0
 # L'EA réécrit son état toutes les 2 secondes : passé ce délai sans nouvelle, il est arrêté (ou MT5 fermé).
 EA_MUET_S = 15.0
@@ -194,6 +197,25 @@ def _decimal(valeur):
     return f"{valeur:.4f}".rstrip("0").rstrip(".")
 
 
+def _objectif(valeur):
+    """Un objectif valable (0, ou de OBJECTIF_MIN à OBJECTIF_MAX R), sinon None."""
+    x = None if isinstance(valeur, bool) else _nombre(valeur)
+    if x is None:
+        return None
+    if x == 0:
+        return 0.0
+    return x if OBJECTIF_MIN - 1e-9 <= x <= OBJECTIF_MAX + 1e-9 else None
+
+
+def _objectif_du_fichier(texte):
+    """L'objectif écrit dans reglages.txt, lu comme le fait l'EA (ObjectifLu) : chiffres et un point, 8 caractères au plus. Une
+    valeur que l'EA ignorerait vaut OBJECTIF_DEFAUT, ce que l'EA applique alors."""
+    if not isinstance(texte, str) or not re.fullmatch(r"(?=.*\d)\d*\.?\d*", texte) or len(texte) > 8:
+        return OBJECTIF_DEFAUT
+    x = _objectif(texte)
+    return OBJECTIF_DEFAUT if x is None else x
+
+
 def reglages_publics(dossier):
     """Ce que la page peut savoir des réglages : jamais le jeton ni la discussion Telegram."""
     cles = lire_reglages(dossier)
@@ -212,7 +234,9 @@ def reglages_publics(dossier):
         "telegramDiscussion": cles.get("telegram_discussion", "") != "",
         # compte et serveur du dernier lancement (jamais le mot de passe), et les deux automatismes de lancement
         "mt5Login": cles.get("mt5_login", ""), "mt5Serveur": cles.get("mt5_serveur", ""), "mt5Auto": cles.get("mt5_auto") == "1",
-        "bornes": {"risqueMin": RISQUE_MIN, "risqueMax": RISQUE_MAX, "risqueAConfirmer": RISQUE_A_CONFIRMER, "levierMax": LEVIER_MAX},
+        "objectifR": _objectif_du_fichier(cles.get("objectif_r")),
+        "bornes": {"risqueMin": RISQUE_MIN, "risqueMax": RISQUE_MAX, "risqueAConfirmer": RISQUE_A_CONFIRMER, "levierMax": LEVIER_MAX,
+                   "objectifMin": OBJECTIF_MIN, "objectifMax": OBJECTIF_MAX},
     }
 
 
@@ -243,6 +267,11 @@ def regler(dossier, proposition, confirmation=""):
             if levier is None or not (1 <= levier <= LEVIER_MAX):
                 raise Refus(f"Le levier est un nombre entre 1 et {_decimal(LEVIER_MAX)} : 20 pour un levier de 1:20.")
             changements["levier"] = _decimal(levier)
+        elif cle == "objectifR":
+            objectif = _objectif(valeur)
+            if objectif is None:
+                raise Refus(f"L’objectif est 0 (sans objectif) ou un nombre de {_decimal(OBJECTIF_MIN)} à {_decimal(OBJECTIF_MAX)} R.")
+            changements["objectif_r"] = _decimal(objectif)
         elif cle in INSTRUMENTS:
             if not isinstance(valeur, bool):
                 raise Refus("Une case est cochée ou décochée, rien d’autre.")
@@ -347,7 +376,7 @@ def retirer_autorisation_reel(dossier):
 
 
 # ───────────────────────── ce que dit l'EA ─────────────────────────
-NOMBRES = ("solde", "capital", "marge_libre", "levier_compte", "levier_symbole", "risque_pct", "range_bas", "range_haut",
+NOMBRES = ("solde", "capital", "marge_libre", "levier_compte", "levier_symbole", "risque_pct", "objectif_r", "pos_objectif", "range_bas", "range_haut",
            "pos_sens", "pos_entree", "pos_stop", "pos_lots", "pos_resultat", "pos_r", "risque_argent", "solde_depart",
            "stats_n", "stats_gagnants", "stats_r", "stats_baisse", "stats_serie", "jambes", "v8_resultat", "lots_fixes",
            # AUD-24 (audit du 26/11/2026) : lot minimum, pas de volume, argent par point de prix et par lot, prix (bid)

@@ -40,7 +40,8 @@ demande de modifier le code et de recompiler.
 3. **Ordres** : à 9:35, achat stop sur le haut et vente stop sur le bas, valables jusqu'à 9:45. Le premier exécuté annule l'autre.
 4. **Stop** : 3 ranges au-delà du niveau de cassure. La taille est divisée par 3, donc la somme risquée (1 R) ne change pas.
 5. **Gestion** : stop au prix d'entrée dès +1,5 R. Quand une bougie clôture à +2 R, ajout de 2 unités (pyramide) et stop de
-   l'ensemble à 1 R sous le prix de l'ajout. Sortie à 15:50.
+   l'ensemble à 1 R sous le prix de l'ajout. **Objectif de A à 4 R** (réglable dans Étrave, 0 = sans) : touché, tout est fermé
+   (A, ajout, B, D) et plus aucune entrée ce jour-là. Sinon, sortie à 15:50.
 6. **Mémoire** : après une cassure qui finit au-delà de +1 R, le signal suivant n'est pas pris.
 
 **Entrées supplémentaires**, seulement les jours où la cassure est prise, et dans son sens :
@@ -131,7 +132,7 @@ automatiquement ».
   jamais tourner sur le même compte un autre robot qui utilise l'un de ces numéros.
 - **Telegram** : dans Outils > Options > Expert Advisors, autorise `https://api.telegram.org` pour WebRequest. Telegram (comme
   WhatsApp et la notification push) ne reçoit que la connexion réussie, les ordres posés, les entrées exécutées et chaque clôture
-  avec son résultat en R et en dollars. Les alertes de sécurité (stop absent chez le courtier, fermeture de sécurité, ordre refusé,
+  avec son résultat en R et en dollars : un titre avec le marché, puis une info par ligne. Les alertes de sécurité (stop absent chez le courtier, fermeture de sécurité, ordre refusé,
   jour manqué, heure fausse…) s'affichent en tête de la page d'Étrave pendant 24 heures. Le journal de MetaTrader garde tout.
 - **Où le faire tourner** : un ordinateur sans mise en veille pour la démo, un VPS Windows pour le réel. MetaTrader doit rester ouvert
   de 9:30 à 15:50.
@@ -168,6 +169,7 @@ de gagnants ou un résultat négatif, ne passe pas en réel.
 | Alerte « D1 ANNULÉE » | délai passé, ou niveau d'annulation (dans l'alerte « GUETTÉE ») touché d'abord | supprimer l'ordre stop de cette D |
 | Ligne pointillée grise, alerte « stop déplacé au prix d'entrée » | +1,5 R atteint | remonter le stop au prix d'entrée |
 | Étiquette « + » | pyramide | ajouter 2 fois la taille de départ (lot donné dans l'alerte), remonter le stop |
+| Alerte « OBJECTIF DE A ATTEINT » | la cassure A a touché son objectif (réglage « Objectif de A », 4 R) | fermer toutes les positions au marché et supprimer les ordres en attente |
 | Alerte « FIN DE JOURNÉE » | 15:50 | fermer toutes les positions au marché |
 | « ⏸ mémoire », « ⏸ FOMC », « ⏸ férié » | pas de trade aujourd'hui | rien |
 
@@ -184,7 +186,7 @@ pas (l'EA saute alors l'entrée).
 | Onglet | Contenu |
 |---|---|
 | Séance | La frise du jour (range, cassure, entrées D, repli B, sortie) avec l'heure de New York, une ligne par marché (ce que fait l'EA, résultat ouvert, bouton « Clôturer »), l'interrupteur de chaque marché, les chiffres du compte, la courbe, la liste des trades et les exports trimestriels. Une case par marché arrête les nouveaux trades. Le bouton « Arrêt d'urgence », toujours visible, décoche les deux marchés et ferme tous les trades (mot ARRET) ; pour repartir, recoche les cases. |
-| Risque | Risque par trade (de 0,05 % à 20 %, plafond de l'EA et d'Étrave ; au-delà de 0,5 %, il faut taper RISQUE ; un réglage plus haut est ramené à 20 %) et levier du courtier. La simulation rejoue la V11 sur le Nasdaq et le S&P 500 (données du courtier 2019-2026, toutes les entrées) : gain par an, pire baisse, pire série et pire journée à ce risque. La taille estimée de chaque marché prévient si elle passe sous le lot minimum du courtier (aucun trade) ou si l'arrondi réduit nettement le risque. |
+| Risque | Objectif de la cassure A (0 = sans, de 1 à 10 R, 4 par défaut, pris au trade suivant). Risque par trade (de 0,05 % à 20 %, plafond de l'EA et d'Étrave ; au-delà de 0,5 %, il faut taper RISQUE ; un réglage plus haut est ramené à 20 %) et levier du courtier. La simulation rejoue la V11 sur le Nasdaq et le S&P 500 (données du courtier 2019-2026, toutes les entrées) : gain par an, pire baisse, pire série et pire journée à ce risque. La taille estimée de chaque marché prévient si elle passe sous le lot minimum du courtier (aucun trade) ou si l'arrondi réduit nettement le risque. |
 | Connexions | Telegram, connexion à un compte MetaTrader, autorisation d'un compte réel (mot REEL : sans elle, l'EA ne trade pas sur un compte réel), installation de l'EA et des deux graphiques (refusée pendant un trade), ouverture et fermeture de MetaTrader, lancement automatique. Au double-clic, si l'EA ne compile pas, MetaTrader n'est pas lancé et la page le dit. |
 
 L'interface et l'EA se parlent par des fichiers du dossier commun de MetaTrader (`…\MetaQuotes\Terminal\Common\Files\Etrave` ;

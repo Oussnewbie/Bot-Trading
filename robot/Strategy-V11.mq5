@@ -111,7 +111,7 @@ const bool         InpUseRSI    = true;         // Filtre RSI M5 (achat > 50, ve
 const int          InpRSILen    = 14;           // Longueur du RSI
 const bool         InpUseExt    = true;         // Filtre d'élan (le range de 9:30 dépasse 9:00-9:30)
 const double       InpBeR       = 1.5;          // Stop au prix d'entrée dès (R), 0 = désactivé
-const double       InpTgtR      = 0.0;          // Objectif (R), 0 = sortie en fin de journée
+const double       InpTgtR      = 4.0;          // Objectif de A (R) par défaut, décision de l'utilisateur du 27/11/2026 ; Étrave le règle (objectif_r), 0 = sans objectif
 
 const bool         InpUsePyr    = true;         // Pyramide sur gain
 const double       InpPyrR      = 2.0;          // Ajout quand une bougie M5 clôture à (R)
@@ -176,6 +176,8 @@ input bool         InpPanel     = true;         // Panneau d'information
 #define UI_DIR      "Etrave\\"   // sous-dossier du dossier commun de MetaTrader, partagé avec l'interface
 #define UI_PERIOD   2            // secondes entre deux lectures des réglages et deux écritures de l'état
 #define RISK_MIN    0.05         // bornes du risque lu dans l'interface (% du solde) ; hors bornes, la valeur est ignorée
+#define TGT_MIN     1.0          // objectif lu dans Étrave : 0 (sans objectif) ou de TGT_MIN à TGT_MAX R ; sinon ignoré
+#define TGT_MAX     10.0
 #define RISK_MAX    20.0         // plafond dur (AUD-05) : 1 % après l'audit, 20 % depuis la décision de l'utilisateur du 27/11/2026 (essais)
 #define LEVER_MAX   2000.0
 #define MARGIN_USE  0.90         // part de la marge libre que la position, pyramide comprise, peut demander
@@ -220,6 +222,8 @@ int      gDir     = 0;
 double   gEntry   = 0, gSL = 0, gRisk = 0;
 bool     gBE      = false;
 bool     gTPset   = true;
+double   gTgtR    = InpTgtR;   // objectif réglé (Étrave), pour le prochain trade
+double   gTgtTrade = 0;       // objectif du trade en cours, figé à l'exécution de A
 datetime gFillBar = 0;
 int      gPosDay  = 0;
 string   gCloseWhy = "";
@@ -312,6 +316,7 @@ int      gAmbigNote = 0;        // AUD-06 : la position ouverte puis fermée pen
 long     gSrvBaseSec = 0;       // décalage d'hiver du serveur détecté (secondes), si gSrvBaseOk
 bool     gSrvBaseOk  = false;
 double   gBalStart  = 0;        // solde au moment de l'entrée (résultat du trade en %)
+string   gSweepWhy   = "fermeture depuis l'interface";   // motif du balayage complet demandé (clôture d'Étrave, objectif de A)
 datetime gSweepAllAt = 0;        // heure du balayage complet demandé après une clôture depuis l'interface (CloseOrphans)
 bool     gGvDirty   = false;    // état modifié depuis la dernière écriture sur le disque (FlushState)
 string   gQueue[];              // messages WhatsApp / Telegram en attente : envoyés APRÈS le passage des ordres
@@ -586,6 +591,23 @@ string Dollars(double v)
 string PxF(double p)  { return (NormalizeDouble(p, _Digits) < 0 ? "-" : "") + Nombre(p, _Digits); }
 string PtsF(double d) { return (NormalizeDouble(d, _Digits) < 0 ? "-" : "") + Nombre(d, _Digits) + " pts"; }
 string PctF(double v) { return Signe(v, 2) + Nombre(v, 2) + " %"; }
+string Court(double v)   // 2,5 · 1 · 0,25 : sans zéros inutiles (messages Telegram)
+  {
+   string s = Nombre(v, 2);
+   if(StringFind(s, ",") >= 0)
+     {
+      while(StringSubstr(s, StringLen(s) - 1) == "0")
+         s = StringSubstr(s, 0, StringLen(s) - 1);
+      if(StringSubstr(s, StringLen(s) - 1) == ",")
+         s = StringSubstr(s, 0, StringLen(s) - 1);
+     }
+   return (NormalizeDouble(v, 2) < 0 ? "-" : "") + s;
+  }
+string Montant(double v)   // somme sans signe « + » : risque, taille en argent
+  {
+   string c = AccountInfoString(ACCOUNT_CURRENCY);
+   return (NormalizeDouble(v, 2) < 0 ? "-" : "") + Nombre(v, 2) + (c == "USD" ? " $" : " " + c);
+  }
 string SoldeTxt()
   {
    double b = AccountInfoDouble(ACCOUNT_BALANCE);
@@ -640,6 +662,8 @@ string IcoSortie(string why)
       return I_CLOCK;
    if(why == "Fermeture manuelle")
       return I_HAND;
+   if(why == "Objectif de A")
+      return I_TARGET;
    if(StringFind(why, "nterface") >= 0)
       return I_HAND;
    return I_WARN;
@@ -724,7 +748,7 @@ void Notify(string msg, bool tg = false)
       return;
    if(InpPush)
      {
-      string p = full;
+      string p = msg;
       StringReplace(p, "\n", " · ");
       SendNotification(StringSubstr(p, 0, 255));
      }
@@ -733,7 +757,7 @@ void Notify(string msg, bool tg = false)
    if((wa || gTgOn) && n < QUEUE_MAX)
      {
       ArrayResize(gQueue, n + 1);
-      gQueue[n] = full;
+      gQueue[n] = msg;
      }
   }
 
@@ -786,7 +810,7 @@ void SaveState()
    Sv("v8rm", gV8RiskMoney); Sv("v8bar", (double)gV8BreakBar); Sv("v8inv", gV8Invalid); Sv("v8hit", gV8StopHit);
    Sv("orh", gOrH); Sv("orl", gOrL); Sv("smult", gStopMult); Sv("lots", gLots); Sv("rm", gRiskMoney);
    Sv("in", gIn); Sv("pos", (double)gPos); Sv("posid", (double)gPosId); Sv("dir", gDir);
-   Sv("entry", gEntry); Sv("sl", gSL); Sv("risk", gRisk); Sv("be", gBE); Sv("tpset", gTPset);
+   Sv("entry", gEntry); Sv("sl", gSL); Sv("risk", gRisk); Sv("be", gBE); Sv("tpset", gTPset); Sv("tgt", gTgtTrade);
    Sv("fillbar", (double)gFillBar); Sv("posday", gPosDay);
    Sv("pyr", gPyr); Sv("posid2", (double)gPosId2); Sv("vstop", gVStop); Sv("bal0", gBalStart);
    Sv("n", gN); Sv("win", gWin); Sv("streak", gStreak); Sv("worst", gWorst);
@@ -850,7 +874,7 @@ void LoadState()
       LegLoad(gD[kd]);
    gOrH = Ld("orh", 0); gOrL = Ld("orl", 0); gStopMult = Ld("smult", InpStopMult); gLots = Ld("lots", 0); gRiskMoney = Ld("rm", 0);
    gIn = Ld("in", 0) != 0; gPos = (ulong)Ld("pos", 0); gPosId = (long)Ld("posid", 0); gDir = (int)Ld("dir", 0);
-   gEntry = Ld("entry", 0); gSL = Ld("sl", 0); gRisk = Ld("risk", 0); gBE = Ld("be", 0) != 0; gTPset = Ld("tpset", 1) != 0;
+   gEntry = Ld("entry", 0); gSL = Ld("sl", 0); gRisk = Ld("risk", 0); gBE = Ld("be", 0) != 0; gTPset = Ld("tpset", 1) != 0; gTgtTrade = Ld("tgt", 0);
    gFillBar = (datetime)Ld("fillbar", 0); gPosDay = (int)Ld("posday", 0);
    gPyr = Ld("pyr", 0) != 0; gPosId2 = (long)Ld("posid2", 0); gVStop = Ld("vstop", 0); gBalStart = Ld("bal0", 0);
    gUsePyrToday = Ld("pyrtoday", 1) != 0;
@@ -1326,11 +1350,15 @@ bool RecordClose(bool force)   // false = un deal de sortie n'est pas encore dan
    Txt(GV + "res_" + (string)gPosId, tx, px > 0 ? px : gEntry, " " + RTxt(r), r > 0.05 ? clrSeaGreen : r < -0.05 ? clrTomato : clrGray, ANCHOR_LEFT);
    double pct = gBalStart > 0 ? 100.0 * net / gBalStart : 0;
    AppendTrade(tx, r, net, why);
-   Notify((r > 0.05 ? I_WIN : r < -0.05 ? I_LOSS : I_FLAT) + (gDir == 1 ? "ACHAT CLÔTURÉ · " : "VENTE CLÔTURÉE · ") + RTxt2(r) + " · " + Dollars(net) +
-          "\n" + IcoSortie(why) + why + (gPyr ? ", avec pyramide" : "") + (px > 0 ? " · sortie à " + PxF(px) : "") + " · " + PctF(pct) +
-          "\n" + I_BANK + "Solde : " + SoldeTxt() +
-          "\nDepuis le début : " + (string)gN + (gN > 1 ? " trades · " : " trade · ") + RTxt2(gSumR) +
-          (InpUseMem && gSkipNext ? "\nRègle mémoire : trade gagnant, le prochain signal ne sera pas pris" : ""), true);
+   Print(BOT + " · " + _Symbol + " · cassure A sortie à " + Px(px) + " (" + why + (gPyr ? ", avec pyramide" : "") + ") : " + RTxt(r) + ", " + PctS(pct) +
+         " ; depuis le début " + (string)gN + " trades, " + RTxt(gSumR) + (InpUseMem && gSkipNext ? " ; règle mémoire : le prochain signal ne sera pas pris" : ""));
+   Notify((why == "Objectif" ? I_TARGET : r > 0.05 ? I_WIN : r < -0.05 ? I_LOSS : I_FLAT) + (gDir == 1 ? "Achat A · " : "Vente A · ") + _Symbol +
+          "\n" + RTxt2(r) + "\n" + Dollars(net) +
+          "\n" + (why == "Objectif" ? "Objectif atteint" : IcoSortie(why) + why) +
+          "\nSolde " + SoldeTxt(), true);
+   // Décision de l'utilisateur du 27/11/2026 : l'objectif de A touché, tout est clôturé et plus aucune entrée ce jour-là
+   if(why == "Objectif")
+      ObjectifTouche();
    gDayTxt = id + " terminé (" + why + ") : " + RTxt(r);
    // journal d'exécution : une ligne par position (départ et ajout), après la comptabilité du trade
    double lvl = (gOrH > gOrL && gPosDay == gDay) ? (gDir == 1 ? gOrH : gOrL) : 0;
@@ -1400,21 +1428,24 @@ void SyncPosition()
               }
            }
         }
-      gTPset   = InpTgtR <= 0;
+      gTgtTrade = gTgtR;              // décision du 27/11/2026 : un changement dans Étrave vaut au trade suivant
+      gTPset   = gTgtTrade <= 0;
       gPend    = false;
       gDelDue  = !DeletePendings();   // le premier exécuté annule l'autre
       gGoneAt  = 0;
       gCloseWhy = "";
       gBalStart = AccountInfoDouble(ACCOUNT_BALANCE);
       DropPendingDraw();
-      string id = gDir == 1 ? I_UP + "ACHAT exécuté (cassure A)" : I_DOWN + "VENTE exécutée (cassure A)";
+      string id = (gDir == 1 ? I_UP + "Achat A · " : I_DOWN + "Vente A · ") + _Symbol;
       double lvlIn = gDir == 1 ? gOrH : gOrL;
-      Notify(id + " à " + PxF(gEntry) + " (glissement " + PtsF((gEntry - lvlIn) * gDir) + " par rapport au niveau " + PxF(lvlIn) + ")" +
-             "\nStop : " + PxF(gSL) + " (" + Dollars(-gRiskMoney) + ")" +
-             (InpBeR > 0 ? "\nStop au prix d'entrée dès " + PxF(gEntry + gDir * InpBeR * gRisk) + " (+" + Nombre(InpBeR, 1) + "R)" : "") +
-             (InpUsePyr ? "\nPyramide : ajout si une bougie clôture à " + PxF(gEntry + gDir * InpPyrR * gRisk) + " (" + RTxt2(InpPyrR) + "), stop de l'ensemble " + Nombre(InpPyrGap, 1) + "R sous l'ajout" : "") +
-             (InpTgtR > 0 ? "\nObjectif : " + PxF(gEntry + gDir * InpTgtR * gRisk) : "") +
-             (ShortDay(ToNY(t)) ? "\n" + I_WARN + "Jour férié ou demi-séance : sortie à " + InpFlatShort + " NY" : "\nSortie à " + InpFlat + " NY"), true);
+      // le détail reste au journal de MetaTrader ; Telegram reçoit l'essentiel, une info par ligne (format du 27/11/2026)
+      Print(BOT + " · " + _Symbol + " · cassure A exécutée à " + Px(gEntry) + ", glissement " + Pts((gEntry - lvlIn) * gDir) + " (niveau " + Px(lvlIn) + ")" +
+            (InpBeR > 0 ? ", stop à l'entrée dès " + Px(gEntry + gDir * InpBeR * gRisk) : "") +
+            (InpUsePyr ? ", pyramide à " + Px(gEntry + gDir * InpPyrR * gRisk) : "") + ", sortie à " + (ShortDay(ToNY(t)) ? InpFlatShort : InpFlat) + " NY");
+      Notify(id + "\nEntrée " + PxF(gEntry) + "\nStop " + PxF(gSL) +
+             (gTgtTrade > 0 ? "\nObjectif " + PxF(gEntry + gDir * gTgtTrade * gRisk) : "") +
+             "\nTaille " + Nombre(gLots, VolDigits(SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_STEP))) + " lot" +
+             "\nRisque " + Montant(gRiskMoney), true);
       gDayTxt = (gDir == 1 ? "Achat" : "Vente") + " en cours";
       SaveState();
      }
@@ -1685,15 +1716,17 @@ bool Setup()   // true = terminé (trade préparé ou pas de trade), false = don
    gDayTxt = (gPendDir == 1 ? "Achat stop " + Px(gOrH) : gPendDir == -1 ? "Vente stop " + Px(gOrL) : "Achat " + Px(gOrH) + " · Vente " + Px(gOrL)) + " · jusqu'à " + endT;
    string ccy = AccountInfoString(ACCOUNT_CURRENCY);
    double realPct = bal > 0 ? 100.0 * gRiskMoney / bal : 0;
-   Notify(I_PIN + "ORDRES PLACÉS\nRange 9:30 : " + PxF(gOrL) + " – " + PxF(gOrH) + " (" + PtsF(dist) + ") · 1R = " + PtsF(dist * gStopMult) + (gStopMult > InpStopMult + 1e-9 ? " (plancher de bruit : stop à " + Nombre(gStopMult, 2) + " ranges)" : "") +
-          (gPendDir != -1 ? "\nAchat stop : " + PxF(gOrH) + " · stop " + PxF(StopA(1)) : "\nAchat bloqué (" + whyL + ")") +
-          (gPendDir != 1 ? "\nVente stop : " + PxF(gOrL) + " · stop " + PxF(StopA(-1)) : "\nVente bloquée (" + whyS + ")") +
-          "\nTaille : " + Nombre(lots, vd) + " lot · " + Nombre(gRiskMoney, 2) + (ccy == "USD" ? " $" : " " + ccy) + " risqués (" + Nombre(realPct, 2) + " %" + ")" +
-          (InpFixedLots > 0 ? " · lots fixes" : "") +
-          (cut ? "\n" + I_WARN + "Taille réduite par la marge : " + (InpFixedLots > 0 ? Nombre(InpFixedLots, vd) + " lot fixés" : Nombre(gRiskPct, 2) + " %" + " demandés") + ", il aurait fallu " + Nombre(want, vd) + " lot" : "") +
-          "\nValables jusqu'à " + endT + " NY." + (gPendDir == 0 ? " Le premier déclenché annule l'autre." : " Annulé si le côté bloqué est touché d'abord.") +
-          ((gPendDir != -1 && !gSrvL) || (gPendDir != 1 && !gSrvS) ? "\n" + I_WARN + "Prix déjà au niveau ou trop près pour un ordre en attente : ce côté est surveillé par l'EA (entrée au marché)" :
-           "\nOrdres posés chez le courtier"), true);
+   Print(BOT + " · " + _Symbol + " · ordres : range 9:30 " + Px(gOrL) + " – " + Px(gOrH) + " (" + Pts(dist) + "), stop à " + DoubleToString(gStopMult, 2) +
+         " ranges, " + DoubleToString(lots, vd) + " lot, " + RiskTxt(realPct) + " risqués" + (InpFixedLots > 0 ? " (lots fixes)" : "") +
+         (cut ? ", taille réduite par la marge (il aurait fallu " + DoubleToString(want, vd) + " lot)" : "") + ", valables jusqu'à " + endT + " NY" +
+         ((gPendDir != -1 && !gSrvL) || (gPendDir != 1 && !gSrvS) ? ", un côté surveillé par l'EA (entrée au marché)" : ", posés chez le courtier"));
+   Notify(I_PIN + "Ordres posés · " + _Symbol +
+          "\n" + (gPendDir != -1 ? "Achat " + PxF(gOrH) : "Achat bloqué (" + whyL + ")") +
+          "\n" + (gPendDir != 1 ? "Vente " + PxF(gOrL) : "Vente bloquée (" + whyS + ")") +
+          "\nStop " + PtsF(dist * gStopMult) +
+          "\nTaille " + Nombre(lots, vd) + " lot" +
+          "\nRisque " + Montant(gRiskMoney) +
+          (cut ? "\n" + I_WARN + "Taille réduite (marge)" : ""), true);
    SaveState();
    return true;
   }
@@ -1996,7 +2029,7 @@ void DoPyramid(double curR)
       SaveState();
       return;
      }
-   double tp = InpTgtR > 0 ? NormalizeDouble(gEntry + gDir * InpTgtR * gRisk, _Digits) : 0;
+   double tp = gTgtTrade > 0 ? NormalizeDouble(gEntry + gDir * gTgtTrade * gRisk, _Digits) : 0;
    bool ok = gDir == 1 ? trade.Buy(lots, _Symbol, 0, lock, tp, InpComment) : trade.Sell(lots, _Symbol, 0, lock, tp, InpComment);
    uint rc = trade.ResultRetcode();
    if(!(ok && (rc == TRADE_RETCODE_DONE || rc == TRADE_RETCODE_DONE_PARTIAL || rc == TRADE_RETCODE_PLACED)))
@@ -2338,12 +2371,14 @@ bool LegOpen(SLeg &g, int dir, double stop, string quoi, double ref = 0)
       g.id = HistoryDealGetInteger(deal, DEAL_POSITION_ID);
    if(g.id == 0)
       LegIds(g);
-   Notify((dir == 1 ? I_UP + "ACHAT " : I_DOWN + "VENTE ") + g.nom + " exécuté(e) : " + quoi +
-          "\nEntrée : " + PxF(g.entry) + " · stop : " + PxF(sl) + (estD ? " (entrée de A, " + PtsF(MathAbs(g.entry - sl)) + ")" : " (" + PtsF(g.risk) + ")") +
-          "\nTaille : " + Nombre(lots, vd) + " lot · risque " + Dollars(-lots * (estD && perLotReal > 0 ? perLotReal : perLot)) + " (au plus celui de la cassure : " + Dollars(-gV8RiskMoney) + ")" +
-          (InpBeR > 0 ? "\nStop au prix d'entrée dès " + PxF(g.entry + dir * InpBeR * g.risk) : "") +
-          ((g.pyrOk && InpUsePyr) ? "\nPyramide si une bougie clôture à " + PxF(g.entry + dir * InpPyrR * g.risk) : "") +
-          "\nSortie à " + InpFlat + " NY", true);
+   Print(BOT + " · " + _Symbol + " · entrée " + g.nom + " exécutée : " + quoi + ", stop " + Px(sl) + (estD ? " (entrée de A)" : "") +
+         ", risque au plus celui de la cassure (" + DoubleToString(gV8RiskMoney, 2) + ")" + (InpBeR > 0 ? ", stop à l'entrée dès " + Px(g.entry + dir * InpBeR * g.risk) : "") +
+         ((g.pyrOk && InpUsePyr) ? ", pyramide à " + Px(g.entry + dir * InpPyrR * g.risk) : ""));
+   Notify((dir == 1 ? I_UP + "Achat " : I_DOWN + "Vente ") + g.nom + " · " + _Symbol +
+          "\nEntrée " + PxF(g.entry) +
+          "\nStop " + PxF(sl) +
+          "\nTaille " + Nombre(lots, vd) + " lot" +
+          "\nRisque " + Montant(lots * (estD && perLotReal > 0 ? perLotReal : perLot)), true);
    // repères sur le graphique : lettre de l'entrée et stop de départ
    color lc = g.nom == "B" ? clrDodgerBlue : StringSubstr(g.nom, 0, 1) == "D" ? clrTeal : clrMediumOrchid;
    Txt(GV + "in" + g.nom + "_" + (string)g.day, t, g.entry, " " + g.nom + " " + Px(g.entry), lc, (ENUM_ANCHOR_POINT)(dir == 1 ? ANCHOR_LEFT_UPPER : ANCHOR_LEFT_LOWER));
@@ -2511,10 +2546,12 @@ bool LegRecord(SLeg &g, bool force)
    double pct = g.balStart > 0 ? 100.0 * net / g.balStart : 0;
    Txt(GV + "res" + g.nom + "_" + (string)g.day, tx, px > 0 ? px : g.entry, " " + g.nom + " " + RTxt(r), r > 0.05 ? clrSeaGreen : r < -0.05 ? clrTomato : clrGray, ANCHOR_LEFT);
    AppendLegTrade(g, tx, r, net, why);
-   Notify((r > 0.05 ? I_WIN : r < -0.05 ? I_LOSS : I_FLAT) + "ENTRÉE " + g.nom + " CLÔTURÉE · " + RTxt2(r) + " · " + Dollars(net) +
-          "\n" + IcoSortie(why) + why + (g.pyr ? ", avec pyramide" : "") + (px > 0 ? " · sortie à " + PxF(px) : "") + " · " + PctF(pct) +
-          "\n" + I_BANK + "Solde : " + SoldeTxt() +
-          "\nDepuis le début : " + (string)gN + (gN > 1 ? " trades · " : " trade · ") + RTxt2(gSumR), true);
+   Print(BOT + " · " + _Symbol + " · entrée " + g.nom + " sortie à " + Px(px) + " (" + why + (g.pyr ? ", avec pyramide" : "") + ") : " + RTxt(r) + ", " + PctS(pct) +
+         " ; depuis le début " + (string)gN + " trades, " + RTxt(gSumR));
+   Notify((r > 0.05 ? I_WIN : r < -0.05 ? I_LOSS : I_FLAT) + (g.dir == 1 ? "Achat " : "Vente ") + g.nom + " · " + _Symbol +
+          "\n" + RTxt2(r) + "\n" + Dollars(net) +
+          "\n" + IcoSortie(why) + why +
+          "\nSolde " + SoldeTxt(), true);
    // journal d'exécution : une ligne par position de la jambe (départ et ajout)
    ExecQueue(g.id, g.nom, g.dir, g.plan, g.vstop, why, g.riskMoney);
    if(g.id2 != 0 && g.id2 != g.id)
@@ -2880,7 +2917,7 @@ void OnNewBar()
      {
       if(!gTPset && PositionSelectByTicket(gPos))
         {
-         double tp = NormalizeDouble(gEntry + gDir * InpTgtR * gRisk, _Digits);
+         double tp = NormalizeDouble(gEntry + gDir * gTgtTrade * gRisk, _Digits);
          if(trade.PositionModify(gPos, PositionGetDouble(POSITION_SL), tp))
             gTPset = true;
         }
@@ -3027,7 +3064,7 @@ double OpenLots()
 bool TestRules()   // les règles saisies sont-elles celles du test ?
   {
    return InpOR == "09:30" && InpPre == "09:00" && InpLiveBars == 2 && InpFlat == "15:50" && InpUseRSI && InpRSILen == 14 && InpUseExt &&
-          MathAbs(InpBeR - 1.5) < 1e-9 && InpTgtR == 0 && InpUsePyr && MathAbs(InpPyrR - 2.0) < 1e-9 &&
+          MathAbs(InpBeR - 1.5) < 1e-9 && MathAbs(InpTgtR - 4.0) < 1e-9 && InpUsePyr && MathAbs(InpPyrR - 2.0) < 1e-9 &&
           MathAbs(InpPyrSize - 2.0) < 1e-9 && MathAbs(InpPyrGap - 1.0) < 1e-9 &&
           InpUseMem && MathAbs(InpMemR - 1.0) < 1e-9 && MathAbs(InpStopMult - 3.0) < 1e-9 && InpSkipFomc && InpSkipShort && !InpUseDI && !InpUseSar && !InpUseTime &&   // v7
           InpUseB && MathAbs(InpBTol - 0.10) < 1e-9 && InpBEnd == "14:00" && !InpUseC &&   // V8 sans C
@@ -3039,6 +3076,7 @@ bool TestRules()   // les règles saisies sont-elles celles du test ?
 void ReadSettings()
   {
    double risk   = MathMin(InpRiskPct, RISK_MAX);   // AUD-05 : plafond, même pour la valeur saisie dans MetaTrader
+   double tgt    = InpTgtR;                         // objectif de A : Étrave le remplace (objectif_r)
    string src    = "mt5";
    long   reel   = 0;                                // AUD-01 : compte réel autorisé dans Étrave
    double lever  = 0;
@@ -3074,7 +3112,13 @@ void ReadSettings()
                StringTrimRight(k);
                StringTrimLeft(v);
                StringTrimRight(v);
-               if(k == "risque_pct")
+               if(k == "objectif_r")
+                 {
+                  double x = ObjectifLu(v);
+                  if(x >= 0)
+                     tgt = x;
+                 }
+               else if(k == "risque_pct")
                  {
                   double x = StringToDouble(v);
                   // AUD-05 (audit du 26/11/2026) : au-dessus du plafond (RISK_MAX, 20 % depuis le 27/11/2026), la valeur est
@@ -3157,6 +3201,9 @@ void ReadSettings()
              (InpFixedLots > 0 ? "\nSans effet tant que les lots fixes (" + DoubleToString(InpFixedLots, 2) + " lot) sont réglés dans MetaTrader" : ", à partir du prochain trade"));
    if(gUiLoaded && active != gActive)
       Notify(I_GEAR + (active ? "INSTRUMENT ACTIVÉ dans l'interface" : "INSTRUMENT DÉSACTIVÉ dans l'interface\nPlus de nouveau trade ; un trade ouvert reste géré jusqu'à sa sortie"));
+   if(gUiLoaded && MathAbs(tgt - gTgtR) > 1e-9)
+      Notify(I_GEAR + "OBJECTIF DE A : " + (gTgtR > 0 ? Court(gTgtR) + " R" : "aucun") + " → " + (tgt > 0 ? Court(tgt) + " R" : "aucun") + ", à partir du prochain trade");
+   gTgtR     = tgt;
    gRiskPct  = risk;
    gRiskSrc  = src;
    gActive   = active;
@@ -3167,10 +3214,65 @@ void ReadSettings()
      {
       gTgHello = gTgToken + "|" + gTgChat;
       ENUM_ACCOUNT_TRADE_MODE tm = (ENUM_ACCOUNT_TRADE_MODE)AccountInfoInteger(ACCOUNT_TRADE_MODE);
-      Notify(I_PLUG + "Connexion réussie\nCompte " + (tm == ACCOUNT_TRADE_MODE_REAL ? "RÉEL" : tm == ACCOUNT_TRADE_MODE_CONTEST ? "concours" : "démo") +
-             (gActive ? " · marché actif" : " · marché désactivé dans Étrave") +
-             "\nRisque : " + (InpFixedLots > 0 ? Nombre(InpFixedLots, 2) + " lot fixes" : Nombre(gRiskPct, 2) + " % par trade") +
-             "\nTu recevras ici les ordres posés, les entrées et les clôtures (en R et en dollars). Les alertes de sécurité s'affichent dans Étrave.", true);
+      Notify(I_PLUG + "Connecté · " + _Symbol +
+             "\nCompte " + (tm == ACCOUNT_TRADE_MODE_REAL ? "RÉEL" : tm == ACCOUNT_TRADE_MODE_CONTEST ? "concours" : "démo") +
+             (gActive ? "" : "\nMarché désactivé dans Étrave") +
+             "\nRisque " + (InpFixedLots > 0 ? Court(InpFixedLots) + " lot fixe" : Court(gRiskPct) + " %") +
+             "\n" + (gTgtR > 0 ? "Objectif " + Court(gTgtR) + " R" : "Sans objectif"), true);
+     }
+  }
+
+// Objectif lu dans Étrave (objectif_r) : 0 = sans objectif, sinon de TGT_MIN à TGT_MAX R. -1 : valeur illisible ou hors bornes,
+// ignorée (l'objectif reste le même), comme le risque.
+double ObjectifLu(string v)
+  {
+   if(StringLen(v) == 0 || StringLen(v) > 8)
+      return -1;
+   int points = 0, chiffres = 0;
+   for(int i = 0; i < StringLen(v); i++)
+     {
+      ushort c = StringGetCharacter(v, i);
+      if(c == '.')
+         points++;
+      else if(c < '0' || c > '9')
+         return -1;
+      else
+         chiffres++;
+     }
+   if(points > 1 || chiffres == 0)
+      return -1;
+   double x = StringToDouble(v);
+   if(x == 0)
+      return 0;
+   return (x >= TGT_MIN - 1e-9 && x <= TGT_MAX + 1e-9) ? x : -1;
+  }
+
+// Décision de l'utilisateur du 27/11/2026 : l'objectif de A touché, tout est clôturé (B, C, D et leurs ajouts) et plus aucune
+// entrée ce jour-là sur ce marché. Le balayage complet, 10 s plus tard et refait tant qu'une position reste, ferme ce qui aurait
+// résisté. Appelé par RecordClose, donc aussi au redémarrage si A est sortie à l'objectif pendant que l'EA était arrêté ; seulement
+// le jour même de la cassure (une jambe d'un autre jour n'a rien à voir avec cet objectif).
+void ObjectifTouche()
+  {
+   if(gPosDay != NYDate(ToNY(TimeCurrent())))
+      return;
+   if(gB.enPos)
+      LegClose(gB, "Objectif de A");
+   if(gC.enPos)
+      LegClose(gC, "Objectif de A");
+   for(int kd = 0; kd < D_MAX; kd++)
+      if(gD[kd].enPos)
+         LegClose(gD[kd], "Objectif de A");
+   gSweepWhy   = "Objectif de A";
+   gSweepAllAt = TimeCurrent() + 10;
+   gB.done = true;
+   gC.done = true;
+   LegSave(gB);
+   LegSave(gC);
+   for(int kd = 0; kd < D_MAX; kd++)
+     {
+      gD[kd].done = true;
+      gD[kd].arm  = false;
+      LegSave(gD[kd]);
      }
   }
 
@@ -3194,6 +3296,7 @@ void UiClose()
       CancelDay("ordres annulés depuis l'interface", I_HAND + "ORDRES ANNULÉS depuis l'interface");
    // filet de sécurité : 10 s plus tard (le temps que la liste des positions soit à jour), toute position de l'EA que son
    // état ne connaissait plus est fermée aussi
+   gSweepWhy   = "fermeture depuis l'interface";
    gSweepAllAt = TimeCurrent() + 10;
    // V8 : après une demande de clôture, plus d'entrée B ni C aujourd'hui
    gB.done = true;
@@ -3341,6 +3444,8 @@ void WriteState()
    Kv(h, "horloge_ok", gClockOk ? "1" : "0");
    Kv(h, "regles_test", TestRules() ? "1" : "0");
    Kd(h, "risque_pct", gRiskPct, 4);
+   Kd(h, "objectif_r", gTgtR, 2);                                   // objectif réglé (prochain trade)
+   Kd(h, "pos_objectif", gIn ? gTgtTrade : 0, 2);                   // objectif du trade en cours
    Kv(h, "risque_source", gRiskSrc);
    // Revue cloud du 25/11/2026 : en lots fixes, le risque réglé n'est pas utilisé. Étrave doit le savoir pour ne pas l'afficher comme appliqué.
    Kd(h, "lots_fixes", InpFixedLots, 2);
@@ -4177,7 +4282,7 @@ void OnTick()
       sweepAt = TimeCurrent();
       datetime nyS = ToNY(TimeCurrent());
       VerifierStops();   // AUD-08
-      int nS = CloseOrphans(sweepUi ? "fermeture depuis l'interface" : "filet de sécurité", sweepUi || NYMin(nyS) >= FlatMin(nyS) + 1);
+      int nS = CloseOrphans(sweepUi ? gSweepWhy : "filet de sécurité", sweepUi || NYMin(nyS) >= FlatMin(nyS) + 1);
       // Revue cloud du 25/11/2026 : seul le balayage complet efface sa demande. Avant, le balayage d'une minute tombé dans les 10 s
       // qui suivent un « Clôturer » l'effaçait, et le balayage complet n'avait jamais lieu (environ une clôture sur six).
       // AUD-20 (audit du 26/11/2026) : tant qu'un balayage complet trouve encore une position (fermeture refusée, marché rapide), il

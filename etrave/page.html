@@ -339,7 +339,7 @@
   <section id="tab-risk" hidden>
     <details class="card" data-fold="risque" open>
       <summary><h2>Risque par trade</h2><span class="sum" id="sum-risque"></span></summary>
-      <div class="hint">La part du solde perdue quand le stop est touché (1R). C’est le seul réglage : tout le reste garde les valeurs du test.</div>
+      <div class="hint">La part du solde perdue quand le stop est touché (1R). Avec l’objectif de A (plus bas), c’est le seul réglage : tout le reste garde les valeurs du test.</div>
       <div class="status" id="risk-status"><span class="dot"></span><span></span></div>
       <div class="risk-row">
         <div class="big"><input type="number" id="risk-input" min="0.05" max="20" step="0.05" inputmode="decimal" aria-label="Risque par trade, en pourcentage du solde"><span>% du solde</span></div>
@@ -354,6 +354,16 @@
         <button class="btn" id="risk-cancel" disabled>Annuler</button>
         <div class="msg" id="risk-msg"></div>
       </div>
+    </details>
+    <details class="card" data-fold="objectif" open>
+      <summary><h2>Objectif de la cassure A</h2><span class="sum" id="sum-objectif"></span></summary>
+      <div class="hint">Quand A atteint son objectif, tout est clôturé (A, son ajout, B et les D) et plus aucune entrée ce jour-là. 0 = sans objectif ; sinon de 1 à 10 R. Pris au trade suivant, jamais sur un trade ouvert.</div>
+      <div class="lever"><input type="number" id="objectif-input" min="0" max="10" step="0.5" inputmode="decimal" aria-label="Objectif de la cassure A, en R"><span>R</span></div>
+      <div class="savebar">
+        <button class="btn primary" id="objectif-save">Enregistrer</button>
+        <div class="msg" id="objectif-msg"></div>
+      </div>
+      <div class="hint" id="objectif-note"></div>
     </details>
     <details class="card" data-fold="simulation" open>
       <summary><h2>Ce que le test donne à ce risque <small id="sim-title"></small></h2></summary>
@@ -1107,6 +1117,7 @@ function renderRisk(fromInput) {
   else if (dirty) { $('risk-msg').className = 'msg'; $('risk-msg').textContent = 'Non enregistré. Le nouveau risque vaudra pour le prochain trade, jamais pour un trade déjà ouvert.'; }
   else if ($('risk-msg').dataset.keep !== '1') $('risk-msg').textContent = '';
   renderSim();
+  renderObjectif();
 }
 let simTimer = null;
 function loadSim() {
@@ -1157,6 +1168,33 @@ function renderSim() {
   }
   if (s.risquePct > bounds().risqueAConfirmer) notes.push(el('div', { class: 'banner bad' }, el('b', {}, 'Au-delà de ce que le test rend raisonnable. '), `À ${riskText(s.risquePct)} par trade, la pire baisse du test coûte ${num(s.pireBaissePct, 0)} % du compte et la pire journée ${num(s.pireJourPct, 0)} %. Le gain par an affiché suppose qu’aucune de ces baisses n’arrive plus tôt ou plus fort que dans le test : le Nasdaq n’a jamais été réglé que sur le passé.`));
   $('sim-notes').replaceChildren(...notes);
+}
+// Objectif de A (décision de l'utilisateur du 27/11/2026) : simulation 2025-2026, Nasdaq + S&P 500, « objectif de A = tout clôturer »,
+// gain total en R (spread réel + 1 point de glissement). Données déjà vues : un repère, pas une preuve.
+const SIM_OBJECTIF = [['sans', 156.4], ['1 R', 90.1], ['1,5 R', 108.1], ['2 R', 108.4], ['3 R', 123.7], ['4 R', 146.4], ['5 R', 156.4]];
+function renderObjectif() {
+  if (!state) return;
+  const v = state.reglages.objectifR;
+  const input = $('objectif-input');
+  if (document.activeElement !== input) input.value = String(v);
+  $('sum-objectif').textContent = v > 0 ? `${String(v).replace('.', ',')} R` : 'sans objectif';
+  const ligne = SIM_OBJECTIF.map(([n, r]) => `${n} : ${r.toFixed(1).replace('.', ',')} R`).join(' · ');
+  $('objectif-note').replaceChildren(...[
+    `Simulation 2025-2026, Nasdaq + S&P 500, gain total selon l’objectif : ${ligne}. La pire baisse reste à peu près la même (25 R) dès 1,5 R. Données déjà vues (elles ont servi à régler la stratégie) : un repère, pas une preuve. Les chiffres du test ci-dessous sont calculés sans objectif.`,
+    v > 0 && v < 1.5 ? el('div', {}, 'À 1 R, A sort à +1 R tout juste : la règle mémoire (trade gagnant au-delà de +1 R) dépend alors du glissement.') : false,
+  ].filter(Boolean));
+}
+async function saveObjectif() {
+  const brut = String($('objectif-input').value).trim().replace(',', '.');
+  if (!brut) { $('objectif-msg').className = 'msg err'; $('objectif-msg').textContent = 'Entre 0 (sans objectif) ou un nombre de 1 à 10.'; return; }
+  const valeur = Number(brut);
+  try {
+    const result = await api('/api/reglages', { valeurs: { objectifR: valeur } });
+    state.reglages = result.reglages;
+    $('objectif-msg').className = 'msg';
+    $('objectif-msg').textContent = result.changees.length ? 'Enregistré. L’EA le prend dans les 2 secondes, pour le prochain trade.' : 'Rien à modifier.';
+  } catch (error) { $('objectif-msg').className = 'msg err'; $('objectif-msg').textContent = error.message; }
+  renderObjectif();
 }
 async function saveRisk(confirmation) {
   const values = {};
@@ -1397,6 +1435,7 @@ $('risk-save').addEventListener('click', () => {
 $('risk-word').addEventListener('input', () => ($('risk-dlg-ok').disabled = $('risk-word').value.trim().toUpperCase() !== 'RISQUE'));
 $('risk-dlg-cancel').addEventListener('click', () => $('dlg-risk').close());
 $('risk-dlg-ok').addEventListener('click', () => { $('dlg-risk').close(); saveRisk('RISQUE'); });
+$('objectif-save').addEventListener('click', () => saveObjectif());
 $('close-word').addEventListener('input', () => ($('close-ok').disabled = $('close-word').value.trim().toUpperCase() !== 'CLOTURER'));
 $('close-cancel').addEventListener('click', () => $('dlg-close').close());
 $('close-ok').addEventListener('click', async () => {

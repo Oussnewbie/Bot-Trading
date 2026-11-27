@@ -18,6 +18,10 @@ chacun).
   compte (risque, lots fixes ; solde, taille de contrat et pas de lot dans le Pine), l'heure du serveur (détectée seule hors
   testeur, `InpSrvAuto`, et contre-vérifiée par `InpSrvGMT` : changer de courtier = régler `InpSrvGMT`, voir AUD-03), les FOMC en plus, l'exécution, les notifications et l'affichage. Demande de l'utilisateur du 26/11/2026 :
   « un double-clic, tout se met en place, je règle tout depuis Étrave ». Ne rends pas une règle réglable sans que l'utilisateur le demande.
+- **Objectif de A (décision de l'utilisateur du 27/11/2026, « pour la com »)** : 4 R par défaut (`InpTgtR`, `tgtR` dans le Pine), réglable
+  dans Étrave (`objectif_r` : 0 = sans objectif, de 1 à 10 R), figé à l'exécution de A. Objectif de A touché : tout est clôturé (A, ajout, B,
+  D) et plus aucune entrée ce jour-là. Simulation 2025-2026 (Nasdaq + S&P 500) : +146,4 R contre +156,4 R sans objectif, même pire baisse ;
+  2019-2026 : +344,5 R contre +338,5 R. Données déjà vues : ce n'est pas un réglage tiré du backtest, c'est le choix de l'utilisateur.
 - Hors sujet : bitcoin, or, devises, DAX.
 
 ## Échanges
@@ -34,7 +38,7 @@ etrave/    interface web locale de l'EA (Python sans dépendance), export.py (ex
 .claude/   commands/audit.md (/audit) et agents/auditeur.md (auditeur adapté au robot) ; rapports dans audits/ (ignoré)
 video/     (branche communication/outil-video) vidéos TikTok : récap de séance et présentation, `python3 video/outil.py` ; README
 ```
-- Tests : `.venv/bin/python -m pytest robot etrave -q` (232 tests et 1 ignoré sans l'outil vidéo au 27/11/2026 ; sur la branche
+- Tests : `.venv/bin/python -m pytest robot etrave -q` (293 tests et 1 ignoré sans l'outil vidéo au 27/11/2026 ; sur la branche
   `communication/outil-video`, ajouter `video`). Le `.venv` (Python 3.15) n'existe que dans le clone principal
   `~/Documents/GitHub/Bot-Trading` : depuis un worktree (dont `Bot-Trading-main`), utiliser `~/Documents/GitHub/Bot-Trading/.venv/bin/python`.
 - Étrave en essai : `.venv/bin/python etrave/etrave.py --sans-navigateur --port 8799 --dossier <dossier jetable>`, puis

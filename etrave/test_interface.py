@@ -1327,3 +1327,56 @@ def test_la_page_dit_ce_que_telegram_recoit():
     assert "pyramide, stop déplacé" not in page
     assert "Connexion réussie, ordres posés, entrées exécutées et clôtures (en R et en dollars)" in page
     assert "Les alertes de sécurité s’affichent en tête de cette page" in page
+
+
+# ───────────────────────── objectif de A dans Étrave (décision de l'utilisateur du 27/11/2026) ─────────────────────────
+def test_objectif_par_defaut_4R(dossier):
+    assert pont.reglages_publics(dossier)["objectifR"] == 4.0
+
+
+@pytest.mark.parametrize("valeur, ecrit", [(0, "0"), (1, "1"), (4, "4"), (4.5, "4.5"), (10, "10"), ("6", "6")])
+def test_objectif_enregistre(dossier, valeur, ecrit):
+    pont.regler(dossier, {"objectifR": valeur})
+    assert pont.lire_reglages(dossier)["objectif_r"] == ecrit
+    assert pont.reglages_publics(dossier)["objectifR"] == float(ecrit)
+
+
+@pytest.mark.parametrize("valeur", [0.5, 0.99, -1, 10.01, 11, 1e9, "abc", "", None, True, False, [4], float("nan"), float("inf")])
+def test_objectif_hors_bornes_refuse(dossier, valeur):
+    with pytest.raises(pont.Refus):
+        pont.regler(dossier, {"objectifR": valeur})
+    assert "objectif_r" not in pont.lire_reglages(dossier)
+
+
+def test_objectif_illisible_dans_le_fichier_vaut_4R(dossier):
+    with open(os.path.join(dossier, pont.FICHIER_REGLAGES), "w", encoding="utf-8") as f:
+        f.write("objectif_r=n'importe quoi\n")
+    assert pont.reglages_publics(dossier)["objectifR"] == 4.0                          # comme l'EA, qui ignore la valeur
+
+
+def test_accord_ea_etrave_sur_l_objectif():
+    assert '#define TGT_MIN     1.0' in EA and '#define TGT_MAX     10.0' in EA and 'const double       InpTgtR      = 4.0;' in EA
+    assert (pont.OBJECTIF_MIN, pont.OBJECTIF_MAX, pont.OBJECTIF_DEFAUT) == (1.0, 10.0, 4.0)
+    assert 'k == "objectif_r"' in EA and "objectif_r" in pont.NOMBRES and "pos_objectif" in pont.NOMBRES
+
+
+def test_la_page_regle_l_objectif():
+    page = open(os.path.join(RACINE, "etrave", "page.html"), encoding="utf-8").read()
+    assert 'id="objectif-input" min="0" max="10" step="0.5"' in page
+    assert "api('/api/reglages', { valeurs: { objectifR: valeur } })" in page
+    note = page[page.index("function renderObjectif()"):]
+    note = note[:note.index("\n}\n")]
+    sim = page[page.index("const SIM_OBJECTIF = "):]
+    sim = sim[:sim.index("\n")]                                                         # simulation 2025-2026 (Nasdaq + S&P 500)
+    assert sim == "const SIM_OBJECTIF = [['sans', 156.4], ['1 R', 90.1], ['1,5 R', 108.1], ['2 R', 108.4], ['3 R', 123.7], ['4 R', 146.4], ['5 R', 156.4]];"
+    assert "SIM_OBJECTIF.map(" in note
+    assert "déjà vues" in note and "règle mémoire" in note
+    assert "C’est le seul réglage" not in page
+
+
+def test_la_note_de_l_objectif_n_affiche_jamais_null():
+    """Essai dans Chrome du 27/11/2026 : replaceChildren(texte, null) écrivait « null » à la fin de la note."""
+    page = open(os.path.join(RACINE, "etrave", "page.html"), encoding="utf-8").read()
+    note = page[page.index("function renderObjectif()"):]
+    note = note[:note.index("\n}\n")]
+    assert ".filter(Boolean)" in note and ": null)" not in note

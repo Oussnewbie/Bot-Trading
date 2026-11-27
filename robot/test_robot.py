@@ -322,7 +322,7 @@ def test_regles_verrouillees_et_marches():
     entrees_pine = set(re.findall(r"^(\w+)\s*=\s*input\.", PINE, re.M))
     assert entrees_pine <= {"riskPct", "qtyStepIn", "showLots", "lotSize", "lotStep", "lotBal", "fomcExtra", "tgChat", "showOrders",
                             "showZones", "showPre", "showBlocked", "showVwap", "showZoneB", "showGuide", "keepEmpty", "showTable",
-                            "tblPosIn"} | {n for n in entrees_pine if n.startswith(("show", "tbl", "col", "txt"))}, entrees_pine
+                            "tblPosIn", "tgtR"} | {n for n in entrees_pine if n.startswith(("show", "tbl", "col", "txt"))}, entrees_pine
     assert "runtime.error(\"Strategy V11 : ce script ne trade que le Nasdaq 100 et le S&P 500" in PINE
     assert "useB      = true" in PINE and "useD      = true" in PINE and "stopMultIn = 3.0" in PINE
 
@@ -587,7 +587,7 @@ def test_ex2_risque_reel_d_plafonne():
     corps = fonction("bool LegOpen(SLeg &g, int dir, double stop, string quoi, double ref = 0)")
     assert "MathAbs(px - gEntry) / ts * tv" in corps
     assert "double capR = MathFloor(gV8RiskMoney / perLotReal / step + 0.000001) * step;" in corps
-    assert "Dollars(-lots * (estD && perLotReal > 0 ? perLotReal : perLot))" in corps   # format des messages du 27/11/2026
+    assert '"\\nRisque " + Montant(lots * (estD && perLotReal > 0 ? perLotReal : perLot))' in corps   # format des messages du 27/11/2026
 
 
 def test_ex3_journal_version_2():
@@ -874,13 +874,15 @@ def appels(nom):
 
 def test_telegram_ne_recoit_que_connexion_ordres_entrees_et_clotures():
     vers_telegram = [a for a in appels("Notify") if re.search(r",\s*true\)$", a)]
-    reperes = ["Connexion réussie", "ORDRES PLACÉS", "Notify(id + \" à \" + PxF(gEntry)", " exécuté(e) : ", "\"ACHAT CLÔTURÉ · \"", "\"ENTRÉE \" + g.nom + \" CLÔTURÉE · \""]
+    reperes = ['I_PLUG + "Connecté · "', 'I_PIN + "Ordres posés · "', 'Notify(id + "\\nEntrée " + PxF(gEntry)', '"\\nEntrée " + PxF(g.entry)',
+               '(gDir == 1 ? "Achat A · " : "Vente A · ")', '(g.dir == 1 ? "Achat " : "Vente ") + g.nom']
     assert len(vers_telegram) == len(reperes)
     for repere in reperes:
         assert sum(repere in a for a in vers_telegram) == 1, repere
     corps = fonction("void Notify(string msg, bool tg = false)")
     # tout va au journal ; push, WhatsApp et Telegram seulement sur demande
-    assert corps.index("Print(full);") < corps.index("if(!tg)") < corps.index("SendNotification(") < corps.index("gQueue[n] = full;")
+    assert corps.index("Print(full);") < corps.index("if(!tg)") < corps.index("SendNotification(") < corps.index("gQueue[n] = msg;")
+    assert "string p = msg;" in corps          # le titre du message porte déjà le marché : pas d'en-tête « Étrave · <symbole> »
 
 
 def test_les_alertes_de_securite_vont_dans_etrave():
@@ -912,14 +914,16 @@ def test_message_de_connexion_une_fois_par_configuration():
     bloc = lecture[lecture.index('if(gTgOn && gTgHello'):]
     assert bloc.index('gTgHello = gTgToken + "|" + gTgChat;') < bloc.index("Notify(I_PLUG")
     assert lecture.index("gRiskPct  = risk;") < lecture.index("if(gTgOn && gTgHello")   # le risque annoncé est celui appliqué
-    message = [a for a in appels("Notify") if "Connexion réussie" in a][0]
+    assert lecture.index("gTgtR     = tgt;") < lecture.index("if(gTgOn && gTgHello")    # l'objectif annoncé aussi
+    message = [a for a in appels("Notify") if "Connecté · " in a][0]
     assert "ACCOUNT_LOGIN" not in message                                    # pas de numéro de compte sur Telegram
 
 
 def test_les_clotures_donnent_le_resultat_en_R_et_en_dollars():
-    for appel in appels("Notify"):
-        if "CLÔTUR" in appel and re.search(r",\s*true\)$", appel):
-            assert "RTxt2(r)" in appel and "Dollars(net)" in appel and "IcoSortie(why)" in appel
+    clotures = [a for a in appels("Notify") if "SoldeTxt()" in a and re.search(r",\s*true\)$", a)]
+    assert len(clotures) == 2                                                    # la cassure A et les entrées B, C, D
+    for appel in clotures:
+        assert '"\\n" + RTxt2(r) + "\\n" + Dollars(net)' in appel and "IcoSortie(why) + why" in appel and '"\\nSolde " + SoldeTxt()' in appel
 
 
 def nombre_fr(v, dec):
@@ -1020,3 +1024,118 @@ def test_les_pictogrammes_partent_en_utf8_complet_vers_telegram(code):
     corps = fonction("string UrlEncode(string s)")
     assert "int   n = StringToCharArray(s, b, 0, WHOLE_ARRAY, CP_UTF8);" in corps          # le texte entier, pas caractère par caractère
     assert '"&text=" + UrlEncode(msg)' in fonction("string SendTelegram(string msg)")
+
+
+# ───────────────────────── objectif fixe de A (décision de l'utilisateur du 27/11/2026) ─────────────────────────
+# 4 R par défaut, réglable dans Étrave (0 = sans objectif, de 1 à 10 R). Objectif de A touché : tout est clôturé et plus aucune
+# entrée ce jour-là. Simulation 2025-2026 (Nasdaq + S&P 500) : +146,4 R contre +156,4 R sans objectif, même pire baisse.
+
+def test_objectif_de_a_a_4R_par_defaut():
+    assert re.search(r"^const double\s+InpTgtR\s*=\s*4\.0;", EA, re.M)
+    assert "#define TGT_MIN     1.0" in EA and "#define TGT_MAX     10.0" in EA
+    regles = fonction("bool TestRules()")
+    assert "MathAbs(InpTgtR - 4.0) < 1e-9" in regles and "InpTgtR == 0" not in regles
+    assert re.search(r"^double\s+gTgtR\s*=\s*InpTgtR;", EA, re.M)
+
+
+def objectif_lu(v):
+    """Copie de ObjectifLu() : -1 = valeur ignorée (l'objectif reste le même)."""
+    if not 0 < len(v) <= 8 or any(c not in "0123456789." for c in v) or v.count(".") > 1 or not any(c.isdigit() for c in v):
+        return -1
+    x = float(v)
+    if x == 0:
+        return 0.0
+    return x if 1.0 - 1e-9 <= x <= 10.0 + 1e-9 else -1
+
+
+@pytest.mark.parametrize("texte, attendu", [("", -1), ("0", 0.0), ("0.0", 0.0), ("00", 0.0), ("0.5", -1), ("0.99", -1), ("1", 1.0), ("4", 4.0),
+                                            ("4.5", 4.5), ("10", 10.0), ("10.01", -1), ("-1", -1), ("abc", -1), ("4,5", -1), ("1e3", -1),
+                                            ("nan", -1), (".", -1), ("4.", 4.0), ("1.2.3", -1), ("123456789", -1)])
+def test_objectif_lu_dans_les_reglages(texte, attendu):
+    assert objectif_lu(texte) == attendu
+
+
+def test_l_ea_lit_l_objectif_comme_la_copie():
+    corps = fonction("double ObjectifLu(string v)")
+    assert "if(StringLen(v) == 0 || StringLen(v) > 8)\n      return -1;" in corps
+    assert "else if(c < '0' || c > '9')\n         return -1;" in corps and "if(points > 1 || chiffres == 0)\n      return -1;" in corps
+    assert "if(x == 0)\n      return 0;" in corps and "return (x >= TGT_MIN - 1e-9 && x <= TGT_MAX + 1e-9) ? x : -1;" in corps
+    lecture = fonction("void ReadSettings()")
+    assert 'if(k == "objectif_r")' in lecture and "double x = ObjectifLu(v);" in lecture and "if(x >= 0)\n                     tgt = x;" in lecture
+    assert "double tgt    = InpTgtR;" in lecture
+
+
+def test_objectif_fige_a_l_entree_de_a():
+    """Un changement dans Étrave vaut au trade suivant, jamais pour un trade ouvert (y compris après un redémarrage)."""
+    assert "gTgtTrade = gTgtR;" in EA and EA.index("gTgtTrade = gTgtR;") < EA.index("gTPset   = gTgtTrade <= 0;")
+    assert 'Sv("tgt", gTgtTrade);' in fonction("void SaveState()")
+    assert 'gTgtTrade = Ld("tgt", 0);' in EA                                          # trade d'une version sans objectif : aucun
+    assert "InpTgtR * gRisk" not in EA and EA.count("gEntry + gDir * gTgtTrade * gRisk") == 3   # message, ajout, pose du TP
+    assert "double tp = gTgtTrade > 0 ? NormalizeDouble(gEntry + gDir * gTgtTrade * gRisk, _Digits) : 0;" in EA
+
+
+def test_objectif_de_a_touche_tout_est_cloture():
+    rc = fonction("bool RecordClose(bool force)")
+    assert 'if(why == "Objectif")\n      ObjectifTouche();' in rc
+    assert rc.index("return false;") < rc.index("ObjectifTouche();")               # une fois, la sortie de A comptée
+    ot = fonction("void ObjectifTouche()")
+    assert ot.index("if(gPosDay != NYDate(ToNY(TimeCurrent())))") < ot.index("LegClose(")   # au redémarrage, pas un autre jour
+    for jambe in ("gB", "gC"):
+        assert f'LegClose({jambe}, "Objectif de A");' in ot and f"{jambe}.done = true;" in ot
+    assert 'LegClose(gD[kd], "Objectif de A");' in ot and "gD[kd].arm  = false;" in ot and "gD[kd].done = true;" in ot
+    assert 'gSweepWhy   = "Objectif de A";' in ot and "gSweepAllAt = TimeCurrent() + 10;" in ot   # refait tant qu'une position reste
+
+
+def test_le_balayage_garde_le_motif_de_sa_demande():
+    assert 'CloseOrphans(sweepUi ? gSweepWhy : "filet de sécurité"' in EA
+    assert 'gSweepWhy   = "fermeture depuis l\'interface";' in fonction("void UiClose()")
+    motif = fonction("string IcoSortie(string why)")
+    assert 'if(why == "Objectif de A")\n      return I_TARGET;' in motif
+
+
+def test_l_etat_donne_l_objectif():
+    etat = fonction("void WriteState()")
+    assert 'Kd(h, "objectif_r", gTgtR, 2);' in etat and 'Kd(h, "pos_objectif", gIn ? gTgtTrade : 0, 2);' in etat
+
+
+def court(v):
+    """Copie de Court() : 2,5 · 1 · 0,25, sans zéros inutiles."""
+    s = nombre_fr(v, 2)
+    if "," in s:
+        s = s.rstrip("0").rstrip(",")
+    return ("-" if round(v, 2) < 0 else "") + s
+
+
+@pytest.mark.parametrize("v, attendu", [(2.5, "2,5"), (1, "1"), (0.25, "0,25"), (4.0, "4"), (10, "10"), (1234.5, "1 234,5"), (0, "0"), (-1.5, "-1,5")])
+def test_nombre_court(v, attendu):
+    assert court(v) == attendu
+
+
+def test_court_et_montant_dans_l_ea():
+    c = fonction("string Court(double v)")
+    assert 'string s = Nombre(v, 2);' in c and 'return (NormalizeDouble(v, 2) < 0 ? "-" : "") + s;' in c
+    assert 'return (NormalizeDouble(v, 2) < 0 ? "-" : "") + Nombre(v, 2) + (c == "USD" ? " $" : " " + c);' in fonction("string Montant(double v)")
+
+
+def test_messages_telegram_une_info_par_ligne():
+    """Format validé par l'utilisateur le 27/11/2026 : un titre avec le marché, puis une info par ligne, sans phrase."""
+    for appel in appels("Notify"):
+        if re.search(r",\s*true\)$", appel):
+            assert "_Symbol" in appel.split('"\\n')[0] or "Notify(id +" in appel, appel[:60]          # le marché dans le titre
+            for phrase in ("Tu recevras", "Depuis le début", "Règle mémoire", "glissement", "Valables jusqu"):
+                assert phrase not in appel, (phrase, appel[:60])
+    assert 'string id = (gDir == 1 ? I_UP + "Achat A · " : I_DOWN + "Vente A · ") + _Symbol;' in EA
+    cloture = [a for a in appels("Notify") if '(gDir == 1 ? "Achat A · " : "Vente A · ")' in a][0]
+    assert cloture.startswith('Notify((why == "Objectif" ? I_TARGET :') and '(why == "Objectif" ? "Objectif atteint" : IcoSortie(why) + why)' in cloture
+
+
+# ───────────────────────── objectif dans le script TradingView ─────────────────────────
+def test_objectif_de_a_dans_le_script():
+    assert 'tgtR      = input.float(4.0, "Objectif de A (R, 0 = sans)", minval = 0, maxval = 10, step = 0.5' in PINE
+    bloc = PINE[PINE.index("        recordClose(cur, aClosedK)"):]
+    bloc = bloc[:bloc.index("else if not na(cur)")]
+    assert 'if whyA == "Objectif"' in bloc and "v8.bDone := true" in bloc and "v8.cDone := true" in bloc
+    assert "strategy.cancel(gO.id)" in bloc and "gO.expBar := bar_index" in bloc          # les D guettées sont annulées
+    assert 'strategy.close_all(comment = "Objectif de A")' in bloc
+    assert 'notify("OBJECTIF DE A ATTEINT' in bloc
+    assert PINE.index("string whyA = strategy.closedtrades.exit_comment(aClosedK)") < PINE.index("        recordClose(cur, aClosedK)")
