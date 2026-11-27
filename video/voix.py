@@ -20,6 +20,7 @@ import time
 REGLAGES = {"stability": 0.45, "similarity_boost": 0.85, "style": 0.25, "use_speaker_boost": True}
 GRAINE = 2604
 TEMPO, PAUSE_MAX = 1.1, 0.3      # la voix 10 % plus rapide (même hauteur), aucun silence de plus de 0,3 s entre deux mots
+CACHE = "~/.cache/etrave-video/voix"      # le cache des prises (`cache_voix` de la configuration)
 
 
 class VoixIndisponible(Exception):
@@ -145,7 +146,7 @@ def replique(texte, config, avant="", apres=""):
     voix_id, modele = config.get("voix_id"), config.get("modele_voix", "eleven_v4")
     if not voix_id:
         raise VoixIndisponible("pas de voix_id dans la configuration (l'identifiant du clone de ta voix chez ElevenLabs)")
-    cache = os.path.expanduser(config.get("cache_voix", "~/.cache/etrave-video/voix"))
+    cache = os.path.expanduser(config.get("cache_voix") or CACHE)
     os.makedirs(cache, exist_ok=True)
     graine = int(config.get("voix_graine", GRAINE))
     empreinte = hashlib.sha256(json.dumps([voix_id, modele, texte, avant, apres, REGLAGES, graine], ensure_ascii=False).encode()).hexdigest()[:20]
@@ -265,7 +266,7 @@ def purger_cache(config, jours=30, journal=print):
     recalculables (coupe par scène « -s0.wav », rythme « -t1.1-p0.3.wav ») de plus de `jours` jours sont effacés ; les prises payées
     (MP3 et heures des mots) restent : refaire une vieille vidéo ne recoûte rien."""
     import re
-    cache = os.path.expanduser(config.get("cache_voix", "~/.cache/etrave-video/voix"))
+    cache = os.path.expanduser(config.get("cache_voix") or CACHE)
     if not os.path.isdir(cache):
         return []
     limite, effaces = time.time() - jours * 86400, []

@@ -36,6 +36,8 @@ def garde_fous(tmp_path_factory, monkeypatch):
         monkeypatch.setattr(etat, "DOSSIER", str(tmp_path_factory.mktemp("etat")))
     except ImportError:          # code d'avant le 27/11/2026 (preuve que les nouveaux tests échouaient)
         pass
+    import voix                  # ni le vrai cache des voix (V-08 le purge)
+    monkeypatch.setattr(voix, "CACHE", str(tmp_path_factory.mktemp("cache-voix")), raising=False)
     return notes
 
 
@@ -1108,6 +1110,10 @@ def test_v09_seance_illisible_previent_une_fois_par_jour_et_s_acquitte(tmp_path,
     publication.auto(c2, str(autre), lambda t: None, D(2026, 11, 6))
     assert ("semaine", D(2026, 11, 2)) not in faites
     fichier.write_text(json.dumps(dict(c2, dossier_journaux=str(autre), police="x")))
+    import etat
+    with etat.verrou(c2):              # pendant un passage, la décision n'est pas perdue en silence : elle est refusée
+        assert outil.main(["ignorer", "--jour", "2026-11-04", "--config", str(fichier)]) == 6
+    assert etat.Registre(c2, str(autre)).decision(D(2026, 11, 4)) is None
     assert outil.main(["ignorer", "--jour", "2026-11-04", "--config", str(fichier)]) == 0
     publication.auto(c2, str(autre), lambda t: None, D(2026, 11, 6))
     assert faites[-1] == ("semaine", D(2026, 11, 2))

@@ -187,7 +187,12 @@ def main(arguments=None):
             print("--jour AAAA-MM-JJ : la date de New York de la séance.")
             return 1
         jour = datetime.date.fromisoformat(args.jour)
-        etat.Registre(config, dossier_journaux(config, args.testeur)).decider(jour, args.commande)
+        try:        # sous le verrou : un passage en cours réécrirait le registre sans la décision
+            with etat.verrou(config):
+                etat.Registre(config, dossier_journaux(config, args.testeur)).decider(jour, args.commande)
+        except etat.DejaEnCours as err:
+            print(f"Décision pas notée : {err}. Relance la commande dans quelques minutes.")
+            return 6
         print(f"Séance du {jour.isoformat()} : {'prise telle que les journaux la donnent' if args.commande == 'accepter' else 'laissée de côté'} "
               "au prochain passage du mode automatique.")
         return 0
