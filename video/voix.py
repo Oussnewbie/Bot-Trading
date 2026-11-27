@@ -86,7 +86,7 @@ def appeler(url, cle, corps=None):
         if corps is not None:
             commande += ["-X", "POST", "-H", "Content-Type: application/json", "--data-binary", "@-"]
         sortie = subprocess.run(commande + [url], input=None if corps is None else json.dumps(corps).encode("utf-8"),
-                                capture_output=True)
+                                capture_output=True, timeout=150)
     finally:
         os.remove(entetes)
     reponse, _, code = (sortie.stdout or b"").rpartition(b"\n")
@@ -107,7 +107,7 @@ def _ecrire(chemin, donnees, binaire):
 def _ffmpeg(arguments, sortie):
     """ffmpeg vers un nom provisoire, puis renommé (VID-21 : un ffmpeg arrêté laissait une voix tronquée, reprise telle quelle)."""
     provisoire = sortie[:-4] + ".part.wav"
-    subprocess.run(["ffmpeg", "-v", "error", "-y"] + arguments + [provisoire], check=True)
+    subprocess.run(["ffmpeg", "-v", "error", "-y"] + arguments + [provisoire], check=True, timeout=300)
     if not os.path.exists(provisoire) or duree(provisoire) < 0.2:
         if os.path.exists(provisoire):
             os.remove(provisoire)
@@ -136,7 +136,7 @@ def mots_horodates(alignement):
 
 def duree(chemin):
     sortie = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", chemin],
-                            capture_output=True, text=True)
+                            capture_output=True, text=True, timeout=60)
     return float(sortie.stdout.strip() or 0)
 
 
@@ -260,6 +260,26 @@ def recit(textes, config):
     return reps
 
 
+def purger_cache(config, jours=30, journal=print):
+    """V-08 (audit du 27/11/2026) : le cache des voix grossissait sans fin (116 Mo pour une dizaine d'essais). Les morceaux WAV
+    recalculables (coupe par scène « -s0.wav », rythme « -t1.1-p0.3.wav ») de plus de `jours` jours sont effacés ; les prises payées
+    (MP3 et heures des mots) restent : refaire une vieille vidéo ne recoûte rien."""
+    import re
+    cache = os.path.expanduser(config.get("cache_voix", "~/.cache/etrave-video/voix"))
+    if not os.path.isdir(cache):
+        return []
+    limite, effaces = time.time() - jours * 86400, []
+    for nom in os.listdir(cache):
+        chemin = os.path.join(cache, nom)
+        if re.search(r"-s\d+(-t[\d.]+-p[\d.]+)?\.wav$", nom) and os.path.getmtime(chemin) < limite:
+            try:
+                os.remove(chemin)
+                effaces.append(nom)
+            except OSError as err:
+                journal(f"Cache des voix : {nom} pas effacé ({err})")
+    return effaces
+
+
 def controle_pistes(reps):
     """VID-18 : le dernier contrôle avant le montage. Chaque scène a son fichier de voix, d'une durée plausible ; sinon pas de vidéo."""
     for i, r in enumerate(reps):
@@ -271,7 +291,7 @@ def silences(fichier, seuil_db=-40, duree_min=0.18):
     """Les silences d'un fichier [(début, fin)], lus par ffmpeg (silencedetect). Les heures des mots d'ElevenLabs comptent le silence
     qui suit un point dans le mot lui-même : on ne peut pas s'en servir pour trouver les pauses."""
     sortie = subprocess.run(["ffmpeg", "-hide_banner", "-nostats", "-i", fichier, "-af", f"silencedetect=noise={seuil_db}dB:d={duree_min}",
-                             "-f", "null", "-"], capture_output=True, text=True).stderr
+                             "-f", "null", "-"], capture_output=True, text=True, timeout=300).stderr
     debuts = [float(x) for x in re.findall(r"silence_start: (-?[\d.]+)", sortie)]
     fins = [float(x) for x in re.findall(r"silence_end: (-?[\d.]+)", sortie)]
     return [(max(0.0, d), f) for d, f in zip(debuts, fins + [None] * (len(debuts) - len(fins)))]

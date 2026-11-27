@@ -101,7 +101,7 @@ def _fenetre_windows(png):
     if not any(pixels.raw[i] for i in range(0, min(len(pixels.raw), 400000), 997)):
         raise PhotoImpossible("Photo noire : la session Windows n'a plus d'écran (quitter avec Deconnecter-sans-fermer.cmd).")
     subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "rawvideo", "-pix_fmt", "bgra", "-s", f"{w}x{h}", "-i", "-",
-                    "-frames:v", "1", png], input=pixels.raw, check=True)
+                    "-frames:v", "1", png], input=pixels.raw, check=True, timeout=60)
 
 
 def _fenetre_mac(png):
@@ -119,11 +119,11 @@ def _fenetre_mac(png):
               '    end if\n'
               '  end repeat\n'
               'end tell\nreturn ""')
-    r = subprocess.run(["osascript", "-e", script], capture_output=True, text=True)
+    r = subprocess.run(["osascript", "-e", script], capture_output=True, text=True, timeout=60)
     cadre = r.stdout.strip()
     if not cadre:
         raise PhotoImpossible(f"Fenêtre de MetaTrader introuvable ({r.stderr.strip() or 'ouverte et visible ?'}).")
-    subprocess.run(["screencapture", "-x", "-R", cadre, png], check=True)
+    subprocess.run(["screencapture", "-x", "-R", cadre, png], check=True, timeout=60)
     if not os.path.exists(png):
         raise PhotoImpossible("screencapture n'a rien écrit (autorisation « Enregistrement de l'écran » ?).")
 
@@ -197,7 +197,7 @@ def photographier_jour(config, dossier_journaux, jour, n_positions, journal=prin
             return None
         try:
             subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", plein, "-vf", f"crop={l}:{haut}:{x}:{y}", "-frames:v", "1", sortie],
-                           check=True)
+                           check=True, timeout=60)
         except (subprocess.CalledProcessError, OSError) as err:
             journal(f"Photo de l'historique impossible (recadrage) : {err}")
             return None

@@ -175,7 +175,9 @@ def test_le_mouvement_du_prix_est_raconte_en_points():
 def test_jour_sans_trade_ne_dit_pas_pourquoi(tmp_path):
     j = _journee(tmp_path, positions=())
     textes = recap.repliques(j, "r")
-    assert "pas de trade aujourd'hui, les conditions n'étaient pas réunies." in textes[1] and "Journée sans trade" in textes[0]
+    # V-10 (27/11/2026, règle changée par le propriétaire) : « les conditions n'étaient pas réunies » était faux un jour bloqué (heure
+    # du serveur, compte non autorisé, marché décoché, férié) ; « Le robot n'a pas tradé aujourd'hui », quelle que soit la raison
+    assert "Nasdaq : le robot n'a pas tradé aujourd'hui." in textes[1] and "Journée sans trade" in textes[0]
     assert "RSI" not in " ".join(textes) and recap.mot_du_jour(j, None) in recap.MOTS_DU_JOUR["rien"]
 
 
@@ -728,12 +730,16 @@ def test_certificat_floute_quand_des_masques_sont_regles(tmp_path, monkeypatch):
     """Conformité TikTok : avec `masques_certificat`, le certificat passe par un flou fort (ffmpeg) avant d'entrer dans la vidéo et
     la couverture ; sans masque, il est copié tel quel."""
     source = tmp_path / "certificat.png"
-    source.write_bytes(b"\x89PNG")
+    _png(source, 600, 450)           # 27/11/2026 : un en-tête PNG (V-25 lit la taille de l'image pour contrôler les masques)
     appels = []
     monkeypatch.setattr(presentation.subprocess, "run", lambda commande, **k: appels.append(commande))
     cible = tmp_path / "copie.png"
-    presentation.copier_certificat({"certificat": str(source)}, str(cible))
-    assert appels == [] and cible.read_bytes() == b"\x89PNG"
+    # V-25 (27/11/2026, règle changée) : sans masque, le certificat n'est plus copié net dans la vidéo (la prop firm sortirait nommée) ;
+    # seul l'essai (`outil.py certificat --essai`, pour régler les masques) l'écrit tel quel
+    with pytest.raises(ValueError, match="masques_certificat"):
+        presentation.copier_certificat({"certificat": str(source)}, str(cible))
+    presentation.copier_certificat({"certificat": str(source)}, str(cible), essai=True)
+    assert appels == [] and cible.read_bytes() == source.read_bytes()
     presentation.copier_certificat({"certificat": str(source), "masques_certificat": [[62, 36, 206, 60], [325, 258, 145, 150]]},
                                    str(tmp_path / "floute.png"))
     filtre = appels[0][appels[0].index("-filter_complex") + 1]
@@ -1161,3 +1167,209 @@ def test_v22_periode_deja_publiee_pas_rechargee(tmp_path, monkeypatch):
     publication.auto(c, str(journaux), lambda t: None, D(2026, 11, 6))
     monkeypatch.setattr(recap_periode, "charger", lambda *a, **k: pytest.fail("période déjà publiée rechargée"))
     publication.auto(c, str(journaux), lambda t: None, D(2026, 11, 6))
+
+
+def test_v06_chaque_commande_a_un_delai(tmp_path, monkeypatch, garde_fous):
+    """V-06 : aucun `timeout=` sur le rendu HyperFrames ni sur ffmpeg ; un Chrome sans tête bloqué gardait la tâche launchd « en
+    cours » et les lancements suivants n'avaient pas lieu. Chaque commande a un délai ; le rendu est arrêté avec tous ses processus
+    (Chrome compris) et le mode automatique prévient."""
+    import ast
+    import sys as _sys
+    import time
+    for nom in sorted(glob.glob(os.path.join(ICI, "*.py"))):
+        if os.path.basename(nom).startswith("test_"):
+            continue
+        for n in ast.walk(ast.parse(open(nom, encoding="utf-8").read())):
+            if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute) and n.func.attr in ("run", "Popen", "check_output") \
+                    and isinstance(n.func.value, ast.Name) and n.func.value.id == "subprocess":
+                assert n.func.attr == "Popen" or any(k.arg == "timeout" for k in n.keywords), f"{os.path.basename(nom)}:{n.lineno}"
+    debut = time.time()
+    with pytest.raises(recap.CommandeBloquee, match="bloqué"):
+        recap.executer([_sys.executable, "-c", "import time; time.sleep(30)"], str(tmp_path), 1, "essai")
+    assert time.time() - debut < 10
+    faux_rendus(monkeypatch)
+    monkeypatch.setattr(publication.recap, "fabriquer", lambda *a, **k: (_ for _ in ()).throw(recap.CommandeBloquee("rendu HyperFrames bloqué")))
+    journaux = tmp_path / "journaux"
+    journaux.mkdir()
+    ecrire_jours(str(journaux), [(D(2026, 11, 2), {})])
+    assert publication.auto(config_auto(tmp_path), str(journaux), lambda t: None, D(2026, 11, 2)) == []
+    assert any("rendu bloqué" in t for t, _ in garde_fous)
+
+
+def test_v08_fichiers_de_travail_effaces_et_rendus_purges(tmp_path, monkeypatch):
+    """V-08 : chaque rendu gardait environ 100 Mo (son/, projet/, image-muette.mp4) sans rien effacer : 25 à 30 Go par an. En mode
+    automatique, ils sont effacés après le contrôle et la publication (la vidéo, recap.json et controle.txt restent) ; les rendus du
+    mode automatique de plus de 30 jours sont purgés, jamais un récap fait à la main. Les morceaux de voix recalculables aussi."""
+    import time
+    import voix
+    faux_rendus(monkeypatch)
+
+    def video(j, config, sortie, journal=print, rendre=True, exiger_voix=True, **k):
+        for d in ("son", "projet"):
+            os.makedirs(os.path.join(sortie, d), exist_ok=True)
+        open(os.path.join(sortie, "son", "controle.txt"), "w").write("ok")
+        open(os.path.join(sortie, "image-muette.mp4"), "wb").write(b"\0")
+        open(os.path.join(sortie, "recap.json"), "w").write("{}")
+        chemin = os.path.join(sortie, "recap-2026-11-02.mp4")
+        open(chemin, "wb").write(b"\0")
+        return chemin
+    monkeypatch.setattr(publication.recap, "fabriquer", video)
+    journaux = tmp_path / "journaux"
+    journaux.mkdir()
+    ecrire_jours(str(journaux), [(D(2026, 11, 2), {})])
+    c = config_auto(tmp_path)
+    publication.auto(c, str(journaux), lambda t: None, D(2026, 11, 2))
+    rendu = tmp_path / "rendus" / "recap-2026-11-02"
+    assert sorted(n for n in os.listdir(rendu) if not n.startswith(".")) == ["controle.txt", "recap-2026-11-02.mp4", "recap.json"]
+    vieux, main_ = tmp_path / "rendus" / "recap-2026-09-01", tmp_path / "rendus" / "recap-2026-09-02"
+    for d in (vieux, main_):
+        d.mkdir()
+        (d / "recap-x.mp4").write_bytes(b"\0")
+    (vieux / ".rendu-auto").write_text("")
+    for d in (vieux, main_, rendu):
+        os.utime(d, (time.time() - 40 * 86400,) * 2) if d != rendu else None
+    assert publication.nettoyer_rendus(c, lambda t: None) == ["recap-2026-09-01"]
+    assert not vieux.exists() and main_.exists() and rendu.exists()          # un récap fait à la main n'est jamais purgé
+    cache = tmp_path / "cache"
+    cache.mkdir()
+    for nom in ("abc.mp3", "abc.json", "abc-s0.wav", "abc-s0-t1.1-p0.3.wav", "neuf-s0.wav"):
+        (cache / nom).write_bytes(b"\0")
+    for nom in ("abc.mp3", "abc.json", "abc-s0.wav", "abc-s0-t1.1-p0.3.wav"):
+        os.utime(cache / nom, (time.time() - 40 * 86400,) * 2)
+    voix.purger_cache({"cache_voix": str(cache)})
+    assert sorted(os.listdir(cache)) == ["abc.json", "abc.mp3", "neuf-s0.wav"]     # les prises payées restent
+
+
+def test_v10_jour_sans_trade_dit_que_le_robot_n_a_pas_trade(tmp_path):
+    """V-10 : « Les conditions n'étaient pas réunies » couvrait aussi l'heure du serveur fausse, le compte non autorisé, le marché
+    décoché et les fériés : faux ces jours-là. La voix et l'écran disent « Le robot n'a pas tradé aujourd'hui », sans la raison ; les
+    fériés et les demi-séances ne comptent pas comme séances dans la semaine et le mois."""
+    import recap_periode
+    j = _journee(tmp_path, positions=())
+    textes = recap.repliques(j, "r")
+    corps = recap.scene_marche(j, j["marches"][0], 0, None, "r", 7.0)[1]
+    tout = " ".join(textes) + corps + " ".join(m for l in recap.MOTS_DU_JOUR.values() for m in l)
+    assert "conditions" not in tout and "préféré" not in tout and "observer" not in tout
+    assert textes[1] == "Nasdaq : le robot n'a pas tradé aujourd'hui." and textes[-1].startswith("Bilan : le robot n'a pas tradé aujourd'hui.")
+    assert "Le robot n'a pas tradé" in corps
+    semaine = tmp_path / "semaine"
+    semaine.mkdir()
+    ecrire_jours(str(semaine), [(D(2026, 11, 23), {}), (D(2026, 11, 24), {}), (D(2026, 11, 25), {}),
+                                (D(2026, 11, 26), {"positions": ()}), (D(2026, 11, 27), {"positions": ()})])   # Thanksgiving, demi-séance
+    p = recap_periode.charger(str(semaine), D(2026, 11, 23), D(2026, 11, 27), "semaine")
+    assert [d["jour"] for d in p["jours"]] == [D(2026, 11, 23), D(2026, 11, 24), D(2026, 11, 25)]
+    assert "Jeudi" not in recap_periode.repliques(p)[1] and "3 sur 3" in publication.description_periode(p, {})
+
+
+def test_v11_seuls_le_nasdaq_et_le_sp500_sont_lus(tmp_path):
+    """V-11 : `recap --testeur` racontait le Dow (DJI30, fichiers d'un passage précédent du testeur) comme 3e marché, compté au bilan.
+    Seuls le Nasdaq et le S&P 500 sont lus, et des versions de journal différentes sont signalées."""
+    ecrire_jours(str(tmp_path), [(D(2026, 11, 18), {})])
+    ecrire_jours(str(tmp_path), [(D(2026, 11, 18), {}), (D(2026, 11, 19), {})], symbole="DJI30")
+    j = journee.charger(str(tmp_path), D(2026, 11, 18))
+    assert [m["symbole"] for m in j["marches"]] == ["NDX100"] and journee.jours_finis(str(tmp_path)) == [D(2026, 11, 18)]
+    b = tmp_path / "bougies-NDX100.csv"
+    b.write_text(b.read_text(encoding="utf-8").replace("\n1;reel;", "\n2;reel;"), encoding="utf-8")
+    assert any("versions" in a for a in journee.charger(str(tmp_path), D(2026, 11, 18))["avertissements"])
+
+
+def test_v19_bougies_ecrites_deux_fois(tmp_path):
+    """V-19 : BougiesRow écrit deux fois le même jour (ligne « fin » réécrite après un redémarrage) : 166 bougies au lieu de 83, la
+    journée dessinée deux fois. Une bougie par heure, dans l'ordre."""
+    ecrire_jours(str(tmp_path), [(D(2026, 11, 18), {})])
+    b = tmp_path / "bougies-NDX100.csv"
+    lignes = b.read_text(encoding="utf-8").splitlines()
+    b.write_text("\r\n".join(lignes + lignes[1:]) + "\r\n", encoding="utf-8")
+    m = journee.charger(str(tmp_path), D(2026, 11, 18))["marches"][0]
+    heures = [c["heure"] for c in m["bougies"]]
+    assert len(heures) == 84 and heures == sorted(heures)
+
+
+def test_v21_couverture_prise_apres_le_titre_pose(tmp_path, monkeypatch):
+    """V-21 : la couverture était prise à 3,2 s fixes ; un titre plus court donnait le volet ou la scène suivante en couverture.
+    L'instant est lu dans recap.json (le titre posé, avant le volet)."""
+    j = _journee(tmp_path, positions=GAIN)
+    sortie = tmp_path / "rendu"
+    sortie.mkdir()
+    video = sortie / "recap-2026-04-16.mp4"
+    video.write_bytes(b"\0")
+    (sortie / "recap.json").write_text(json.dumps({"couverture": 1.234, "scenes": [{"id": "titre", "debut": 0, "duree": 2.6}]}))
+    appels = []
+    monkeypatch.setattr(publication.subprocess, "run", lambda commande, **k: appels.append(commande))
+    publication.publier(j, str(video), {"dossier_publication": str(tmp_path / "bureau")})
+    ffmpeg = next(a for a in appels if a[0] == "ffmpeg")
+    assert ffmpeg[ffmpeg.index("-ss") + 1] == "1.234"
+
+
+def test_v23_meme_regle_des_marches_qu_etrave(tmp_path):
+    """V-23 : la règle des marchés était recopiée dans journee.py et avait divergé d'Étrave (un S&P « ES1… » était « autre »)."""
+    import pont
+    for symbole in ("NDX100", "USTEC", "US100.cash", "SPX500", "US500", "ES1!", "ES1", "DJI30", "GER40", "XAUUSD", "nq1!"):
+        assert journee.instrument(symbole) == pont.instrument_de(symbole), symbole
+    assert journee.instrument("ES1!") == "sp500"
+
+
+def test_v24_telemetrie_d_hyperframes_coupee(tmp_path, monkeypatch):
+    """V-24 : la CLI HyperFrames contient une télémétrie (PostHog) et une recherche de mise à jour ; l'outil ne posait ni
+    HYPERFRAMES_NO_TELEMETRY ni HYPERFRAMES_NO_UPDATE_CHECK. Posées pour chaque rendu et dans l'agent launchd."""
+    import installation
+    vus = []
+
+    class Faux:
+        returncode = 0
+
+        def __init__(self, commande, **k):
+            vus.append(k.get("env") or {})
+
+        def communicate(self, timeout=None):
+            return b"", b""
+    monkeypatch.setattr(recap.subprocess, "Popen", Faux)
+    recap.executer(["hyperframes", "render"], str(tmp_path), 5, "rendu")
+    assert vus[0].get("HYPERFRAMES_NO_TELEMETRY") == "1" and vus[0].get("HYPERFRAMES_NO_UPDATE_CHECK") == "1"
+    plist = installation.texte_plist(["/usr/bin/python3", "outil.py", "auto"], str(tmp_path), str(tmp_path / "recap-auto.log"))
+    assert "<key>HYPERFRAMES_NO_TELEMETRY</key><string>1</string>" in plist
+    assert "<key>HYPERFRAMES_NO_UPDATE_CHECK</key><string>1</string>" in plist
+
+
+def test_v25_certificat_jamais_net_ni_masque_hors_de_l_image(tmp_path, monkeypatch):
+    """V-25 : `masques_certificat` vide, ou un certificat remplacé par une image d'une autre taille : le certificat était copié net
+    (la prop firm nommée dans la vidéo et la couverture). Refus de rendre sans masque, et masques contrôlés dans l'image."""
+    source = tmp_path / "certificat.png"
+    _png(source, 600, 450)
+    monkeypatch.setattr(presentation.subprocess, "run", lambda *a, **k: None)
+    with pytest.raises(ValueError, match="masques_certificat"):
+        presentation.copier_certificat({"certificat": str(source), "masques_certificat": []}, str(tmp_path / "a.png"))
+    with pytest.raises(ValueError, match="hors de l'image"):
+        presentation.copier_certificat({"certificat": str(source), "masques_certificat": [[500, 400, 200, 100]]}, str(tmp_path / "b.png"))
+    presentation.copier_certificat({"certificat": str(source), "masques_certificat": [[10, 10, 100, 50]]}, str(tmp_path / "c.png"))
+
+
+def test_v26_presentation_jamais_sans_une_replique(tmp_path, monkeypatch):
+    """V-26 : un dossier de répliques déplacé ou incomplet donnait une présentation avec « N réplique(s) absente(s) », muette sans
+    aucune réplique ; contraire à « voix exigée partout ». Refus avant même le rendu."""
+    import voix
+    source = tmp_path / "certificat.png"
+    _png(source, 600, 450)
+    (tmp_path / "voix").mkdir()
+    for nom, _, _ in presentation.REPLIQUES[:-1]:
+        (tmp_path / "voix" / f"{nom}.mp3").write_bytes(b"\0")
+    monkeypatch.setattr(presentation.subprocess, "run", lambda *a, **k: pytest.fail("rendu ou ffmpeg lancé sans toutes les répliques"))
+    monkeypatch.setattr(recap, "executer", lambda *a, **k: pytest.fail("rendu lancé sans toutes les répliques"), raising=False)
+    config = {"sortie": str(tmp_path / "sortie"), "police": recap.POLICE,
+              "presentation": {"nom": "Alex", "annees": 4, "montant": "1 000,00 $", "certificat": str(source),
+                               "masques_certificat": [[10, 10, 100, 50]], "voix": str(tmp_path / "voix")}}
+    with pytest.raises(voix.VoixIndisponible, match="6-fin"):
+        presentation.fabriquer(config, lambda t: None)
+
+
+def test_v28_pas_de_le_prix_repete_ni_de_plus_loin_minuscule():
+    """V-28 : « Le prix va jusqu'à … en notre faveur, puis le prix remonte » répétait « le prix » ; « jusqu'à zéro virgule sept
+    point en notre faveur » (S&P du 09/06/2025). Un plus loin sous 2 points n'est pas dit."""
+    fin = _pos(-1, 13, 70.1, 100.0, "Fin de journée", 60.0, 30.0)
+    f = recap.faits({"positions": [fin]})
+    texte = recap.phrase_fins(f)
+    assert texte.count("prix") == 1 and texte.startswith("Le prix va jusqu'à soixante points en notre faveur")
+    petit = recap.faits({"positions": [_pos(-1, 13, 100.4, 100.0, "Fin de journée", 0.7, 30.0)]})
+    assert "jusqu'à zéro" not in recap.phrase_fins(petit) and recap.phrase_fins(petit).startswith("Sortie en fin de séance")
+    gain = recap.faits({"positions": [_pos(1, 13, 101.2, 100.0, "Stop remonté", 1.5, 30.0)]})
+    assert "jusqu'à" not in recap.phrase_stops(gain)

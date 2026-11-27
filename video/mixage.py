@@ -35,6 +35,9 @@ FORMATS_MUSIQUE = (".mp3", ".wav", ".m4a", ".aac", ".flac", ".ogg")
 # (récaps du 17 et du 18/11 : -8,7 dB et -2,5 dB pendant la parole), pour garder l'équilibre validé.
 BAISSE_BRUITAGES, BAISSE_MUSIQUE = -9.0, -2.5
 ECART_PHRASE, RAMPE, SEUIL_PAROLE = 0.6, 0.15, -45
+# V-06 (audit du 27/11/2026) : chaque ffmpeg a un délai (une minute de vidéo se mixe en quelques secondes) ; au-delà, il est arrêté et
+# le mode automatique prévient (subprocess.TimeoutExpired).
+DELAI_FFMPEG = 300
 
 
 def catalogue():
@@ -44,7 +47,7 @@ def catalogue():
 def _pic(fichier, cache={}):
     if fichier not in cache:
         sortie = subprocess.run(["ffmpeg", "-hide_banner", "-nostats", "-i", fichier, "-af", "volumedetect", "-f", "null", "-"],
-                                capture_output=True, text=True).stderr
+                                capture_output=True, text=True, timeout=DELAI_FFMPEG).stderr
         m = re.search(r"max_volume: (-?[\d.]+) dB", sortie)
         cache[fichier] = float(m.group(1)) if m else 0.0
     return cache[fichier]
@@ -52,7 +55,7 @@ def _pic(fichier, cache={}):
 
 def _lufs(fichier):
     sortie = subprocess.run(["ffmpeg", "-hide_banner", "-nostats", "-i", fichier, "-af", "ebur128", "-f", "null", "-"],
-                            capture_output=True, text=True).stderr
+                            capture_output=True, text=True, timeout=DELAI_FFMPEG).stderr
     valeurs = re.findall(r"I:\s+(-?[\d.]+) LUFS", sortie)
     return float(valeurs[-1]) if valeurs else None
 
@@ -73,12 +76,12 @@ def piste_voix(repliques, duree, sortie):
     filtres.append("".join(noms) + f"amix=inputs={len(noms)}:normalize=0,apad=whole_dur={duree:.3f},pan=stereo|c0=c0|c1=c0[o]")
     brute = sortie[:-4] + "-brute.wav"
     subprocess.run(["ffmpeg", "-v", "error", "-y", *entrees, "-filter_complex", ";".join(filtres), "-map", "[o]", "-t", f"{duree:.3f}",
-                    "-ar", "48000", "-c:a", "pcm_s24le", brute], check=True)
+                    "-ar", "48000", "-c:a", "pcm_s24le", brute], check=True, timeout=DELAI_FFMPEG)
     # un gain simple mesuré (pas de normalisation dynamique), puis un limiteur à -1 dBFS pour les pics
     mesure = _lufs(brute)
     gain = (NIVEAU_VOIX - mesure) if mesure is not None and mesure > -70 else 0.0
     subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", brute, "-af", f"volume={gain:.2f}dB,alimiter=limit=0.89:level=false",
-                    "-ar", "48000", "-c:a", "pcm_s24le", sortie], check=True)
+                    "-ar", "48000", "-c:a", "pcm_s24le", sortie], check=True, timeout=DELAI_FFMPEG)
     os.remove(brute)
     return sortie
 
@@ -117,7 +120,7 @@ def piste_bruitages(reperes, dossier_sons, duree, sortie):
         return None, sorted(set(manquants))
     filtres.append("".join(noms) + f"amix=inputs={len(noms)}:normalize=0,apad=whole_dur={duree:.3f}[o]")
     subprocess.run(["ffmpeg", "-v", "error", "-y", *entrees, "-filter_complex", ";".join(filtres), "-map", "[o]", "-t", f"{duree:.3f}",
-                    "-ar", "48000", "-c:a", "pcm_s24le", sortie], check=True)
+                    "-ar", "48000", "-c:a", "pcm_s24le", sortie], check=True, timeout=DELAI_FFMPEG)
     return sortie, sorted(set(manquants))
 
 
@@ -145,15 +148,15 @@ def piste_musique(reglage, jour, duree, sortie, journal=print):
     brute = sortie[:-4] + "-brute.wav"
     subprocess.run(["ffmpeg", "-v", "error", "-y", "-stream_loop", "-1", "-i", morceau, "-t", f"{duree:.3f}", "-af",
                     f"aresample=48000,aformat=channel_layouts=stereo,{EQ_MUSIQUE},afade=t=in:d=0.4,afade=t=out:st={fin:.3f}:d=1.8",
-                    "-ar", "48000", "-c:a", "pcm_s24le", brute], check=True)
+                    "-ar", "48000", "-c:a", "pcm_s24le", brute], check=True, timeout=DELAI_FFMPEG)
     aigus = sortie[:-4] + "-aigus.wav"
-    subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", brute, "-af", "highpass=f=250,highpass=f=250", "-c:a", "pcm_s24le", aigus], check=True)
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", brute, "-af", "highpass=f=250,highpass=f=250", "-c:a", "pcm_s24le", aigus], check=True, timeout=DELAI_FFMPEG)
     tout, haut = _lufs(brute), _lufs(aigus)
     gains = [NIVEAU_MUSIQUE_AIGUS - haut if haut is not None and haut > -70 else None,
              NIVEAU_MUSIQUE_MAX - tout if tout is not None and tout > -70 else None]
     gain = min([g for g in gains if g is not None], default=0.0)
     subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", brute, "-af", f"volume={gain:.2f}dB", "-ar", "48000", "-c:a", "pcm_s24le", sortie],
-                   check=True)
+                   check=True, timeout=DELAI_FFMPEG)
     os.remove(brute)
     os.remove(aigus)
     return sortie
@@ -163,7 +166,7 @@ def blocs_parole(voix, duree=None, ecart=ECART_PHRASE, seuil_db=SEUIL_PAROLE):
     """Les moments où la voix parle [(début, fin)] : tout ce qui n'est pas un silence d'au moins `ecart` s (les mots d'une même
     phrase, et deux phrases proches, ne font qu'un bloc)."""
     sortie = subprocess.run(["ffmpeg", "-hide_banner", "-nostats", "-i", voix, "-af", f"silencedetect=noise={seuil_db}dB:d={ecart}",
-                             "-f", "null", "-"], capture_output=True, text=True).stderr
+                             "-f", "null", "-"], capture_output=True, text=True, timeout=DELAI_FFMPEG).stderr
     debuts = [max(0.0, float(x)) for x in re.findall(r"silence_start: (-?[\d.]+)", sortie)]
     fins = [float(x) for x in re.findall(r"silence_end: (-?[\d.]+)", sortie)]
     if duree is None:
@@ -193,7 +196,7 @@ def assembler(video_muette, voix, bruitages, sortie, dossier_travail, musique=No
     """La vidéo finale : l'image muette + la voix + les bruitages et la musique baissés sous la voix, au niveau visé, en AAC 48 kHz."""
     pistes = [p for p in (voix, bruitages, musique) if p]
     if not pistes:
-        subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", video_muette, "-c", "copy", sortie], check=True)
+        subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", video_muette, "-c", "copy", sortie], check=True, timeout=DELAI_FFMPEG)
         return sortie
     melange = os.path.join(dossier_travail, "melange.wav")
     entrees, filtres, a_mixer, extra = [], [], [], []
@@ -225,11 +228,11 @@ def assembler(video_muette, voix, bruitages, sortie, dossier_travail, musique=No
         a_mixer.append("[mus]")
     filtres.append("".join(a_mixer) + f"amix=inputs={len(a_mixer)}:normalize=0[o]" if len(a_mixer) > 1 else f"{a_mixer[0]}anull[o]")
     subprocess.run(["ffmpeg", "-v", "error", "-y", *entrees, "-filter_complex", ";".join(filtres), "-map", "[o]", "-ar", "48000",
-                    "-c:a", "pcm_s24le", melange, *extra], check=True)
+                    "-c:a", "pcm_s24le", melange, *extra], check=True, timeout=DELAI_FFMPEG)
     mesure = _lufs(melange)
     vise = NIVEAU_VISE if voix else NIVEAU_SANS_VOIX
     gain = (vise - mesure) if mesure is not None and mesure > -70 else 0.0
     subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", video_muette, "-i", melange, "-map", "0:v", "-map", "1:a", "-c:v", "copy",
                     "-af", f"volume={gain:.2f}dB,alimiter=limit=0.84:level=false", "-ar", "48000", "-c:a", "aac", "-b:a", "192k",
-                    "-shortest", sortie], check=True)
+                    "-shortest", sortie], check=True, timeout=DELAI_FFMPEG)
     return sortie

@@ -96,17 +96,47 @@ def filtre_masques(masques):
     return ";".join(morceaux), "[floute]"
 
 
-def copier_certificat(profil, cible):
-    """Le certificat copié dans le projet, avec le nom et le logo de la société floutés si `masques_certificat` est réglé
-    (conformité TikTok, 25/11/2026 : le montant et le certificat restent, la prop firm n'est pas nommée)."""
+def taille_image(chemin):
+    """(largeur, hauteur) d'une image : l'en-tête d'un PNG, sinon ffprobe (JPEG…)."""
+    import historique
+    try:
+        return historique.taille_png(chemin)
+    except ValueError:
+        r = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height", "-of", "csv=p=0",
+                            chemin], capture_output=True, text=True, timeout=60)
+        l, h = (int(x) for x in r.stdout.strip().split(",")[:2])
+        return l, h
+
+
+def controler_masques(masques, largeur, hauteur):
+    """V-25 : chaque masque [x, y, largeur, hauteur] tombe dans l'image (un certificat remplacé par une image d'une autre taille
+    laissait le nom de la prop firm net, le flou tombant à côté)."""
+    for m in masques:
+        if len(m) != 4 or any(not isinstance(v, (int, float)) for v in m) or m[2] <= 0 or m[3] <= 0:
+            raise ValueError(f"masques_certificat : rectangle illisible {m} (attendu : [x, y, largeur, hauteur] en pixels)")
+        x, y, l, h = m
+        if x < 0 or y < 0 or x + l > largeur or y + h > hauteur:
+            raise ValueError(f"masques_certificat : le rectangle {m} est hors de l'image du certificat ({largeur} x {hauteur}) : "
+                             "règle-le de nouveau avec `outil.py certificat --essai`")
+
+
+def copier_certificat(profil, cible, essai=False):
+    """Le certificat copié dans le projet, avec le nom et le logo de la société floutés par `masques_certificat` (conformité TikTok,
+    25/11/2026 : le montant et le certificat restent, la prop firm n'est pas nommée).
+    V-25 (audit du 27/11/2026) : sans masque, le certificat était copié net, sans un mot, dans la vidéo et la couverture. Il est
+    refusé, sauf pour l'essai (`outil.py certificat --essai`, qui sert justement à régler les masques)."""
     source = os.path.expanduser(profil["certificat"])
     masques = profil.get("masques_certificat") or []
     if not masques:
+        if not essai:
+            raise ValueError("masques_certificat vide : le certificat sortirait net (nom et logo de la prop firm) ; règle les masques avec "
+                             "`outil.py certificat --essai`")
         shutil.copy(source, cible)
         return cible
+    controler_masques(masques, *taille_image(source))
     filtre, sortie = filtre_masques(masques)
     subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", source, "-filter_complex", filtre, "-map", sortie, "-frames:v", "1", cible],
-                   check=True)
+                   check=True, timeout=120)
     return cible
 
 
@@ -114,6 +144,14 @@ def fabriquer(config, journal=print):
     profil = config.get("presentation")
     if not profil:
         raise SystemExit("La configuration n'a pas de partie « presentation » (voir video/config.exemple.json).")
+    # V-26 (audit du 27/11/2026) : un dossier de répliques déplacé ou incomplet donnait une présentation avec des trous, muette sans
+    # aucune réplique (« N réplique(s) absente(s) » dans le journal) ; contraire à « voix exigée partout ». Contrôlé avant tout travail.
+    import voix as voix_
+    dossier_voix = os.path.expanduser(profil.get("voix", ""))
+    absentes = [n for n, _, _ in REPLIQUES if not os.path.exists(os.path.join(dossier_voix, f"{n}.mp3"))]
+    if absentes:
+        raise voix_.VoixIndisponible(f"réplique(s) absente(s) de {dossier_voix or '(pas de dossier « voix »)'} : {', '.join(absentes)} ; "
+                                     "pas de présentation muette ni incomplète")
     sortie = os.path.join(os.path.expanduser(config["sortie"]), "presentation")
     projet = os.path.join(sortie, "projet")
     if os.path.isdir(projet):
@@ -125,15 +163,12 @@ def fabriquer(config, journal=print):
     remplir(profil, projet)
     journal(f"Rendu de l'image ({DUREE} s)…")
     muette = os.path.abspath(os.path.join(sortie, "image-muette.mp4"))
-    subprocess.run(HYPERFRAMES + ["render", "--quality", "delivery", "--output", muette], cwd=projet, check=True,
-                   stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
+    import recap
+    recap.executer(HYPERFRAMES + ["render", "--quality", "delivery", "--output", muette], projet, recap.DELAI_RENDU,
+                   "rendu HyperFrames")          # V-06 : un délai, Chrome compris ; V-24 : télémétrie coupée
     travail = os.path.join(sortie, "son")
     os.makedirs(travail, exist_ok=True)
-    dossier_voix = os.path.expanduser(profil.get("voix", ""))
-    repliques = [{"fichier": os.path.join(dossier_voix, f"{n}.mp3"), "t": t, "coupe": c} for n, t, c in REPLIQUES
-                 if os.path.exists(os.path.join(dossier_voix, f"{n}.mp3"))]
-    if len(repliques) < len(REPLIQUES):
-        journal(f"{len(REPLIQUES) - len(repliques)} réplique(s) absente(s) de {dossier_voix or '(pas de dossier de voix)'}.")
+    repliques = [{"fichier": os.path.join(dossier_voix, f"{n}.mp3"), "t": t, "coupe": c} for n, t, c in REPLIQUES]
     voix = mixage.piste_voix(repliques, DUREE, os.path.join(travail, "voix.wav"))
     reperes = json.load(open(os.path.join(MODELE, "bruitages.json"), encoding="utf-8"))["bruitages"]
     bruitages, manquants = mixage.piste_bruitages(reperes, config.get("sons"), DUREE, os.path.join(travail, "bruitages.wav"))
@@ -164,9 +199,9 @@ def couverture(config, sortie_jpg, journal=print):
     copier_certificat(profil, os.path.join(travail, "assets", "certificat.png"))
     remplir(profil, travail)
     images = os.path.join(travail, "images")
-    subprocess.run(HYPERFRAMES + ["snapshot", "--at", "0.5", "--no-end", "-o", images], cwd=travail, check=True,
-                   stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
+    import recap
+    recap.executer(HYPERFRAMES + ["snapshot", "--at", "0.5", "--no-end", "-o", images], travail, recap.DELAI_IMAGE, "image HyperFrames")
     png = next(os.path.join(images, n) for n in sorted(os.listdir(images)) if n.startswith("frame-") and n.endswith(".png"))
-    subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", png, "-q:v", "2", sortie_jpg], check=True)
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", png, "-q:v", "2", sortie_jpg], check=True, timeout=120)
     return sortie_jpg
 

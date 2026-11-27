@@ -62,6 +62,40 @@ class CommandeBloquee(RuntimeError):
     """V-06 : un rendu HyperFrames ou un ffmpeg qui dépasse son délai, arrêté (le mode automatique prévient et réessaie plus tard)."""
 
 
+# V-24 (audit du 27/11/2026) : la CLI HyperFrames 0.9.94 contient une télémétrie (PostHog) et cherche ses mises à jour ; coupées pour
+# chaque rendu (et dans l'agent launchd, installation.py).
+ENV_HYPERFRAMES = {"HYPERFRAMES_NO_TELEMETRY": "1", "HYPERFRAMES_NO_UPDATE_CHECK": "1", "DO_NOT_TRACK": "1"}
+# V-06 (audit du 27/11/2026) : aucun délai sur le rendu ni sur ffmpeg ; un Chrome sans tête bloqué gardait la tâche launchd « en
+# cours » et les lancements suivants n'avaient pas lieu. Un rendu de 60 s prend 1 à 2 minutes : 15 minutes, c'est une panne.
+DELAI_RENDU, DELAI_IMAGE = 15 * 60, 5 * 60
+
+
+def executer(commande, dossier, delai, quoi):
+    """Une commande longue (rendu HyperFrames : npx, node, puis Chrome sans tête) avec un délai. À l'expiration, tout le groupe de
+    processus est arrêté (Chrome compris, que `subprocess.run(timeout=…)` laisserait tourner) et CommandeBloquee est levée. Une
+    sortie en erreur lève CalledProcessError avec la fin de ce que la commande a écrit."""
+    env = dict(os.environ, **ENV_HYPERFRAMES)
+    options = {"start_new_session": True} if os.name != "nt" else {"creationflags": getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)}
+    p = subprocess.Popen(commande, cwd=dossier, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, **options)
+    try:
+        sortie, _ = p.communicate(timeout=delai)
+    except subprocess.TimeoutExpired:
+        if os.name != "nt":
+            import signal
+            try:
+                os.killpg(p.pid, signal.SIGKILL)
+            except OSError:
+                p.kill()
+        else:
+            subprocess.run(["taskkill", "/T", "/F", "/PID", str(p.pid)], capture_output=True, timeout=30)
+        p.communicate()
+        raise CommandeBloquee(f"{quoi} bloqué plus de {delai // 60 if delai >= 60 else delai} {'min' if delai >= 60 else 's'} : arrêté")
+    if p.returncode:
+        fin = (sortie or b"").decode("utf-8", "replace").strip().splitlines()[-6:]
+        raise subprocess.CalledProcessError(p.returncode, commande, output="\n".join(fin))
+    return sortie
+
+
 def e(texte):
     return html.escape(str(texte), quote=True)
 
@@ -90,7 +124,8 @@ MOTS_DU_JOUR = {
               "Le stop a fait son boulot. On garde le cap."],
     "gain": ["Le robot a bien travaillé. Moi, j'ai surtout regardé.", "Belle séance, sans forcer.",
              "Le robot a fait sa part. On reste humble.", "Belle séance. Le robot a mérité son café."],
-    "rien": ["Pas de trade, pas de perte : parfois, attendre, c'est aussi trader.", "Le robot a préféré observer."],
+    # V-10 (27/11/2026) : « Le robot a préféré observer » était faux un jour bloqué (heure du serveur, compte non autorisé, férié)
+    "rien": ["Pas de trade, pas de perte : parfois, attendre, c'est aussi trader.", "Pas de trade, pas de perte. On se retrouve à la prochaine séance."],
 }
 
 
@@ -136,9 +171,18 @@ def pts_ecran(x, signe=True):
     return f"{texte} pt{'s' if round(abs(x), 1) >= 2 else ''}"
 
 
+# V-28 (audit du 27/11/2026) : « jusqu'à zéro virgule sept point en notre faveur » (S&P du 09/06/2025) : un plus loin minuscule n'est
+# ni dit ni montré.
+MFE_DIT = 2.0
+
+
+def _mfe_dit(p):
+    return p.get("mfe") is not None and p["mfe"] >= MFE_DIT
+
+
 def _avance(p):
-    """La position est-elle allée dans notre sens avant de sortir (plus d'un dixième de son stop, et au moins un point) ?"""
-    return p.get("mfe") is not None and p["mfe"] >= max(1.0, 0.1 * (p.get("risque") or 0))
+    """La position est-elle allée dans notre sens avant de sortir (plus d'un dixième de son stop, et au moins MFE_DIT points) ?"""
+    return p.get("mfe") is not None and p["mfe"] >= max(MFE_DIT, 0.1 * (p.get("risque") or 0))
 
 
 def _heure_voix(instant):
@@ -164,7 +208,7 @@ def phrase_stops(f):
     a_heure = ""          # l'heure du stop est à l'écran : la voix ne la répète pas
     pts = p["points"]
     if pts is not None and pts > 0:            # un stop qui sort en gain
-        debut = f"{sujet} va jusqu'à {pts_voix(p['mfe'])} en notre faveur, puis " if p.get("mfe") else f"{sujet} "
+        debut = f"{sujet} va jusqu'à {pts_voix(p['mfe'])} en notre faveur, puis " if _mfe_dit(p) else f"{sujet} "
         texte = f"{debut}sort au stop{a_heure}, avec {pts_voix(pts)} de gain."
     elif _avance(p) and pts is not None:
         texte = (f"{sujet} va jusqu'à {pts_voix(p['mfe'])} en notre faveur… puis le marché se retourne de "
@@ -189,7 +233,7 @@ def phrase_fins(f, sans_mfe=False):
     (« +106 », puis « +108 » : chaque position compte depuis son prix d'entrée) pour le même creux embrouillaient."""
     fi, n = f["fins"], f["n"]
     k = len(fi)
-    avec = [p for p in fi if p.get("mfe") is not None]
+    avec = [p for p in fi if _mfe_dit(p)]          # V-28 : pas de plus loin minuscule
     meilleure = max(avec, key=lambda p: p["mfe"]) if avec else None
     if n == 1:
         sujet = "Le prix"
@@ -203,7 +247,8 @@ def phrase_fins(f, sans_mfe=False):
         return f"{sujet}." if n > 1 else f"Sortie en fin de séance, à {_heure_voix(fi[0]['sortie'])}."
     reprise = ""
     if meilleure["points"] is not None and meilleure["points"] < 0.5 * meilleure["mfe"]:
-        reprise = f", puis le prix {'redescend' if meilleure['sens'] == 1 else 'remonte'}"
+        # V-28 : « Le prix va jusqu'à … en notre faveur, puis le prix remonte » répétait « le prix »
+        reprise = f", puis {'' if n == 1 else 'le prix '}{'redescend' if meilleure['sens'] == 1 else 'remonte'}"
     if n == 1:
         return f"Le prix va jusqu'à {pts_voix(meilleure['mfe'])} en notre faveur{reprise}. Sortie en fin de séance, à {_heure_voix(fi[0]['sortie'])}."
     return f"{sujet} : jusqu'à {pts_voix(meilleure['mfe'])} en notre faveur{reprise}."
@@ -245,13 +290,13 @@ def _stop_raconte(f):
     if not st:
         return None, False
     p = st[0]
-    return p, bool(p.get("mfe")) and ((p["points"] is not None and p["points"] > 0) or (_avance(p) and p["points"] is not None))
+    return p, _mfe_dit(p) and ((p["points"] is not None and p["points"] > 0) or (_avance(p) and p["points"] is not None))
 
 
 def mfe_deja_dit(m, f):
     """VID-28 : la meilleure des positions de fin de séance a son plus loin sur la même bougie que le stop déjà raconté."""
     p, dit_mfe = _stop_raconte(f)
-    avec = [q for q in f["fins"] if q.get("mfe") is not None]
+    avec = [q for q in f["fins"] if _mfe_dit(q)]
     if not dit_mfe or not avec:
         return False
     meilleure = max(avec, key=lambda q: q["mfe"])
@@ -312,11 +357,17 @@ def accroche(j, unite):
     return ("verte", "Journée verte", COUL["vert"]) if v > 0 else ("rouge", "Journée rouge", COUL["rouge"])
 
 
+SANS_TRADE = "le robot n'a pas tradé aujourd'hui."
+
+
 def recit_marche(m, precedent, unite, expliquer_r):
     """Le texte d'une scène de marché et le rang (dans ses mots) du début de chaque partie : « intro », « stop », « fin », « autre »,
     « res ». La scène cale sa caméra sur ces mots. Rien de la méthode : ce que le prix a fait, et le résultat."""
     if not m["positions"]:
-        return f"{m['voix']} : pas de trade aujourd'hui, les conditions n'étaient pas réunies.", {}
+        # V-10 (audit du 27/11/2026, choix du propriétaire) : « les conditions n'étaient pas réunies » était faux un jour bloqué par
+        # l'EA (heure du serveur pas sûre, compte réel non autorisé, marché décoché, férié). Vrai quelle que soit la raison, et
+        # toujours sans la dire (secret des filtres).
+        return f"{m['voix']} : {SANS_TRADE}", {}
     f = faits(m)
     parts = []
     if precedent is not None and precedent["positions"] and meme_scenario(faits(precedent), f):
@@ -372,7 +423,7 @@ def repliques(j, unite):
     # Conformité TikTok (25/11/2026) : la vidéo garde les gens sur TikTok ; le Telegram n'est que dans la description
     fin = "Abonne-toi pour voir la séance de demain !"
     if not j["trades"]:
-        textes.append(f"Bilan : pas de trade aujourd'hui. {mot} {fin}")
+        textes.append(f"Bilan : {SANS_TRADE} {mot} {fin}")          # V-10
     elif t is not None:
         textes.append(f"Bilan du jour : {dit(t, unite)}. {mot} {fin}")
     else:
@@ -668,7 +719,7 @@ def scene_marche(j, m, k, rep, unite, duree, expliquer_r=False, precedent=None):
                 cible = min(ds, key=lambda d: d["p"]["sortie"])
                 p, rep_p = cible["p"], cible
                 pts = p["points"]
-                ex = extreme(p) if (pts is not None and pts > 0) or _avance(p) else None
+                ex = extreme(p) if (pts is not None and pts > 0 and _mfe_dit(p)) or _avance(p) else None
                 pastilles = []
                 if ex:
                     pastilles.append(["exc", f"Jusqu'à {pts_ecran(p['mfe'])}", COUL_CHEMIN, COUL["blanc"],
@@ -676,7 +727,7 @@ def scene_marche(j, m, k, rep, unite, duree, expliquer_r=False, precedent=None):
                 texte = f"Stop {pts_ecran(pts)}" if pts is not None else f"Stop {p['sortie']:%H:%M}"
                 pastilles.append(["sortie", texte, couleur(_r_pos(p)), COUL["blanc"], _instant_apres(rep, ancres.get(nom), "stop", "sort")])
             else:
-                avec = [d for d in ds if d["p"].get("mfe")]
+                avec = [d for d in ds if _mfe_dit(d["p"])]
                 rep_p = max(avec, key=lambda d: d["p"]["mfe"]) if avec else ds[-1]
                 cible = max(ds, key=lambda d: d["p"]["sortie"])
                 ex = extreme(rep_p["p"]) if avec and nom == "fin" and not mfe_deja_dit(m, f) else None
@@ -774,9 +825,9 @@ def scene_marche(j, m, k, rep, unite, duree, expliquer_r=False, precedent=None):
         resultat = (f'<div id="{ident}-res-t" class="label" style="top:{y_label}px">Résultat</div>{rappel}'
                     + _pastille(f"{ident}-res", ecran(vr, unite), couleur(vr), COUL["blanc"], taille, 120, y_label + 46))
     sans = ""
-    if not ps:
-        sans = (f'<div id="{ident}-sans1" class="{ident}-sans" style="top:{Y_BAS + 150}px; font-size:56px">Pas de trade aujourd\'hui.</div>'
-                f'<div id="{ident}-sans2" class="{ident}-sans" style="top:{Y_BAS + 226}px; font-size:36px; color:{COUL["encre2"]}">Les conditions n\'étaient pas réunies.</div>')
+    if not ps:           # V-10 : ce que dit la voix, sans raison
+        sans = (f'<div id="{ident}-sans1" class="{ident}-sans" style="top:{Y_BAS + 150}px; font-size:56px">Le robot n\'a pas tradé</div>'
+                f'<div id="{ident}-sans2" class="{ident}-sans" style="top:{Y_BAS + 226}px; font-size:56px">aujourd\'hui.</div>')
 
     # les arrêts : cadrage, bougie surlignée, onde, chemin du prix en vert, étiquettes posées là où la caméra met le point
     colonnes, focus, bulles = [], [], []
@@ -933,8 +984,8 @@ def scene_marche(j, m, k, rep, unite, duree, expliquer_r=False, precedent=None):
             script.append(f'    wipe("#{ident}-rappel", {t_rappel:.2f});')
             fin_min = max(fin_min, t_rappel + 2.0)
     if sans:
-        t_sans = max(voix.instant(rep, "pas", defaut=2.3), t_zone + 0.4)
-        script.append(f'    wipe("#{ident}-sans1", {t_sans:.2f});\n    wipe("#{ident}-sans2", {max(t_sans + 0.5, voix.instant(rep, "conditions", defaut=t_sans + 1.0)):.2f});')
+        t_sans = max(voix.instant(rep, "robot", defaut=2.3), t_zone + 0.4)
+        script.append(f'    wipe("#{ident}-sans1", {t_sans:.2f});\n    wipe("#{ident}-sans2", {max(t_sans + 0.5, voix.instant(rep, "aujourd", defaut=t_sans + 1.0)):.2f});')
         reperes.append({"t": t_sans, "son": "click-light-switch-2585", "gain_db": -10})
         fin_min = max(fin_min, t_sans + 2.5)
     return style, corps, "\n".join(script), reperes, fin_min
@@ -1112,6 +1163,11 @@ def nombres_tz():
 VOLET = 0.17       # le volet bleu qui passe entre deux scènes : il couvre l'écran 0,17 s avant la coupe et repart en 0,2 s
 
 
+def couverture_titre(titre):
+    """V-21 : l'instant de la couverture, l'écran titre posé (le tampon de la couleur fini), toujours avant le volet."""
+    return round(max(0.5, min(titre["fin_min"] - 1.1, titre["duree"] - VOLET - 0.15)), 3)
+
+
 def _index(scenes, duree):
     hotes = []
     for i, s in enumerate(scenes):
@@ -1221,7 +1277,7 @@ def fabriquer(j, config, dossier_sortie, journal=print, rendre=True, exiger_voix
         with open(os.path.join(projet, "compositions", ident + ".html"), "w", encoding="utf-8") as f:
             f.write(_composition(ident, style, corps, script))
         reperes += [dict(x, t=round(debut + x["t"], 3)) for x in rs if x["t"] < d]
-        scenes.append({"id": ident, "debut": round(debut, 3), "duree": d, "texte": t, "rep": r, "offset": offset[i]})
+        scenes.append({"id": ident, "debut": round(debut, 3), "duree": d, "texte": t, "rep": r, "offset": offset[i], "fin_min": fin_min})
         debut += d
     duree = round(debut, 3)
     for s in scenes[1:]:            # le volet entre deux scènes
@@ -1229,6 +1285,7 @@ def fabriquer(j, config, dossier_sortie, journal=print, rendre=True, exiger_voix
     with open(os.path.join(projet, "index.html"), "w", encoding="utf-8") as f:
         f.write(_index(scenes, duree))
     json.dump({"jour": j["jour"].isoformat(), "source": j["source"], "unite": unite, "duree": duree,
+               "couverture": couverture_titre(scenes[0]),
                "scenes": [{k: s[k] for k in ("id", "debut", "duree", "texte")} for s in scenes],
                "bruitages": sorted(reperes, key=lambda r: r["t"])},
               open(os.path.join(dossier_sortie, "recap.json"), "w", encoding="utf-8"), ensure_ascii=False, indent=1)
@@ -1236,8 +1293,7 @@ def fabriquer(j, config, dossier_sortie, journal=print, rendre=True, exiger_voix
         return projet
     journal(f"Rendu de l'image ({duree:.1f} s)…")
     muette = os.path.abspath(os.path.join(dossier_sortie, "image-muette.mp4"))
-    subprocess.run(HYPERFRAMES + ["render", "--quality", "delivery", "--output", muette], cwd=projet, check=True,
-                   stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
+    executer(HYPERFRAMES + ["render", "--quality", "delivery", "--output", muette], projet, DELAI_RENDU, "rendu HyperFrames")
     travail = os.path.join(dossier_sortie, "son")
     os.makedirs(travail, exist_ok=True)
     piste_v = mixage.piste_voix([{"fichier": s["rep"]["fichier"], "t": s["debut"] + s["offset"]} for s in scenes if s["rep"]],

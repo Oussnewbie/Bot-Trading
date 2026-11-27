@@ -73,6 +73,39 @@ def copier_dossier(source, cible):
     return cible
 
 
+def texte_plist(commande, cible, journal_auto):
+    """L'agent launchd : du lundi au vendredi aux HEURES, dans le dossier de l'outil, journal dans recap-auto.log.
+    V-24 (audit du 27/11/2026) : la télémétrie et la recherche de mise à jour de la CLI HyperFrames coupées dans son environnement."""
+    from xml.sax.saxutils import escape
+    heures = "".join(f"""
+      <dict><key>Weekday</key><integer>{jour}</integer><key>Hour</key><integer>{h}</integer><key>Minute</key><integer>{m}</integer></dict>"""
+                     for jour in range(1, 6) for h, m in HEURES)
+    arguments = "".join(f"\n      <string>{escape(a)}</string>" for a in commande)
+    return f"""<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+  <dict>
+    <key>Label</key><string>{ETIQUETTE}</string>
+    <key>ProgramArguments</key>
+    <array>{arguments}
+    </array>
+    <key>StartCalendarInterval</key>
+    <array>{heures}
+    </array>
+    <key>EnvironmentVariables</key>
+    <dict><key>PATH</key><string>/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+      <key>HYPERFRAMES_NO_TELEMETRY</key><string>1</string>
+      <key>HYPERFRAMES_NO_UPDATE_CHECK</key><string>1</string>
+      <key>DO_NOT_TRACK</key><string>1</string></dict>
+    <key>WorkingDirectory</key><string>{escape(cible)}</string>
+    <key>StandardOutPath</key><string>{escape(journal_auto)}</string>
+    <key>StandardErrorPath</key><string>{escape(journal_auto)}</string>
+    <key>ProcessType</key><string>Background</string>
+  </dict>
+</plist>
+"""
+
+
 def installer(config, chemin_config, journal=print):
     cible = dossier_installation()
     os.makedirs(cible, exist_ok=True)
@@ -97,34 +130,11 @@ def installer(config, chemin_config, journal=print):
     journal_auto = os.path.join(cible, "recap-auto.log")
     if sys.platform == "darwin":
         plist = os.path.expanduser(f"~/Library/LaunchAgents/{ETIQUETTE}.plist")
-        heures = "".join(f"""
-      <dict><key>Weekday</key><integer>{jour}</integer><key>Hour</key><integer>{h}</integer><key>Minute</key><integer>{m}</integer></dict>"""
-                         for jour in range(1, 6) for h, m in HEURES)
-        arguments = "".join(f"\n      <string>{a}</string>" for a in commande)
         with open(plist, "w", encoding="utf-8") as f:
-            f.write(f"""<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-  <dict>
-    <key>Label</key><string>{ETIQUETTE}</string>
-    <key>ProgramArguments</key>
-    <array>{arguments}
-    </array>
-    <key>StartCalendarInterval</key>
-    <array>{heures}
-    </array>
-    <key>EnvironmentVariables</key>
-    <dict><key>PATH</key><string>/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string></dict>
-    <key>WorkingDirectory</key><string>{cible}</string>
-    <key>StandardOutPath</key><string>{journal_auto}</string>
-    <key>StandardErrorPath</key><string>{journal_auto}</string>
-    <key>ProcessType</key><string>Background</string>
-  </dict>
-</plist>
-""")
+            f.write(texte_plist(commande, cible, journal_auto))
         domaine = f"gui/{os.getuid()}"
-        subprocess.run(["launchctl", "bootout", domaine, plist], capture_output=True)
-        r = subprocess.run(["launchctl", "bootstrap", domaine, plist], capture_output=True, text=True)
+        subprocess.run(["launchctl", "bootout", domaine, plist], capture_output=True, timeout=60)
+        r = subprocess.run(["launchctl", "bootstrap", domaine, plist], capture_output=True, text=True, timeout=60)
         if r.returncode != 0:
             raise RuntimeError(f"launchctl a refusé l'agent : {r.stderr.strip()}")
         journal(f"Programmé : du lundi au vendredi à {', '.join(f'{h}:{m:02d}' for h, m in HEURES)} (agent {ETIQUETTE}).")
@@ -132,7 +142,7 @@ def installer(config, chemin_config, journal=print):
         tr = subprocess.list2cmdline(commande)
         for i, (h, m) in enumerate(HEURES):
             subprocess.run(["schtasks", "/Create", "/F", "/SC", "WEEKLY", "/D", "MON,TUE,WED,THU,FRI", "/ST", f"{h:02d}:{m:02d}",
-                            "/TN", f"Etrave recap auto {i + 1}", "/TR", tr], check=True)
+                            "/TN", f"Etrave recap auto {i + 1}", "/TR", tr], check=True, timeout=60)
         journal(f"Programmé : tâches planifiées « Etrave recap auto » du lundi au vendredi à {', '.join(f'{h}:{m:02d}' for h, m in HEURES)}.")
     else:
         journal("Programmation automatique non prise en charge sur ce système : lance `outil.py auto` chaque soir.")
@@ -146,10 +156,10 @@ def installer(config, chemin_config, journal=print):
 def desinstaller(journal=print):
     if sys.platform == "darwin":
         plist = os.path.expanduser(f"~/Library/LaunchAgents/{ETIQUETTE}.plist")
-        subprocess.run(["launchctl", "bootout", f"gui/{os.getuid()}", plist], capture_output=True)
+        subprocess.run(["launchctl", "bootout", f"gui/{os.getuid()}", plist], capture_output=True, timeout=60)
         if os.path.exists(plist):
             os.remove(plist)
     elif os.name == "nt":
         for i in range(len(HEURES)):
-            subprocess.run(["schtasks", "/Delete", "/F", "/TN", f"Etrave recap auto {i + 1}"], capture_output=True)
+            subprocess.run(["schtasks", "/Delete", "/F", "/TN", f"Etrave recap auto {i + 1}"], capture_output=True, timeout=60)
     journal("Lancement automatique retiré (l'outil copié et les vidéos restent).")

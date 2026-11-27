@@ -18,7 +18,7 @@ TAUX = 8000                         # assez pour des niveaux par tranches de 5 Ã
 def niveaux(chemin, tranche=0.01):
     """Le niveau (dBFS) de chaque tranche de `tranche` s, en mono."""
     brut = subprocess.run(["ffmpeg", "-v", "error", "-i", chemin, "-ac", "1", "-ar", str(TAUX), "-f", "s16le", "-"],
-                          capture_output=True).stdout
+                          capture_output=True, timeout=300).stdout
     x = array.array("h")
     x.frombytes(brut[:len(brut) // 2 * 2])
     n = max(1, int(TAUX * tranche))
@@ -49,7 +49,7 @@ def bords_durs(voix):
 
 def niveau_final(video):
     sortie = subprocess.run(["ffmpeg", "-hide_banner", "-nostats", "-i", video, "-af", "ebur128=peak=true", "-f", "null", "-"],
-                            capture_output=True, text=True).stderr
+                            capture_output=True, text=True, timeout=300).stderr
     lufs = re.findall(r"I:\s+(-?[\d.]+) LUFS", sortie)
     pic = re.findall(r"Peak:\s+(-?[\d.]+) dBFS", sortie)
     return (float(lufs[-1]) if lufs else None), (float(pic[-1]) if pic else None)

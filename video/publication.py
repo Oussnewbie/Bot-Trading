@@ -70,20 +70,38 @@ def description(j, config):
     return "\n".join(l for l in lignes if l is not None).strip() + "\n"
 
 
+def instant_couverture(video):
+    """V-21 (audit du 27/11/2026) : la couverture était prise à 3,2 s fixes ; un titre plus court donnait le volet ou la scène suivante.
+    L'instant est celui que la fabrication a noté dans recap.json (l'écran titre posé, avant le volet)."""
+    try:
+        with open(os.path.join(os.path.dirname(video), "recap.json"), encoding="utf-8") as f:
+            return float(json.load(f)["couverture"])
+    except (OSError, ValueError, KeyError, TypeError):
+        return 1.0
+
+
+def couverture(video, dossier):
+    """La couverture : l'écran titre, la date et la couleur de la période posées."""
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-ss", f"{instant_couverture(video):.3f}", "-i", video, "-frames:v", "1", "-q:v", "2",
+                    os.path.join(dossier, "couverture.jpg")], check=False, timeout=120)
+
+
+def copier_video(video, dossier, nom):
+    """La vidéo n'apparaît que complète ; V-20 : un nom provisoire propre au passage."""
+    provisoire = os.path.join(dossier, f".{nom}.{os.getpid()}.partiel")
+    shutil.copyfile(video, provisoire)
+    os.replace(provisoire, os.path.join(dossier, nom))
+
+
 def publier(j, video, config, journal=print):
     """Copie la vidéo dans le dossier du jour, écrit la description et la couverture. Rend le dossier."""
     dossier = os.path.join(os.path.expanduser(config.get("dossier_publication") or BUREAU), j["jour"].isoformat())
     os.makedirs(dossier, exist_ok=True)
-    nom = f"recap-{j['jour'].isoformat()}.mp4"
-    provisoire = os.path.join(dossier, "." + nom + ".partiel")
-    shutil.copyfile(video, provisoire)
-    os.replace(provisoire, os.path.join(dossier, nom))          # la vidéo n'apparaît que complète
+    copier_video(video, dossier, f"recap-{j['jour'].isoformat()}.mp4")
     with open(os.path.join(dossier, "description.txt"), "w", encoding="utf-8") as f:
         f.write(description(j, config))
     ecrire_avant_de_publier(dossier)
-    # la couverture : l'écran titre, une fois la date et la couleur de la journée posées
-    subprocess.run(["ffmpeg", "-v", "error", "-y", "-ss", "3.2", "-i", video, "-frames:v", "1", "-q:v", "2",
-                    os.path.join(dossier, "couverture.jpg")], check=False)
+    couverture(video, dossier)
     return dossier
 
 
@@ -118,15 +136,11 @@ def publier_periode(p, video, config):
     import recap_periode
     dossier = os.path.join(os.path.expanduser(config.get("dossier_publication") or BUREAU), recap_periode.nom_dossier(p))
     os.makedirs(dossier, exist_ok=True)
-    nom = os.path.basename(video)
-    provisoire = os.path.join(dossier, "." + nom + ".partiel")
-    shutil.copyfile(video, provisoire)
-    os.replace(provisoire, os.path.join(dossier, nom))
+    copier_video(video, dossier, os.path.basename(video))
     with open(os.path.join(dossier, "description.txt"), "w", encoding="utf-8") as f:
         f.write(description_periode(p, config))
     ecrire_avant_de_publier(dossier)
-    subprocess.run(["ffmpeg", "-v", "error", "-y", "-ss", "3.2", "-i", video, "-frames:v", "1", "-q:v", "2",
-                    os.path.join(dossier, "couverture.jpg")], check=False)
+    couverture(video, dossier)
     return dossier
 
 
@@ -205,6 +219,7 @@ def _auto(config, dossier_journaux, journal, aujourd_hui, maintenant):
                 f"Le dossier des journaux de l'EA n'existe pas ({os.path.basename(dossier_journaux) or dossier_journaux}) : aucune vidéo.")
         return []
     nettoyer_rendus(config, journal)                 # V-08 : les rendus de travail de plus de 30 jours
+    voix.purger_cache(config, journal=journal)       # V-08 : les morceaux de voix recalculables de plus de 30 jours
     try:
         finis = journee.jours_finis(dossier_journaux)
         premier = journee.premier_jour(dossier_journaux)
@@ -329,7 +344,7 @@ def _fabriquer_et_publier(fabriquer, publier_, quoi, cle, journal, alerter):
     except voix.VoixIndisponible as err:
         journal(f"{quoi} : voix indisponible : {err}. Pas de vidéo muette : nouvel essai au prochain lancement.")
         alerter(f"voix:{cle}", "Étrave : pas de voix", f"{quoi} : {str(err)[:150]}")
-    except recap_.CommandeBloquee as err:            # V-06 : un rendu ou un ffmpeg bloqué est arrêté, et prévenu
+    except (recap_.CommandeBloquee, subprocess.TimeoutExpired) as err:   # V-06 : un rendu ou un ffmpeg bloqué est arrêté, et prévenu
         journal(f"{quoi} : {err}. Nouvel essai au prochain lancement.")
         alerter(f"bloque-rendu:{cle}", "Étrave : rendu bloqué", f"{quoi} : {str(err)[:150]}")
     except Exception as err:       # une séance ratée ne doit pas bloquer les suivantes ; elle sera retentée au prochain lancement

@@ -15,7 +15,6 @@ import datetime
 import json
 import os
 import shutil
-import subprocess
 
 import journee
 import mixage
@@ -512,7 +511,7 @@ def fabriquer(p, config, dossier_sortie, journal=print, rendre=True, exiger_voix
         with open(os.path.join(projet, "compositions", idents[i] + ".html"), "w", encoding="utf-8") as f:
             f.write(_composition(idents[i], style, corps, script))
         reperes += [dict(x, t=round(debut + x["t"], 3)) for x in rs if x["t"] < d]
-        scenes.append({"id": idents[i], "debut": round(debut, 3), "duree": d, "texte": t, "rep": r, "offset": offset[i]})
+        scenes.append({"id": idents[i], "debut": round(debut, 3), "duree": d, "texte": t, "rep": r, "offset": offset[i], "fin_min": fin_min})
         debut += d
     duree = round(debut, 3)
     for s in scenes[1:]:
@@ -520,14 +519,15 @@ def fabriquer(p, config, dossier_sortie, journal=print, rendre=True, exiger_voix
     with open(os.path.join(projet, "index.html"), "w", encoding="utf-8") as f:
         f.write(recap._index(scenes, duree))
     json.dump({"genre": p["genre"], "debut": p["debut"].isoformat(), "fin": p["fin"].isoformat(), "duree": duree,
+               "couverture": recap.couverture_titre(scenes[0]),          # V-21
                "scenes": [{k: s[k] for k in ("id", "debut", "duree", "texte")} for s in scenes]},
               open(os.path.join(dossier_sortie, "recap.json"), "w", encoding="utf-8"), ensure_ascii=False, indent=1)
     if not rendre:
         return projet
     journal(f"Rendu de l'image ({duree:.1f} s)…")
     muette = os.path.abspath(os.path.join(dossier_sortie, "image-muette.mp4"))
-    subprocess.run(recap.HYPERFRAMES + ["render", "--quality", "delivery", "--output", muette], cwd=projet, check=True,
-                   stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
+    recap.executer(recap.HYPERFRAMES + ["render", "--quality", "delivery", "--output", muette], projet, recap.DELAI_RENDU,
+                   "rendu HyperFrames")          # V-06 : un délai, Chrome compris
     travail = os.path.join(dossier_sortie, "son")
     os.makedirs(travail, exist_ok=True)
     piste_v = mixage.piste_voix([{"fichier": s["rep"]["fichier"], "t": s["debut"] + s["offset"]} for s in scenes if s["rep"]],

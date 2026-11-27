@@ -39,6 +39,9 @@ for _d in ("/usr/local/bin", "/opt/homebrew/bin"):
     if os.path.isdir(_d) and _d not in os.environ.get("PATH", "").split(os.pathsep):
         os.environ["PATH"] = os.environ.get("PATH", "") + os.pathsep + _d
 POLICE_MAC = "/System/Library/Fonts/Supplemental/DIN Alternate Bold.ttf"
+# V-24 (audit du 27/11/2026) : la télémétrie et la recherche de mise à jour de la CLI HyperFrames, coupées pour tout ce que l'outil lance
+for _cle in ("HYPERFRAMES_NO_TELEMETRY", "HYPERFRAMES_NO_UPDATE_CHECK", "DO_NOT_TRACK"):
+    os.environ.setdefault(_cle, "1")
 
 
 def charger_config(chemin=None):
@@ -121,7 +124,7 @@ def telecharger_sons(config):
         if os.path.exists(chemin):
             continue
         print("téléchargement :", s["fichier"])
-        subprocess.run(["curl", "-sSfL", "--max-time", "60", "-o", chemin, s["url"]], check=False)
+        subprocess.run(["curl", "-sSfL", "--max-time", "60", "-o", chemin, s["url"]], check=False, timeout=90)
     print(f"Dossier des sons : {dossier} (à mettre dans « sons » de la configuration).")
 
 
@@ -164,7 +167,7 @@ def main(arguments=None):
             print("Pas de « certificat » dans la partie « presentation » de la configuration.")
             return 1
         cible = os.path.join(os.path.expanduser("~/Desktop"), "certificat-floute.png")
-        presentation.copier_certificat(profil, cible)
+        presentation.copier_certificat(profil, cible, essai=True)       # V-25 : l'essai seul accepte un certificat sans masque
         print(f"Certificat {'flouté' if profil.get('masques_certificat') else 'sans masque (masques_certificat vide)'} : {cible}. "
               "Règle les rectangles [x, y, largeur, hauteur] (en pixels de l'image) dans « masques_certificat », puis relance.")
         return 0
