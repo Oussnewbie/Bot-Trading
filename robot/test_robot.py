@@ -6,6 +6,7 @@ correctifs d'exécution sont en place et que les calculs recopiés ici donnent l
 import math
 import os
 import re
+import urllib.parse
 
 import pytest
 
@@ -1000,3 +1001,22 @@ def test_les_messages_telegram_sont_au_format_francais():
     assert "string PxF(double p)  { return (NormalizeDouble(p, _Digits) < 0 ? \"-\" : \"\") + Nombre(p, _Digits); }" in EA
     assert "string PtsF(double d) { return (NormalizeDouble(d, _Digits) < 0 ? \"-\" : \"\") + Nombre(d, _Digits) + \" pts\"; }" in EA
     assert "string PctF(double v) { return Signe(v, 2) + Nombre(v, 2) + \" %\"; }" in EA
+
+
+def url_encode(texte):
+    """Copie de UrlEncode() : tout le texte converti en UTF-8 d'un seul coup, puis chaque octet hors A-Z a-z 0-9 - _ . ~ en %XX."""
+    return "".join(chr(o) if (chr(o).isascii() and (chr(o).isalnum() or chr(o) in "-_.~")) else f"%{o:02X}" for o in texte.encode("utf-8"))
+
+
+@pytest.mark.parametrize("code", [0x1F4CC, 0x1F4C9, 0x1F50C, 0x1F6D1, 0x1F552, 0x1F4B0, 0x26A0, 0x2705])
+def test_les_pictogrammes_partent_en_utf8_complet_vers_telegram(code):
+    """Les pictogrammes au-delà de 0xFFFF sont deux unités UTF-16 dans l'EA : convertis ensemble (texte entier), ils donnent les
+    4 octets UTF-8 du caractère. Convertis unité par unité, Telegram recevrait des octets invalides."""
+    unites = utf16(code)
+    texte = b"".join(u.to_bytes(2, "little") for u in unites).decode("utf-16-le") + " Connexion réussie"
+    encode = url_encode(texte)
+    assert encode == urllib.parse.quote(texte, safe="-_.~")
+    assert urllib.parse.unquote(encode) == chr(code) + " Connexion réussie"
+    corps = fonction("string UrlEncode(string s)")
+    assert "int   n = StringToCharArray(s, b, 0, WHOLE_ARRAY, CP_UTF8);" in corps          # le texte entier, pas caractère par caractère
+    assert '"&text=" + UrlEncode(msg)' in fonction("string SendTelegram(string msg)")
