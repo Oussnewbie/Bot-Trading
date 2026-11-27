@@ -127,7 +127,7 @@ timeR     = 0.5
 
 GP = "Gestion du trade"
 beR       = 1.5
-tgtR      = 0.0
+tgtR      = input.float(4.0, "Objectif de A (R, 0 = sans)", minval = 0, maxval = 10, step = 0.5, group = GP, tooltip = "Décision du 27/11/2026 : quand la cassure A atteint cet objectif (en R depuis son entrée), toutes les positions du jour sont fermées (B, D et leurs ajouts) et plus aucune entrée ce jour-là. 0 = sans objectif (sortie en fin de journée). Même réglage que dans Étrave pour l'EA.")
 
 GY = "Pyramide"
 usePyr    = true
@@ -974,8 +974,23 @@ else if not na(cur) and aClosedN > 0
     // Sortie de l'unité de départ et de l'ajout : le résultat du trade est leur somme (B et C sont comptées à part)
     cur.pnl += aClosedP
     if openQtyOf(0) == 0
+        string whyA = strategy.closedtrades.exit_comment(aClosedK)
         recordClose(cur, aClosedK)
         cur := na
+        // Décision de l'utilisateur du 27/11/2026 : l'objectif de A touché, tout est clôturé (B, D et leurs ajouts) et plus aucune
+        // entrée ce jour-là. Les D guettées sont annulées tout de suite ; leur pas suivant les efface et l'annonce.
+        if whyA == "Objectif"
+            v8.bDone := true
+            v8.cDone := true
+            for kO = 0 to 6
+                Leg gO = array.get(legD, kO)
+                if not na(gO) and gO.pend
+                    strategy.cancel(gO.id)
+                    strategy.cancel("X" + gO.id)
+                    gO.expBar := bar_index
+            if strategy.position_size != 0
+                strategy.close_all(comment = "Objectif de A")
+            notify("OBJECTIF DE A ATTEINT : ferme maintenant au marché toutes les positions de la stratégie et supprime les ordres en attente")
 else if not na(cur)
     // Trade ouvert : meilleur prix atteint (zone verte)
     cur.best := cur.dir == 1 ? math.max(cur.best, high) : math.min(cur.best, low)
