@@ -17,6 +17,7 @@ Sécurité, comme le dashboard de Vigie — cette page peut changer le risque et
 """
 import argparse
 import hmac
+import html
 import json
 import os
 import re
@@ -46,6 +47,7 @@ RACINE = os.path.dirname(ICI)
 SOURCE_EA = os.path.join(RACINE, "robot", "Strategy-V11.mq5")
 PORT = 8788
 CORPS_MAX = 64 * 1024
+DETECTION_PERIODE_S = 10        # détection de la discussion Telegram (27/11/2026)
 RELAIS_PERIODE_S = 5            # relais des messages Telegram de l'EA (27/11/2026)
 EN_TETE_JETON = "x-etrave-jeton"
 # `tasklist` lance un programme : on ne le redemande pas à chaque rafraîchissement de la page.
@@ -102,6 +104,11 @@ class Application:
         # Relais Telegram (27/11/2026) : état du dernier passage, publié dans /api/etat
         self._relais = {"attente": 0, "dernier": "", "quand": 0, "erreur": "", "envoyes": 0, "pauseJusqu": 0, "essai": None}
         self._verrou_relais = threading.Lock()
+        # Détection de la discussion (27/11/2026) : groupes vus par le bot, dernière bascule automatique
+        self._detection = {"bot": None, "groupes": [], "bascule": None, "erreur": ""}
+        self._detection_vus, self._groupes, self._bot_jeton = set(), {}, None
+        self._detection_depart = time.time()            # une demande d'avant le démarrage n'est pas rejouée
+        self._verrou_detection = threading.Lock()
         self._interrupteur = None                       # AUD-09 : dernière vérification (verifier_interrupteur)
         self._interrupteur_annonce = set()              # franchissements déjà écrits dans le journal par ce processus
         self._verrou_interrupteur = threading.Lock()
@@ -124,7 +131,8 @@ class Application:
             # AUD-09 : la dernière vérification de l'interrupteur (None avant la première), par symbole et avec son marché
             "interrupteur": self._interrupteur,
             "alertes": pont.lire_alertes(self.dossier),
-            "telegramRelais": self._relais,                     # 27/11/2026 : Telegram part d'Étrave     # alertes de sécurité de l'EA (27/11/2026 : ici, plus sur Telegram)
+            "telegramRelais": self._relais,                     # 27/11/2026 : Telegram part d'Étrave
+            "telegramDetection": self._detection,               # 27/11/2026 : groupes vus, bascule automatique     # alertes de sécurité de l'EA (27/11/2026 : ici, plus sur Telegram)
             "video": self.video(),
         }
 
@@ -363,6 +371,66 @@ class Application:
         finally:
             self._verrou_relais.release()
         return self._relais
+
+    def detecter_telegram(self):
+        """Lit les nouvelles du bot et bascule les alertes vers un groupe quand le propriétaire le demande (il y ajoute le bot ou y
+        tape /start@<bot>). Rien n'est effacé chez Telegram. Ne lève jamais d'erreur ; un seul passage à la fois."""
+        if not self._verrou_detection.acquire(blocking=False):
+            return self._detection
+        try:
+            cles = pont.lire_reglages(self.dossier)
+            jeton = cles.get("telegram_jeton", "")
+            if not jeton:
+                return self._detection
+            if self._bot_jeton != jeton:
+                moi = telegram.appeler_ok(self.appel_telegram, jeton, "getMe", {})
+                self._detection["bot"] = (moi.get("result") or {}).get("username") if moi.get("ok") else None
+                self._bot_jeton = jeton if moi.get("ok") else None
+            nouvelles = telegram.appeler_ok(self.appel_telegram, jeton, "getUpdates", {"allowed_updates": ["message", "my_chat_member", "channel_post"]})
+            for n in sorted(nouvelles.get("result") or [], key=lambda x: x.get("update_id", 0) if isinstance(x, dict) else 0):
+                if not isinstance(n, dict) or n.get("update_id") in self._detection_vus:
+                    continue
+                self._detection_vus.add(n.get("update_id"))
+                evt = n.get("message") or n.get("channel_post") or n.get("my_chat_member") or {}
+                chat = evt.get("chat") or {}
+                if chat.get("type") in ("group", "supergroup", "channel") and chat.get("id") is not None:
+                    self._groupes[str(chat["id"])] = {"id": str(chat["id"]), "titre": chat.get("title") or "", "type": chat["type"]}
+                if (evt.get("date") or 0) < self._detection_depart - 120:
+                    continue                                    # d'avant le démarrage d'Étrave : montré, jamais rejoué
+                cles = pont.lire_reglages(self.dossier)
+                nouveau = (n.get("message") or {}).get("migrate_to_chat_id")
+                local = pont.lire_destination(self.dossier)
+                if isinstance(nouveau, int) and str(chat.get("id")) == cles.get("telegram_discussion"):
+                    pont.brancher_discussion(self.dossier, str(nouveau), local["nom"] or chat.get("title"), local["proprietaire"] or None)
+                    self.journal("Telegram : le groupe est devenu un supergroupe, les alertes le suivent")
+                    continue
+                prop = telegram.proprietaire(self.dossier)
+                demande = telegram.demande_de_bascule(n, self._detection["bot"], prop)
+                if demande and demande[0] != cles.get("telegram_discussion"):
+                    self._basculer(jeton, demande[0], demande[1], prop)
+            self._detection["groupes"] = list(self._groupes.values())
+        except telegram.Injoignable:
+            pass                                                # réessayé 10 secondes plus tard
+        except Exception as erreur:
+            self.journal(f"détection Telegram impossible ({type(erreur).__name__})")
+        finally:
+            self._verrou_detection.release()
+        return self._detection
+
+    def _basculer(self, jeton, discussion, titre, proprietaire):
+        """Annonce dans le groupe d'abord : si le bot ne peut pas y écrire, les alertes restent où elles sont."""
+        annonce = telegram.appeler_ok(self.appel_telegram, jeton, "sendMessage", {"chat_id": discussion, "parse_mode": "HTML",
+            "text": "🟢 <b>Alertes Étrave branchées ici</b>\n\nLes ordres, les entrées et les clôtures du robot arriveront dans ce groupe."})
+        if not annonce.get("ok"):
+            self._detection["erreur"] = (f"Le bot ne peut pas écrire dans « {titre} » ({telegram._raison(annonce)}) : passe-le administrateur "
+                                         "du groupe, puis retape /start dans le groupe.")
+            self.journal(f"Telegram : {self._detection['erreur']}")
+            return
+        pont.brancher_discussion(self.dossier, discussion, titre, proprietaire)
+        telegram.appeler_ok(self.appel_telegram, jeton, "sendMessage", {"chat_id": proprietaire, "parse_mode": "HTML",
+            "text": f"🟢 Les alertes Étrave partent maintenant dans « {html.escape(titre, quote=False)} »."})
+        self._detection.update(bascule={"titre": titre, "quand": int(time.time())}, erreur="")
+        self.journal(f"Telegram : alertes envoyées désormais dans « {titre} »")
 
     def sauvegarder_journaux(self):
         """Copie les journaux de l'EA qui ont changé dans « Étrave exports/journaux/ » (demande de l'utilisateur du 27/11/2026).
@@ -682,6 +750,15 @@ def main(arguments=None):
     depart = threading.Timer(5.0, exporter_puis_reprogrammer)
     depart.daemon = True
     depart.start()
+
+    def detecter_puis_reprogrammer():                   # 27/11/2026 : bascule vers un groupe quand le propriétaire le demande
+        serveur.application.detecter_telegram()
+        minuterie = threading.Timer(DETECTION_PERIODE_S, detecter_puis_reprogrammer)
+        minuterie.daemon = True
+        minuterie.start()
+    detection = threading.Timer(6.0, detecter_puis_reprogrammer)
+    detection.daemon = True
+    detection.start()
 
     def relayer_puis_reprogrammer():                    # 27/11/2026 : les messages Telegram de l'EA partent d'ici
         serveur.application.relayer_telegram()

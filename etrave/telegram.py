@@ -12,7 +12,7 @@ import time
 import urllib.error
 import urllib.request
 
-from pont import Refus, lire_reglages
+from pont import Refus, brancher_discussion, lire_destination, lire_reglages
 
 API = "https://api.telegram.org"
 DELAI_S = 10
@@ -180,6 +180,13 @@ def relayer(dossier, appel=appeler, maintenant=None, attendre=time.sleep, pause_
             texte = texte.rstrip("\n") + "\n\n⏱ Envoyé en retard (message de " + time.strftime("%H:%M", time.localtime(quand)) + ")"
         try:
             reponse = appeler_ok(appel, jeton, "sendMessage", {"chat_id": discussion, "text": rendre_html(texte), "parse_mode": "HTML"})
+            nouveau = (reponse.get("parameters") or {}).get("migrate_to_chat_id")
+            if not reponse.get("ok") and isinstance(nouveau, int):
+                # le groupe est devenu un supergroupe : son numéro a changé, Telegram donne le nouveau (suivi tout seul)
+                local = lire_destination(dossier)
+                brancher_discussion(dossier, str(nouveau), local["nom"], local["proprietaire"] or None)
+                discussion = str(nouveau)
+                reponse = appeler_ok(appel, jeton, "sendMessage", {"chat_id": discussion, "text": rendre_html(texte), "parse_mode": "HTML"})
             if not reponse.get("ok") and reponse.get("status") != 429:
                 # le HTML refusé (balise mal formée…) : renvoyé une fois en texte simple
                 reponse = appeler_ok(appel, jeton, "sendMessage", {"chat_id": discussion, "text": texte_brut(texte)})
@@ -204,3 +211,34 @@ def relayer(dossier, appel=appeler, maintenant=None, attendre=time.sleep, pause_
             etat["essai"] = {"numero": numero, "resultat": "ok"}
     etat["attente"] = len(messages_en_attente(dossier))
     return etat
+
+
+# ───────────────────────── détection de la discussion (décision de l'utilisateur du 27/11/2026) ─────────────────────────
+COMMANDE_START = re.compile(r"/start(?:@(\w+))?(?:\s.*)?", re.S)
+
+
+def proprietaire(dossier):
+    """Le compte Telegram du propriétaire : celui enregistré, sinon celui de la discussion privée en cours. Vide : personne ne
+    fait basculer les alertes (première installation : choix à la main dans Étrave)."""
+    p = lire_destination(dossier)["proprietaire"]
+    if p:
+        return p
+    d = lire_reglages(dossier).get("telegram_discussion", "")
+    return d if re.fullmatch(r"\d{4,20}", d) else ""
+
+
+def demande_de_bascule(nouvelle, bot, prop):
+    """L'identifiant et le titre du groupe si cette nouvelle est une demande du propriétaire : il y a ajouté le bot, ou y a tapé
+    /start (ou /start@<ce bot>). Sinon None. Un groupe où quelqu'un d'autre ajoute le bot n'est jamais choisi seul."""
+    evt = nouvelle.get("message") or nouvelle.get("my_chat_member") or {}
+    chat = evt.get("chat") or {}
+    if not prop or chat.get("type") not in ("group", "supergroup") or str((evt.get("from") or {}).get("id", "")) != prop:
+        return None
+    if "my_chat_member" in nouvelle:
+        if (evt.get("new_chat_member") or {}).get("status") not in ("member", "administrator"):
+            return None
+    else:
+        m = COMMANDE_START.fullmatch((evt.get("text") or "").strip())
+        if not m or (m.group(1) and m.group(1).lower() != (bot or "").lower()):
+            return None
+    return str(chat["id"]), chat.get("title") or ""

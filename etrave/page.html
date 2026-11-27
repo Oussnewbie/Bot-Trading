@@ -1305,9 +1305,14 @@ function renderConnections() {
     else outcome.append(el('div', { class: 'banner bad' }, 'MetaTrader n’a pas répondu. Vérifie que l’EA tourne (pastille en haut de la page) et que « Lire le risque, les cases et Telegram dans l’interface Étrave » est coché dans ses réglages.'));
   }
   const probleme = ready ? relaisProbleme() : null;
+  const detection = state.telegramDetection;
+  const groupes = ((detection && detection.groupes) || []).filter((g) => g.titre !== c.telegramDiscussionNom);
   const telegram = fold('telegram', 'Alertes Telegram', true, ready ? 'configuré' : 'non configuré',
     el('div', { class: 'hint' }, 'Facultatif. Connexion réussie, ordres posés, entrées exécutées et clôtures (en R et en dollars) arrivent sur ton téléphone. Les alertes de sécurité s’affichent en tête de cette page, pas sur Telegram.'),
-    statusLine(ready, ready ? (live.length && !live.some((e) => e.telegram) ? 'Configuré (l’EA le prend dans les 2 secondes)' : 'Configuré') : c.telegramJeton ? 'Jeton enregistré, discussion à choisir' : 'Non configuré'),
+    statusLine(ready, ready ? `Alertes envoyées dans : ${c.telegramDiscussionNom ? `« ${c.telegramDiscussionNom} »` : c.telegramGroupe ? 'un groupe' : 'ta discussion privée avec le bot'}` : c.telegramJeton ? 'Jeton enregistré, discussion à choisir' : 'Non configuré'),
+    ready ? el('div', { class: 'hint' }, `Pour les recevoir dans un groupe : ajoute ${detection && detection.bot ? '@' + detection.bot : 'le bot'} au groupe, ou tape /start${detection && detection.bot ? '@' + detection.bot : ''} dans le groupe. Étrave bascule toute seule, seulement si c’est toi.`) : null,
+    detection && detection.erreur ? el('div', { class: 'banner bad' }, detection.erreur) : null,
+    groupes.length ? el('div', { class: 'hint' }, 'Groupes vus par le bot : ', ...groupes.map((g) => el('button', { class: 'btn small', style: 'margin:4px 6px 0 0', onclick: () => saveConnection({ telegram_discussion: g.id, telegram_discussion_nom: g.titre }) }, `Envoyer les alertes dans « ${g.titre} »`))) : null,
     probleme ? el('div', { class: 'banner bad' }, probleme) : null,
     // les cinq étapes : ouvertes tant que Telegram n'est pas configuré, puis repliées (le choix fait ici est retenu)
     pli(`telegram-etapes:${ready ? 1 : 0}`, !ready, 'etapes', ['Les étapes'], el('ol', {},

@@ -132,7 +132,9 @@ automatiquement ».
   jamais tourner sur le même compte un autre robot qui utilise l'un de ces numéros.
 - **Telegram** : envoyé par Étrave (depuis le 27/11/2026 : MetaTrader pour Mac oubliait l'autorisation WebRequest à chaque
   redémarrage). L'EA dépose chaque message dans le dossier d'Étrave, qui l'envoie dans les secondes qui suivent ; Étrave doit donc
-  tourner, et « Lire le risque, les cases et Telegram dans l'interface Étrave » rester coché (sinon, pas de Telegram). Telegram ne reçoit que la connexion réussie, les ordres posés, les entrées exécutées et chaque clôture
+  tourner, et « Lire le risque, les cases et Telegram dans l'interface Étrave » rester coché (sinon, pas de Telegram). Pour recevoir les
+  alertes dans un groupe : ajoute le bot au groupe ou tapes-y /start@<bot> ; Étrave bascule toute seule, seulement si la demande vient
+  du compte de ta discussion privée avec le bot (un inconnu qui ajoute le bot à son groupe ne détourne rien). Telegram ne reçoit que la connexion réussie, les ordres posés, les entrées exécutées et chaque clôture
   avec son résultat en R et en dollars : un titre en gras avec le marché, puis des blocs séparés d'une ligne vide, une info par ligne. Les alertes de sécurité (stop absent chez le courtier, fermeture de sécurité, ordre refusé,
   jour manqué, heure fausse…) s'affichent en tête de la page d'Étrave pendant 24 heures. Le journal de MetaTrader garde tout.
 - **Où le faire tourner** : un ordinateur sans mise en veille pour la démo, un VPS Windows pour le réel. MetaTrader doit rester ouvert

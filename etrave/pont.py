@@ -29,6 +29,8 @@ NOM = "Étrave"
 SLOGAN = "la cassure de l’ouverture de New York"
 SOUS_DOSSIER = "Etrave"
 FICHIER_REGLAGES = "reglages.txt"
+# 27/11/2026 : ce que seule Étrave utilise pour Telegram (propriétaire, nom du groupe), à part : reglages.txt ne contient que ce que l'EA lit
+FICHIER_DESTINATION = "destination-telegram.txt"
 
 # Bornes du risque par trade, en % du solde (les mêmes dans l'EA : RISK_MIN, RISK_MAX). AUD-05 (audit du 26/11/2026) : plafond
 # de 1 %, remonté à 20 % par décision de l'utilisateur du 27/11/2026 (« pour des tests », tous comptes) ; une valeur enregistrée
@@ -73,6 +75,8 @@ REGLES = {
                             "Discussion Telegram : c’est un nombre (négatif pour un groupe). Le bouton « Trouver ma "
                             "discussion » le remplit pour toi."),
 }
+NOM_DISCUSSION = re.compile(r"[^\r\n]{1,80}")   # 27/11/2026 : le nom du groupe choisi, affiché dans la page (jamais un secret)
+PROPRIETAIRE = re.compile(r"\d{4,20}")   # le compte Telegram de la discussion privée : seul lui fait basculer les alertes vers un groupe
 SYMBOLE = re.compile(r"[A-Za-z0-9._#+-]{1,40}")   # fullmatch (ET-09) : « $ » acceptait un « \n » final
 
 
@@ -154,6 +158,13 @@ def lire_reglages(dossier):
     return lire_cles(os.path.join(dossier, FICHIER_REGLAGES))
 
 
+def lire_destination(dossier):
+    """Propriétaire et nom de la discussion Telegram (détection du 27/11/2026) : {"proprietaire": …, "nom": …}, valeurs vérifiées."""
+    cles = lire_cles(os.path.join(dossier, FICHIER_DESTINATION))
+    return {"proprietaire": cles["proprietaire"] if PROPRIETAIRE.fullmatch(cles.get("proprietaire", "")) else "",
+            "nom": cles["nom"] if NOM_DISCUSSION.fullmatch(cles.get("nom", "")) else ""}
+
+
 # Une seule modification à la fois : la page envoie ses demandes sur plusieurs fils (serveur multi-fils), et deux
 # lectures-réécritures simultanées perdraient l'une des deux.
 _VERROU = threading.Lock()
@@ -165,8 +176,8 @@ def _modifier(dossier, changements):
         return _modifier_sans_verrou(dossier, changements)
 
 
-def _modifier_sans_verrou(dossier, changements):
-    cles = lire_cles(os.path.join(dossier, FICHIER_REGLAGES), strict=True)
+def _modifier_sans_verrou(dossier, changements, fichier=FICHIER_REGLAGES):
+    cles = lire_cles(os.path.join(dossier, fichier), strict=True)
     changees = []
     for cle, valeur in changements.items():
         if valeur is None:
@@ -178,7 +189,7 @@ def _modifier_sans_verrou(dossier, changements):
             changees.append(cle)
     if changees:
         cles["version"] = "1"
-        ecrire_cles(os.path.join(dossier, FICHIER_REGLAGES), cles)
+        ecrire_cles(os.path.join(dossier, fichier), cles)
     return changees
 
 
@@ -232,6 +243,8 @@ def reglages_publics(dossier):
         "reelAutorise": cles["reel_autorise"] if LOGIN_REEL.fullmatch(cles.get("reel_autorise", "")) else "",
         "telegramJeton": cles.get("telegram_jeton", "") != "",
         "telegramDiscussion": cles.get("telegram_discussion", "") != "",
+        "telegramGroupe": cles.get("telegram_discussion", "").startswith("-"),
+        "telegramDiscussionNom": lire_destination(dossier)["nom"],
         # compte et serveur du dernier lancement (jamais le mot de passe), et les deux automatismes de lancement
         "mt5Login": cles.get("mt5_login", ""), "mt5Serveur": cles.get("mt5_serveur", ""), "mt5Auto": cles.get("mt5_auto") == "1",
         "objectifR": _objectif_du_fichier(cles.get("objectif_r")),
@@ -282,12 +295,39 @@ def regler(dossier, proposition, confirmation=""):
 
 
 # ───────────────────────── connexions : Telegram ─────────────────────────
+def brancher_discussion(dossier, discussion, nom=None, proprietaire=None):
+    """Envoie désormais les alertes dans cette discussion (détection automatique du 27/11/2026). nom : celui du groupe ;
+    proprietaire : le compte Telegram qui a demandé la bascule, gardé pour les suivantes."""
+    discussion, nom = str(discussion).strip(), (nom or "").strip()
+    if not REGLES["telegram_discussion"][0].fullmatch(discussion):
+        raise Refus(REGLES["telegram_discussion"][1])
+    if nom and not NOM_DISCUSSION.fullmatch(nom):
+        raise Refus("Nom de la discussion illisible (80 caractères au plus, sur une ligne).")
+    if proprietaire is not None and not PROPRIETAIRE.fullmatch(str(proprietaire)):
+        raise Refus("Compte Telegram illisible.")
+    local = {"nom": nom or None}
+    if proprietaire is not None:
+        local["proprietaire"] = str(proprietaire)
+    with _VERROU:
+        changees = _modifier_sans_verrou(dossier, {"telegram_discussion": discussion})
+        _modifier_sans_verrou(dossier, local, FICHIER_DESTINATION)
+    return changees
+
+
 def enregistrer_connexions(dossier, valeurs):
     """Enregistre le jeton et la discussion Telegram (chaîne vide = effacer). Retourne les clés modifiées."""
     if not isinstance(valeurs, dict):
         raise Refus("Demande illisible.")
-    changements = {}
+    changements, local = {}, {}
+    nom = valeurs.get("telegram_discussion_nom") if isinstance(valeurs.get("telegram_discussion_nom"), str) else None
+    if nom is not None:
+        nom = nom.strip()
+        if nom and not NOM_DISCUSSION.fullmatch(nom):
+            raise Refus("Nom de la discussion illisible (80 caractères au plus, sur une ligne).")
+        local["nom"] = nom or None
     for cle, valeur in valeurs.items():
+        if cle == "telegram_discussion_nom":
+            continue
         if cle not in REGLES:
             raise Refus("Ce réglage ne se modifie pas par ce chemin.")
         if not isinstance(valeur, str):
@@ -297,7 +337,16 @@ def enregistrer_connexions(dossier, valeurs):
         if valeur != "" and not motif.fullmatch(valeur):
             raise Refus(message)
         changements[cle] = valeur or None
-    return _modifier(dossier, changements)
+    # 27/11/2026 : une discussion choisie à la main efface le nom de l'ancienne ; une discussion privée donne le propriétaire
+    if "telegram_discussion" in changements:
+        local.setdefault("nom", None)
+        if changements["telegram_discussion"] and PROPRIETAIRE.fullmatch(changements["telegram_discussion"]):
+            local["proprietaire"] = changements["telegram_discussion"]
+    with _VERROU:
+        changees = _modifier_sans_verrou(dossier, changements)
+        if local:
+            changees += ["telegram_" + c for c in _modifier_sans_verrou(dossier, local, FICHIER_DESTINATION) if c != "version"]
+    return changees
 
 
 def retenir_mt5(dossier, login=None, serveur=None, auto=None):
