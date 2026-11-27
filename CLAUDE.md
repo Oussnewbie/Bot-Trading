@@ -295,7 +295,7 @@ video/     (branche communication/outil-video) vidéos TikTok : récap de séanc
       déduit quand le risque est en %, audit du 27/11/2026, §6). Pas encore vérifiés en vrai : la capture de la fenêtre de MetaTrader
       par son numéro (V-04, le nom du processus Wine), launchd et les notifications. La présentation garde ses bruitages calés à la
       main, dont click-select-1109 et sweep-small-fast-166 (jugés synthétiques par earshot). Réglé le 26/11/2026 : chemin du prix et
-      épingle en bleu (VID-31) ; une séance illisible et la semaine ou le mois qu'elle bloque envoient une notification (VID-32) ;
+      épingle en bleu (VID-31) ; une séance illisible et la semaine ou le mois qu'elle bloque envoient une notification (VID-32).
 - Stops : fermer B/D au stop de A, B/D à l'entrée dès +0,5R, stop à +0,5R, A à l'entrée quand une jambe part ont été testés et
   rejetés (25/11/2026) ; ne pas les refaire.
 
