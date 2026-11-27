@@ -132,8 +132,9 @@ def publier_periode(p, video, config):
 
 def periodes_finies(jours, aujourd_hui, depuis):
     """Les semaines (lundi-vendredi) et les mois finis : [(genre, début, fin)]. Une période est finie quand sa dernière séance
-    possible est passée, ou quand la séance de son dernier jour ouvré est finie dans les journaux. Seules celles qui se terminent
-    à partir de `depuis` comptent."""
+    possible est passée, ou quand la séance de son dernier jour de séance (calendrier de l'EA : ni férié ni demi-séance) est finie
+    dans les journaux. Seules celles qui se terminent à partir de `depuis` comptent."""
+    import calendrier
     import recap_periode
     finis, vues, res = set(jours), set(), []
     for jour in sorted(jours):
@@ -141,10 +142,8 @@ def periodes_finies(jours, aujourd_hui, depuis):
             if (genre, debut) in vues or fin < depuis:
                 continue
             vues.add((genre, debut))
-            dernier_ouvre = fin
-            while dernier_ouvre.weekday() > 4:
-                dernier_ouvre -= datetime.timedelta(days=1)
-            if aujourd_hui > fin or dernier_ouvre in finis:
+            dernier = (calendrier.jours_de_seance(debut, fin) or [fin])[-1]
+            if aujourd_hui > fin or dernier in finis:
                 res.append((genre, debut, fin))
     return res
 
@@ -153,35 +152,102 @@ def prevenir(titre, texte):
     """Une notification du système (Mac) ; rien ailleurs."""
     if sys.platform == "darwin":
         script = f'display notification {json.dumps(texte)} with title {json.dumps(titre)}'
-        subprocess.run(["osascript", "-e", script], check=False, capture_output=True)
+        subprocess.run(["osascript", "-e", script], check=False, capture_output=True, timeout=30)
 
 
-def auto(config, dossier_journaux, journal=print, aujourd_hui=None):
+def _dates(jours, n=3):
+    """« mer. 4 Nov. 2026, jeu. 5 Nov. 2026 et 2 autres »."""
+    jours = sorted(set(jours))
+    texte = ", ".join(nombres.date_courte(j) for j in jours[:n])
+    return texte + (f" et {len(jours) - n} autre{'s' if len(jours) - n > 1 else ''}" if len(jours) > n else "")
+
+
+def auto(config, dossier_journaux, journal=print, aujourd_hui=None, maintenant=None):
     """Le mode automatique : chaque séance finie, depuis `auto_depuis`, qui a au moins un trade (ou toutes avec auto_sans_trade) et
-    pas encore de dossier de publication, devient une vidéo prête à publier. Un soir manqué est rattrapé au lancement suivant.
-    Rend la liste des dossiers créés."""
+    pas encore publiée, devient une vidéo prête à publier ; puis les semaines et les mois finis. Un soir manqué est rattrapé au
+    lancement suivant. Rend la liste des dossiers créés.
+
+    maintenant (avec fuseau) : l'heure du passage, pour savoir quelles séances devraient déjà être dans les journaux ; par défaut
+    l'heure réelle, ou la fin du jour `aujourd_hui` à New York quand seul `aujourd_hui` est donné.
+    V-20 (audit du 27/11/2026) : un seul passage à la fois (verrou), sinon deux fabrications du même jour."""
+    import etat
+    try:
+        with etat.verrou(config):
+            return _auto(config, dossier_journaux, journal, aujourd_hui, maintenant)
+    except etat.DejaEnCours as err:
+        journal(f"Pas de passage : {err}.")
+        return []
+
+
+def _auto(config, dossier_journaux, journal, aujourd_hui, maintenant):
+    import calendrier
+    import etat
     import journee
+    import recap_periode
+    if maintenant is None:
+        maintenant = (datetime.datetime.now(datetime.timezone.utc) if aujourd_hui is None
+                      else datetime.datetime.combine(aujourd_hui, datetime.time(23, 59), tzinfo=journee.NEW_YORK))
     aujourd_hui = aujourd_hui or datetime.date.today()
     depuis = datetime.date.fromisoformat(config["auto_depuis"]) if config.get("auto_depuis") else aujourd_hui - datetime.timedelta(days=4)
     racine = os.path.expanduser(config.get("dossier_publication") or BUREAU)
+    # V-07 (audit du 27/11/2026) : la mémoire des publications est hors du Bureau (etat.py) ; ranger le dossier ne refait plus rien
+    registre = etat.Registre(config, dossier_journaux, journal)
+
+    def alerter(cle, titre, texte):
+        """V-09 : une notification par jour au plus pour un même souci (avant : à chaque lancement, sans fin)."""
+        if registre.a_prevenir(cle, aujourd_hui):
+            prevenir(titre, texte)
+
     if not os.path.isdir(dossier_journaux):
         journal(f"Journaux de l'EA introuvables : {dossier_journaux}")
+        # V-01 : sans journaux, rien n'était dit
+        alerter("journaux-introuvables", "Étrave : journaux introuvables",
+                f"Le dossier des journaux de l'EA n'existe pas ({os.path.basename(dossier_journaux) or dossier_journaux}) : aucune vidéo.")
         return []
+    nettoyer_rendus(config, journal)                 # V-08 : les rendus de travail de plus de 30 jours
+    try:
+        finis = journee.jours_finis(dossier_journaux)
+        premier = journee.premier_jour(dossier_journaux)
+        ny = maintenant.astimezone(journee.NEW_YORK).date()
+        dernier_du = ny if calendrier.seance_due(ny, maintenant) else ny - datetime.timedelta(days=1)
+        manquants = journee.seances_manquantes(dossier_journaux, depuis, dernier_du, registre.decisions)
+    except Exception as err:          # V-02 : un journal illisible ne doit jamais arrêter le passage sans prévenir
+        journal(f"Journaux de l'EA illisibles ({type(err).__name__} : {err}).")
+        alerter("journaux-illisibles", "Étrave : journaux illisibles", f"{type(err).__name__} : {str(err)[:120]}")
+        return []
+    # V-01 (audit du 27/11/2026) : un jour de séance de New York sans séance dans les journaux (MetaTrader fermé, EA arrêté, « JOUR
+    # MANQUÉ ») ne disait rien (« Rien de nouveau à publier »). Une notification par jour au plus, qui liste les séances absentes.
+    for jour, symbole, cause in manquants:
+        journal(f"{jour} : séance absente ou incomplète : {cause}. Si le robot ne tournait pas : outil.py ignorer --jour {jour}.")
+    if manquants:
+        alerter("absentes", "Étrave : séance absente",
+                f"{_dates(m[0] for m in manquants)} : séance absente ou incomplète dans les journaux (EA arrêté ?). Semaine et mois "
+                "en attente ; détail dans recap-auto.log.")
     faits = []
-    for jour in journee.jours_finis(dossier_journaux):
+    for jour in finis:
         if jour < depuis:
             continue
-        cible = os.path.join(racine, jour.isoformat())
-        if os.path.isdir(cible) and any(n.endswith(".mp4") for n in os.listdir(cible)):
+        cle = jour.isoformat()
+        if registre.publie(cle, os.path.join(racine, cle)):
+            continue
+        decision = registre.decision(jour)
+        if decision == "ignorer":
             continue
         try:
-            j = journee.charger(dossier_journaux, jour)
-        except journee.JourneeIncomplete as err:
-            # VID-32 (26/11/2026) : une séance illisible n'était notée que dans le journal ; la notification la fait corriger
-            journal(f"{jour} : pas de vidéo. {err}")
-            prevenir("Étrave : séance illisible", f"{nombres.date_courte(jour)} : {str(err)[:150]}")
+            j = journee.charger(dossier_journaux, jour, accepter=decision == "accepter")
+        except Exception as err:
+            # VID-32 (26/11/2026) : une séance illisible n'était notée que dans le journal ; la notification la fait corriger.
+            # V-02 : toute erreur de lecture (pas seulement JourneeIncomplete) est attrapée, les autres jours continuent.
+            texte = str(err) if isinstance(err, journee.JourneeIncomplete) else f"journal abîmé ({type(err).__name__} : {err})"
+            journal(f"{jour} : pas de vidéo. {texte}")
+            alerter(f"illisible:{cle}", "Étrave : séance illisible",
+                    f"{nombres.date_courte(jour)} : {texte[:110]} (outil.py accepter ou ignorer --jour {cle})")
             continue
+        for a in j.get("avertissements", []):
+            journal(f"{jour} : attention, {a}.")
         if not j["trades"] and not config.get("auto_sans_trade"):
+            registre.publies[cle] = {"rien": "pas de trade (auto_sans_trade non réglé)"}     # V-22 : pas relu à chaque passage
+            registre.enregistrer()
             continue
         # la photo de l'onglet Historique : seulement le soir même (l'onglet montre « Aujourd'hui »), avant de monter la vidéo
         if j["trades"] and not j.get("historique") and jour == aujourd_hui and config.get("historique"):
@@ -192,60 +258,143 @@ def auto(config, dossier_journaux, journal=print, aujourd_hui=None):
                 j["historique"] = historique.photographier_jour(config, dossier_journaux, jour, j["trades"], journal)
             except Exception as err:
                 journal(f"Photo de l'historique impossible ({type(err).__name__} : {err}) : la vidéo se fait sans.")
-        sortie = os.path.join(os.path.expanduser(config["sortie"]), f"recap-{jour.isoformat()}")
-        os.makedirs(sortie, exist_ok=True)
+        sortie = _sortie_auto(config, f"recap-{jour.isoformat()}")
         journal(f"{jour} : {j['trades']} position(s), fabrication de la vidéo…")
         # Correctif VID-03 (audit du 25/11/2026) : sans voix (réseau coupé, quota ElevenLabs), la vidéo était faite muette et jamais
         # refaite : la séance attend le lancement suivant. VID-18 : la voix est exigée même sans voix_id dans la configuration (une
         # nouvelle installation publiait muet). VID-19 : la notification dit la cause, pour la corriger, et toute panne prévient.
-        try:
-            video = recap.fabriquer(j, config, sortie, journal, exiger_voix=True)
-            dossier = publier(j, video, config, journal)
-        except voix.VoixIndisponible as err:
-            journal(f"{jour} : voix indisponible : {err}. Pas de vidéo muette : nouvel essai au prochain lancement.")
-            prevenir("Étrave : pas de voix", f"Récap du {nombres.date_courte(jour)} : {str(err)[:150]}")
+        dossier = _fabriquer_et_publier(lambda: recap.fabriquer(j, config, sortie, journal, exiger_voix=True),
+                                        lambda video: publier(j, video, config, journal), f"Récap du {nombres.date_courte(jour)}",
+                                        cle, journal, alerter)
+        if not dossier:
             continue
-        except Exception as err:       # une séance ratée ne doit pas bloquer les suivantes ; elle sera retentée au prochain lancement
-            journal(f"{jour} : échec ({type(err).__name__} : {err}). Nouvel essai au prochain lancement.")
-            prevenir("Étrave : échec", f"Récap du {nombres.date_courte(jour)} : {type(err).__name__}, détail dans recap-auto.log")
-            continue
+        registre.noter_publie(cle, dossier)
+        nettoyer_travail(sortie, journal)            # V-08 : après le contrôle et la copie dans le dossier de publication
         journal(f"{jour} : prêt dans {dossier}")
         prevenir("Étrave", f"Récap du {nombres.date_courte(jour)} prêt à publier (dossier « {os.path.basename(racine)} »).")
         faits.append(dossier)
     # les récaps de la semaine et du mois, une fois la période finie (rattrapés au lancement suivant s'ils ont été manqués)
-    import recap_periode
-    for genre, debut, fin in periodes_finies(journee.jours_finis(dossier_journaux), aujourd_hui, depuis):
+    for genre, debut, fin in periodes_finies(finis, aujourd_hui, depuis):
         if not config.get("auto_hebdo" if genre == "semaine" else "auto_mensuel", True):
             continue
+        nom = recap_periode.nom_dossier({"genre": genre, "debut": debut})
+        # V-22 (audit du 27/11/2026) : chaque passage rechargeait toutes les semaines et tous les mois depuis auto_depuis avant de voir
+        # qu'ils étaient publiés (environ 70 s par passage après un an). Le registre d'abord.
+        if registre.publie(nom, os.path.join(racine, nom)):
+            continue
+        # V-12 (audit du 27/11/2026) : la démo lancée le lundi 30/11 publiait le soir même « Récap du mois de novembre, une séance ».
+        if premier is None or debut < premier:
+            journal(f"{nom} : pas de récap, la période commence avant le premier journal de l'EA ({premier}).")
+            registre.publies[nom] = {"rien": f"commence avant le premier journal ({premier})"}
+            registre.enregistrer()
+            continue
+        absents = [m for m in manquants if debut <= m[0] <= fin]
+        if absents:                                  # V-01, V-03 : jamais de période avec une séance en moins
+            journal(f"{nom} : pas de vidéo, séance absente ou incomplète ({_dates(m[0] for m in absents)}).")
+            alerter(f"bloque:{nom}", "Étrave : récap bloqué",
+                    f"{nom} : séance absente ou incomplète ({_dates([m[0] for m in absents], 2)}). outil.py ignorer ou accepter --jour.")
+            continue
         try:
-            p = recap_periode.charger(dossier_journaux, debut, fin, genre)
-        except journee.JourneeIncomplete as err:      # VID-07 : jamais de période avec une séance en moins
-            journal(f"{genre} du {debut.isoformat()} : pas de vidéo. {err}")
+            p = recap_periode.charger(dossier_journaux, debut, fin, genre, registre.decisions)
+        except Exception as err:      # VID-07 : jamais de période avec une séance en moins ; V-02 : toute erreur est attrapée
+            journal(f"{nom} : pas de vidéo. {type(err).__name__} : {err}")
             # VID-32 : la période attend que la séance soit corrigée ; la notification dit laquelle
-            prevenir("Étrave : récap bloqué", f"{genre.capitalize()} du {nombres.date_courte(debut)} : {str(err)[:140]}")
+            alerter(f"bloque:{nom}", "Étrave : récap bloqué", f"{nom} : {str(err)[:140]}")
             continue
-        cible = os.path.join(racine, recap_periode.nom_dossier(p))
-        if (os.path.isdir(cible) and any(n.endswith(".mp4") for n in os.listdir(cible))) or not p["jours"]:
+        if not p["jours"] or (not p["avec"] and not config.get("auto_sans_trade")):
+            registre.publies[nom] = {"rien": "aucune séance tradée"}
+            registre.enregistrer()
             continue
-        if not p["avec"] and not config.get("auto_sans_trade"):
+        sortie = _sortie_auto(config, nom.replace(" ", "-").lower())
+        journal(f"{nom} : {len(p['avec'])} jour(s) de trade, fabrication de la vidéo…")
+        dossier = _fabriquer_et_publier(lambda: recap_periode.fabriquer(p, config, sortie, journal, exiger_voix=True),
+                                        lambda video: publier_periode(p, video, config), nom, nom, journal, alerter)
+        if not dossier:
             continue
-        sortie = os.path.join(os.path.expanduser(config["sortie"]), recap_periode.nom_dossier(p).replace(" ", "-").lower())
-        os.makedirs(sortie, exist_ok=True)
-        journal(f"{recap_periode.nom_dossier(p)} : {len(p['avec'])} jour(s) de trade, fabrication de la vidéo…")
-        try:
-            video = recap_periode.fabriquer(p, config, sortie, journal, exiger_voix=True)
-            dossier = publier_periode(p, video, config)
-        except voix.VoixIndisponible as err:
-            journal(f"{recap_periode.nom_dossier(p)} : voix indisponible : {err}. Nouvel essai au prochain lancement.")
-            prevenir("Étrave : pas de voix", f"{recap_periode.nom_dossier(p)} : {str(err)[:150]}")
-            continue
-        except Exception as err:
-            journal(f"{recap_periode.nom_dossier(p)} : échec ({type(err).__name__} : {err}). Nouvel essai au prochain lancement.")
-            prevenir("Étrave : échec", f"{recap_periode.nom_dossier(p)} : {type(err).__name__}, détail dans recap-auto.log")
-            continue
-        journal(f"{recap_periode.nom_dossier(p)} : prêt dans {dossier}")
-        prevenir("Étrave", f"{recap_periode.nom_dossier(p)} : récap prêt à publier.")
+        registre.noter_publie(nom, dossier)
+        nettoyer_travail(sortie, journal)
+        journal(f"{nom} : prêt dans {dossier}")
+        prevenir("Étrave", f"{nom} : récap prêt à publier.")
         faits.append(dossier)
     if not faits:
         journal(f"Rien de nouveau à publier ({aujourd_hui.isoformat()}).")
     return faits
+
+
+def _fabriquer_et_publier(fabriquer, publier_, quoi, cle, journal, alerter):
+    """La vidéo puis son dossier de publication ; None après une panne (prévenue, refaite au lancement suivant)."""
+    import recap as recap_
+    try:
+        return publier_(fabriquer())
+    except voix.VoixIndisponible as err:
+        journal(f"{quoi} : voix indisponible : {err}. Pas de vidéo muette : nouvel essai au prochain lancement.")
+        alerter(f"voix:{cle}", "Étrave : pas de voix", f"{quoi} : {str(err)[:150]}")
+    except recap_.CommandeBloquee as err:            # V-06 : un rendu ou un ffmpeg bloqué est arrêté, et prévenu
+        journal(f"{quoi} : {err}. Nouvel essai au prochain lancement.")
+        alerter(f"bloque-rendu:{cle}", "Étrave : rendu bloqué", f"{quoi} : {str(err)[:150]}")
+    except Exception as err:       # une séance ratée ne doit pas bloquer les suivantes ; elle sera retentée au prochain lancement
+        journal(f"{quoi} : échec ({type(err).__name__} : {err}). Nouvel essai au prochain lancement.")
+        alerter(f"echec:{cle}", "Étrave : échec", f"{quoi} : {type(err).__name__}, détail dans recap-auto.log")
+    return None
+
+
+# V-08 (audit du 27/11/2026) : chaque rendu gardait environ 100 Mo (son/ en WAV 24 bits, projet/, image-muette.mp4), sans jamais rien
+# effacer : 25 à 30 Go par an. En mode automatique, ils sont effacés une fois la vidéo contrôlée et copiée dans le dossier de
+# publication (la vidéo, recap.json et controle.txt restent), et les dossiers de rendu de plus de 30 jours sont purgés.
+TRAVAIL = ("son", "projet", "image-muette.mp4")
+GARDE_JOURS = 30
+
+
+def nettoyer_travail(sortie, journal=print):
+    """Les fichiers de travail d'un rendu, une fois la vidéo publiée : controle.txt (le contrôle du son) passe à côté de la vidéo."""
+    controle_ = os.path.join(sortie, "son", "controle.txt")
+    if os.path.exists(controle_):
+        os.replace(controle_, os.path.join(sortie, "controle.txt"))
+    for nom in TRAVAIL:
+        chemin = os.path.join(sortie, nom)
+        try:
+            if os.path.isdir(chemin):
+                shutil.rmtree(chemin)
+            elif os.path.exists(chemin):
+                os.remove(chemin)
+        except OSError as err:
+            journal(f"Nettoyage de {chemin} impossible : {err}")
+
+
+MARQUE_AUTO = ".rendu-auto"
+
+
+def _rendu_auto(chemin, nom):
+    """Seuls les dossiers que le mode automatique a créés lui-même (nom et marque) sont purgés : jamais un récap fait à la main, un
+    essai du testeur ou la présentation, même si `auto` tourne avec la configuration de tous les jours."""
+    import re
+    return (bool(re.fullmatch(r"recap-\d{4}-\d{2}-\d{2}|semaine-du-\d{4}-\d{2}-\d{2}|mois-\d{4}-\d{2}", nom))
+            and os.path.exists(os.path.join(chemin, MARQUE_AUTO)))
+
+
+def _sortie_auto(config, nom):
+    sortie = os.path.join(os.path.expanduser(config["sortie"]), nom)
+    os.makedirs(sortie, exist_ok=True)
+    open(os.path.join(sortie, MARQUE_AUTO), "w").close()
+    return sortie
+
+
+def nettoyer_rendus(config, journal=print, maintenant=None):
+    """Les dossiers de rendu du mode automatique de plus de GARDE_JOURS jours (date de modification), dans `sortie`."""
+    import time
+    racine = os.path.expanduser(config.get("sortie") or "")
+    if not racine or not os.path.isdir(racine):
+        return []
+    limite = (maintenant or time.time()) - GARDE_JOURS * 86400
+    purges = []
+    for nom in sorted(os.listdir(racine)):
+        chemin = os.path.join(racine, nom)
+        try:
+            if os.path.isdir(chemin) and _rendu_auto(chemin, nom) and os.path.getmtime(chemin) < limite:
+                shutil.rmtree(chemin)
+                purges.append(nom)
+        except OSError as err:
+            journal(f"Purge de {chemin} impossible : {err}")
+    if purges:
+        journal(f"{len(purges)} rendu(s) de plus de {GARDE_JOURS} jours effacé(s) : {', '.join(purges[:5])}…")
+    return purges

@@ -43,18 +43,37 @@ def mot_periode(p):
     return mot.format(une="Une semaine" if semaine else "Un mois", la="La semaine" if semaine else "Le mois")
 
 
-def charger(dossier, debut, fin, genre):
-    """La période [debut, fin] (dates de New York) : chaque séance finie avec ses résultats, les totaux et les records."""
+def charger(dossier, debut, fin, genre, decisions=None):
+    """La période [debut, fin] (dates de New York) : chaque séance finie avec ses résultats, les totaux et les records.
+    decisions (V-09) : les jours acquittés du registre, {"AAAA-MM-JJ": "accepter" | "ignorer"}."""
+    import calendrier
+    decisions = decisions or {}
+    # V-03 (audit du 27/11/2026) : un marché avec des positions ou une ligne « decision » mais sans ligne « fin » (MetaTrader arrêté
+    # avant 15:52 New York) disparaissait de la période : « Semaine verte, 4 sur 4, dont 4 gagnants » avec la perte du mercredi dans
+    # le journal d'exécution. La période attend. (Le jour absent des journaux, lui, se voit avec le calendrier dans le mode
+    # automatique : publication.auto, V-01.)
+    absents = journee.seances_manquantes(dossier, debut, fin, decisions, avec_calendrier=False)
+    if absents:
+        jour, _, cause = absents[0]
+        raise journee.JourneeIncomplete(f"séance du {jour.isoformat()} incomplète ({cause}) : récap de la période remis à plus tard")
+    acceptes = {datetime.date.fromisoformat(k) for k, v in decisions.items() if v == "accepter"}
+    a_lire = sorted({j for j in journee.jours_finis(dossier) if debut <= j <= fin} | {j for j in acceptes if debut <= j <= fin})
     jours = []
-    for jour in journee.jours_finis(dossier):
-        if not debut <= jour <= fin:
+    for jour in a_lire:
+        if decisions.get(jour.isoformat()) == "ignorer":
             continue
         # Correctif VID-07 (audit du 25/11/2026) : une séance illisible disparaissait en silence de la période, et une séance tradée au
         # R inconnu était dite « pas de trade » : « Semaine verte » avec un jour perdant en moins. La période attend d'être complète.
         try:
-            j = journee.charger(dossier, jour, bougies_requises=False)
+            j = journee.charger(dossier, jour, bougies_requises=False, accepter=decisions.get(jour.isoformat()) == "accepter")
         except journee.JourneeIncomplete as err:
+            if "n'est pas finie" in str(err):          # jour accepté sans aucune position : rien à compter
+                continue
             raise journee.JourneeIncomplete(f"séance du {jour.isoformat()} incomplète ({err}) : récap de la période remis à plus tard")
+        # V-10 (audit du 27/11/2026) : les fériés et les demi-séances ne sont pas des séances (l'EA n'y trade pas) ; la semaine les
+        # comptait comme des jours « pas de trade ».
+        if not j["trades"] and calendrier.ferie_ou_demi(jour):
+            continue
         marches = {}
         for m in j["marches"]:
             v = m.get("r")

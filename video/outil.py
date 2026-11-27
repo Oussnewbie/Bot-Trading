@@ -11,6 +11,10 @@
     python3 video/outil.py historique --essai        photographie la fenêtre de MetaTrader (Bureau) pour régler le cadre
                                                      du tableau de l'onglet Historique (voir historique.py)
     python3 video/outil.py certificat --essai        écrit le certificat flouté sur le Bureau, pour régler `masques_certificat`
+    python3 video/outil.py accepter --jour AAAA-MM-JJ   une séance signalée (illisible, sans ligne « fin ») prise telle que les
+                                                     journaux la donnent (le journal d'exécution fait foi)
+    python3 video/outil.py ignorer --jour AAAA-MM-JJ    une séance signalée laissée de côté (pas de vidéo du jour, pas comptée
+                                                     dans la semaine ni le mois) ; pour un jour où le robot ne tournait pas
     python3 video/outil.py installer                 lance `auto` tout seul chaque soir de semaine (copie l'outil hors du dépôt)
     python3 video/outil.py desinstaller              retire ce lancement automatique
 
@@ -124,7 +128,7 @@ def telecharger_sons(config):
 def main(arguments=None):
     a = argparse.ArgumentParser(description="Étrave vidéo : récap de séance et présentation, en motion design.")
     a.add_argument("commande", choices=["verifier", "jours", "recap", "presentation", "sons", "auto", "installer", "desinstaller",
-                                        "historique", "certificat"])
+                                        "historique", "certificat", "accepter", "ignorer"])
     a.add_argument("--essai", action="store_true", help="historique : toute la fenêtre de MetaTrader, pour régler le cadre")
     a.add_argument("--jour", help="date de la séance (New York), AAAA-MM-JJ ; par défaut la dernière finie")
     a.add_argument("--testeur", action="store_true", help="journaux du testeur de stratégie")
@@ -172,20 +176,41 @@ def main(arguments=None):
         import installation
         installation.desinstaller(print)
         return 0
+    if args.commande in ("accepter", "ignorer"):
+        # V-09 (audit du 27/11/2026) : une séance illisible ou incomplète bloquait la semaine et le mois pour toujours, et prévenait à
+        # chaque lancement : la décision est notée dans le registre du mode automatique (etat.py).
+        import etat
+        if not args.jour:
+            print("--jour AAAA-MM-JJ : la date de New York de la séance.")
+            return 1
+        jour = datetime.date.fromisoformat(args.jour)
+        etat.Registre(config, dossier_journaux(config, args.testeur)).decider(jour, args.commande)
+        print(f"Séance du {jour.isoformat()} : {'prise telle que les journaux la donnent' if args.commande == 'accepter' else 'laissée de côté'} "
+              "au prochain passage du mode automatique.")
+        return 0
     if args.commande == "auto":
         import publication
         print(f"— {datetime.datetime.now():%Y-%m-%d %H:%M} —", flush=True)
         racine = os.path.expanduser(config.get("dossier_publication") or publication.BUREAU)
         try:          # le droit d'écrire dans le dossier de publication (sur Mac, la première fois, macOS demande l'autorisation)
             os.makedirs(racine, exist_ok=True)
-            essai = os.path.join(racine, ".ecriture")
+            essai = os.path.join(racine, f".ecriture-{os.getpid()}")
             open(essai, "w").close()
             os.remove(essai)
         except OSError as err:
             print(f"Impossible d'écrire dans {racine} ({err}). Sur Mac : Réglages Système, Confidentialité et sécurité, "
                   "Fichiers et dossiers (ou Accès complet au disque), autoriser python3.")
+            # V-05 (audit du 27/11/2026) : rien d'autre qu'une ligne dans recap-auto.log, que personne ne lit
+            publication.prevenir("Étrave : pas d'accès au dossier", f"Impossible d'écrire dans « {os.path.basename(racine)} » : "
+                                 "autoriser python3 (Réglages Système, Confidentialité et sécurité).")
             return 3
-        publication.auto(config, dossier_journaux(config, args.testeur), lambda t: print(t, flush=True))
+        try:
+            publication.auto(config, dossier_journaux(config, args.testeur), lambda t: print(t, flush=True))
+        except Exception as err:
+            # V-02 : une panne imprévue du mode automatique prévient au lieu de mourir en silence
+            print(f"Échec du mode automatique : {type(err).__name__} : {err}", flush=True)
+            publication.prevenir("Étrave : échec du mode automatique", f"{type(err).__name__} : {str(err)[:120]} (recap-auto.log)")
+            return 5
         return 0
     if args.commande == "presentation":
         import presentation
@@ -199,12 +224,25 @@ def main(arguments=None):
         for j in jours[-10:]:
             print("  ", j.isoformat())
         return 0
+    import etat
+    try:            # V-20 : jamais en même temps qu'un passage du mode automatique (même nom provisoire, voix demandée deux fois)
+        with etat.verrou(config):
+            return _recap(args, config, dossier)
+    except etat.DejaEnCours as err:
+        print(f"Pas de récap : {err}.")
+        return 6
+
+
+def _recap(args, config, dossier):
+    import journee
     import recap
     try:
         j = journee.charger(dossier, datetime.date.fromisoformat(args.jour) if args.jour else None)
     except journee.JourneeIncomplete as err:
         print(err)
         return 2
+    for a in j.get("avertissements", []):
+        print(f"Attention : {a}.")
     # VID-12 (audit du 25/11/2026) : « testeur » apparaissait dans le nom du dossier ; « essai » ne dit rien du compte
     sortie = os.path.join(os.path.expanduser(config["sortie"]), f"recap-{j['jour'].isoformat()}{'-essai' if args.testeur else ''}")
     os.makedirs(sortie, exist_ok=True)

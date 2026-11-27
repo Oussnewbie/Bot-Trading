@@ -24,6 +24,21 @@ import test_robot    # noqa: E402  (l'empreinte des noms de prop firm)
 UTC = datetime.timezone.utc
 
 
+@pytest.fixture(autouse=True)
+def garde_fous(tmp_path_factory, monkeypatch):
+    """Aucune notification réelle (osascript) pendant les tests, et aucun état du mode automatique (registre des publications,
+    verrou) écrit hors d'un dossier jetable : ni ~/Library/Application Support/Etrave, ni le Bureau. Rend les notifications."""
+    import publication
+    notes = []
+    monkeypatch.setattr(publication, "prevenir", lambda titre, texte: notes.append((titre, texte)))
+    try:
+        import etat
+        monkeypatch.setattr(etat, "DOSSIER", str(tmp_path_factory.mktemp("etat")))
+    except ImportError:          # code d'avant le 27/11/2026 (preuve que les nouveaux tests échouaient)
+        pass
+    return notes
+
+
 # ───────────────────────── nombres ─────────────────────────
 @pytest.mark.parametrize("n, texte", [(0, "zéro"), (21, "vingt et un"), (71, "soixante et onze"), (80, "quatre-vingts"),
                                       (81, "quatre-vingt-un"), (91, "quatre-vingt-onze"), (100, "cent"), (180, "cent quatre-vingts"),
@@ -635,7 +650,8 @@ def test_jamais_de_video_muette(tmp_path, monkeypatch):
         raise voix.VoixIndisponible(voix.cause("401", b'{"detail":{"status":"quota_exceeded"}}'))
     monkeypatch.setattr(publication.recap, "fabriquer", sans_voix)
     monkeypatch.setattr(publication, "prevenir", lambda titre, texte: notes.append(texte))
-    config = {"sortie": str(tmp_path / "rendus"), "dossier_publication": str(tmp_path / "bureau"), "auto_depuis": "2026-04-01"}
+    # 27/11/2026 : auto_depuis au jour du journal (avant : le 01/04) ; sinon V-01 prévient d'abord des séances d'avril absentes
+    config = {"sortie": str(tmp_path / "rendus"), "dossier_publication": str(tmp_path / "bureau"), "auto_depuis": "2026-04-16"}
     assert publication.auto(config, str(journaux), lambda t: None, datetime.date(2026, 4, 16)) == []
     assert demandes == [True] and "crédits ElevenLabs épuisés" in notes[0]
     assert not os.path.exists(tmp_path / "bureau" / "2026-04-16")
@@ -843,7 +859,9 @@ def test_seance_illisible_et_recap_bloque_previennent(tmp_path, monkeypatch):
     """VID-32 : une séance illisible, et la semaine qu'elle bloque, envoient une notification (avant : le journal seulement)."""
     journaux = tmp_path / "journaux"
     journaux.mkdir()
-    ecrire_journee(str(journaux), datetime.date(2026, 4, 14))
+    # 27/11/2026 : une séance sans trade le lundi 13 avant la séance illisible du 14 (avant : le 14 seul) ; V-12 ne fait plus de récap
+    # d'une semaine commencée avant le premier journal de l'EA
+    ecrire_jours(str(journaux), [(datetime.date(2026, 4, 13), {"positions": ()}), (datetime.date(2026, 4, 14), {})])
     with open(journaux / "trades-NDX100.csv", "w", encoding="utf-8") as f:     # un trade que l'exécution ne retrouve pas
         f.write("1776196200;2026-04-14;15:50;NDX100;1;0.10;-1.0000;-999.00;1000.00;Stop;0;USD\r\n")
     notes = []
@@ -852,3 +870,294 @@ def test_seance_illisible_et_recap_bloque_previennent(tmp_path, monkeypatch):
     config = {"sortie": str(tmp_path / "rendus"), "dossier_publication": str(tmp_path / "bureau"), "auto_depuis": "2026-04-13"}
     assert publication.auto(config, str(journaux), lambda t: None, datetime.date(2026, 4, 20)) == []
     assert "Étrave : séance illisible" in notes and "Étrave : récap bloqué" in notes
+
+
+# ───────────────────────── audit du 27/11/2026 (V-01 à V-28) ─────────────────────────
+# Les nouveaux modules (calendrier, etat…) sont importés dans les tests : le fichier reste lisible par le code d'avant le correctif,
+# pour prouver que chaque test échouait.
+D = datetime.date
+GAIN = ((1, "A", 9, 36, 100.0, 15, 50, 112.0, "Fin de journée"),)
+PERTE = ((1, "A", 9, 36, 100.0, 10, 5, 82.0, "Stop"),)
+SEMAINE = [(D(2026, 11, k), {}) for k in (2, 3, 4, 5, 6)]
+
+
+def ecrire_jours(dossier, jours, symbole="NDX100"):
+    """Plusieurs séances dans les mêmes journaux, comme l'EA les écrit jour après jour : [(jour, options d'ecrire_journee)]."""
+    import shutil
+    import tempfile
+    tous = {b: [] for b in ENTETES}
+    for jour, options in jours:
+        t = tempfile.mkdtemp()
+        ecrire_journee(t, jour, **options)
+        for b in tous:
+            tous[b] += [l.replace("NDX100", symbole) for l in open(os.path.join(t, f"{b}-NDX100.csv"), encoding="utf-8").read().splitlines()[1:]]
+        shutil.rmtree(t)
+    for b, lignes in tous.items():
+        with open(os.path.join(dossier, f"{b}-{symbole}.csv"), "w", encoding="utf-8") as f:
+            f.write(ENTETES[b] + "\r\n" + "".join(l + "\r\n" for l in lignes))
+
+
+def faux_rendus(monkeypatch):
+    """La fabrication remplacée par un fichier vide : rend la liste de ce qui a été fabriqué (jours, (genre, début))."""
+    import recap_periode
+    faites = []
+
+    def video(j, config, sortie, journal=print, rendre=True, exiger_voix=True, **k):
+        faites.append(j["jour"])
+        chemin = os.path.join(sortie, "v.mp4")
+        open(chemin, "wb").write(b"\0")
+        return chemin
+
+    def periode(p, config, sortie, journal=print, rendre=True, exiger_voix=True, **k):
+        faites.append((p["genre"], p["debut"]))
+        chemin = os.path.join(sortie, "p.mp4")
+        open(chemin, "wb").write(b"\0")
+        return chemin
+    monkeypatch.setattr(publication.recap, "fabriquer", video)
+    monkeypatch.setattr(recap_periode, "fabriquer", periode)
+    monkeypatch.setattr(publication.subprocess, "run", lambda *a, **k: None)
+    return faites
+
+
+def config_auto(tmp_path, **kw):
+    c = {"sortie": str(tmp_path / "rendus"), "dossier_publication": str(tmp_path / "bureau"), "dossier_etat": str(tmp_path / "etat"),
+         "auto_depuis": "2026-11-02"}
+    c.update(kw)
+    return c
+
+
+def test_calendrier_des_seances_comme_l_ea():
+    """V-01, V-03, V-10 : les jours de séance attendus suivent le calendrier de l'EA (ShortDay : fériés et demi-séances, y compris
+    ses choix « par prudence »). calendrier.py est une copie de la règle : ce test vérifie l'accord avec le code de l'EA."""
+    import calendrier
+    feries = [D(2026, 1, 1), D(2026, 1, 19), D(2026, 2, 16), D(2026, 4, 3), D(2026, 5, 25), D(2026, 6, 19), D(2026, 7, 3), D(2026, 9, 7),
+              D(2026, 11, 26), D(2026, 12, 25), D(2025, 7, 4), D(2027, 6, 18), D(2027, 7, 5), D(2027, 12, 31)]
+    demi = [D(2026, 7, 2), D(2026, 11, 27), D(2026, 12, 24), D(2025, 7, 3), D(2025, 11, 28), D(2025, 12, 24)]
+    normaux = [D(2026, 11, 25), D(2026, 3, 16), D(2026, 7, 6), D(2025, 1, 9), D(2027, 12, 30)]   # le 09/01/2025 (deuil) n'y est pas
+    assert all(calendrier.ferie_ou_demi(d) for d in feries + demi)
+    assert not any(calendrier.ferie_ou_demi(d) for d in normaux)
+    assert calendrier.jours_de_seance(D(2026, 11, 23), D(2026, 11, 29)) == [D(2026, 11, 23), D(2026, 11, 24), D(2026, 11, 25)]
+    ea = open(os.path.join(ICI, "..", "robot", "Strategy-V11.mq5"), encoding="utf-8").read()
+    corps = ea[ea.index("bool ShortDay(datetime ny)"):ea.index("int FlatMin(datetime ny)")]
+    for regle in ("Observed(MakeDate(y, 1, 1)) || d == Observed(MakeDate(y + 1, 1, 1))", "NthDow(y, 1, 1, 3)", "NthDow(y, 2, 1, 3)",
+                  "GoodFriday(y)", "LastDow(y, 5, 1)", "Observed(MakeDate(y, 6, 19))", "Observed(j4)", "NthDow(y, 9, 1, 1)",
+                  "NthDow(y, 11, 4, 4)", "Observed(MakeDate(y, 12, 25))", "d == tg + 86400 || d == MakeDate(y, 12, 24)",
+                  "(s4.day_of_week >= 2 && s4.day_of_week <= 5) ? j4 - 86400 : s4.day_of_week == 6 ? j4 - 2 * 86400"):
+        assert regle in corps, regle
+    assert "bool shortD = InpSkipShort && ShortDay(ny1);" in ea           # l'EA ne trade pas ces jours-là
+    utc = datetime.timezone.utc
+    assert not calendrier.seance_due(D(2026, 11, 25), datetime.datetime(2026, 11, 25, 20, 50, tzinfo=utc))   # 15:50 à New York
+    assert calendrier.seance_due(D(2026, 11, 25), datetime.datetime(2026, 11, 25, 21, 20, tzinfo=utc))       # 22:20 à Paris
+
+
+def test_v01_jour_de_seance_absent_des_journaux_previent(tmp_path, monkeypatch, garde_fous):
+    """V-01 : MetaTrader fermé, EA arrêté ou « JOUR MANQUÉ » (aucune ligne ce jour-là) : « Rien de nouveau à publier », sans
+    notification. Chaque jour de séance de New York (calendrier de l'EA) est comparé aux journaux, et l'absence prévient."""
+    faux_rendus(monkeypatch)
+    journaux = tmp_path / "journaux"
+    journaux.mkdir()
+    ecrire_jours(str(journaux), [(D(2026, 11, 2), {}), (D(2026, 11, 3), {}), (D(2026, 11, 5), {}), (D(2026, 11, 6), {})])
+    publication.auto(config_auto(tmp_path), str(journaux), lambda t: None, D(2026, 11, 6))
+    absentes = [texte for titre, texte in garde_fous if "absente" in titre]
+    assert absentes and "mer. 4 Nov." in absentes[0] and "lun. 2" not in absentes[0]
+    garde_fous.clear()                 # aucun journal du tout : l'état réel de ce Mac du 25 au 26/11
+    vide = tmp_path / "vide"
+    vide.mkdir()
+    publication.auto(config_auto(tmp_path, auto_depuis="2026-11-24", dossier_etat=str(tmp_path / "etat2")), str(vide), lambda t: None,
+                     D(2026, 11, 25))
+    assert any("absente" in t and "mar. 24 Nov." in x and "mer. 25 Nov." in x for t, x in garde_fous)
+    garde_fous.clear()                 # le dossier des journaux n'existe pas
+    publication.auto(config_auto(tmp_path, dossier_etat=str(tmp_path / "etat3")), str(tmp_path / "nulle-part"), lambda t: None,
+                     D(2026, 11, 6))
+    assert any("journaux" in t for t, _ in garde_fous)
+
+
+def test_v02_ligne_abimee_ne_bloque_pas_les_autres_jours(tmp_path, monkeypatch, garde_fous):
+    """V-02 : une ligne de bougies au bon nombre de colonnes mais à l'heure abîmée (« 15h50 ») levait ValueError hors du mode
+    automatique : plus aucune vidéo, même pour les jours sains, sans notification. Une panne imprévue de `auto` prévient aussi."""
+    import outil
+    faites = faux_rendus(monkeypatch)
+    journaux = tmp_path / "journaux"
+    journaux.mkdir()
+    ecrire_jours(str(journaux), [(D(2026, 11, 2), {}), (D(2026, 11, 3), {})])
+    f = journaux / "bougies-NDX100.csv"
+    f.write_text(f.read_text(encoding="utf-8").replace("2026-11-02;NDX100;15:50;", "2026-11-02;NDX100;15h50;", 1), encoding="utf-8")
+    e = journaux / "execution-NDX100.csv"         # et une milliseconde absurde le même jour
+    with pytest.raises(journee.JourneeIncomplete, match="abîmé"):
+        journee.charger(str(journaux), D(2026, 11, 2))
+    publication.auto(config_auto(tmp_path), str(journaux), lambda t: None, D(2026, 11, 3))
+    assert faites == [D(2026, 11, 3)]
+    assert any("illisible" in t and "lun. 2 Nov." in x for t, x in garde_fous)
+    lignes = e.read_text(encoding="utf-8").splitlines()
+    champs = lignes[2].split(";")
+    champs[8] = "9" * 30
+    e.write_text("\r\n".join(lignes[:2] + [";".join(champs)]) + "\r\n", encoding="utf-8")
+    with pytest.raises(journee.JourneeIncomplete):
+        journee.charger(str(journaux), D(2026, 11, 3))
+    garde_fous.clear()
+    monkeypatch.setattr(publication, "auto", lambda *a, **k: 1 / 0)
+    fichier = tmp_path / "config.json"
+    fichier.write_text(json.dumps(dict(config_auto(tmp_path), dossier_journaux=str(journaux), police="x")))
+    assert outil.main(["auto", "--config", str(fichier)]) == 5
+    assert any("échec" in t for t, _ in garde_fous)
+
+
+def test_v03_perte_sans_ligne_fin_bloque_la_semaine(tmp_path, monkeypatch, garde_fous):
+    """V-03 : la perte du mercredi est dans le journal d'exécution, mais la ligne « fin » manque (MetaTrader arrêté avant 15:52) :
+    « Semaine verte, 4 sur 4, dont 4 gagnants ». La période attend, avec une cause claire. Avec deux marchés, la journée n'est pas
+    racontée sans celui qui n'a pas fini."""
+    import recap_periode
+    faites = faux_rendus(monkeypatch)
+    journaux = tmp_path / "journaux"
+    journaux.mkdir()
+    ecrire_jours(str(journaux), [(D(2026, 11, 2), {}), (D(2026, 11, 3), {}), (D(2026, 11, 4), {"positions": PERTE, "fin": False}),
+                                 (D(2026, 11, 5), {}), (D(2026, 11, 6), {})])
+    with pytest.raises(journee.JourneeIncomplete, match="2026-11-04"):
+        recap_periode.charger(str(journaux), D(2026, 11, 2), D(2026, 11, 6), "semaine")
+    publication.auto(config_auto(tmp_path), str(journaux), lambda t: None, D(2026, 11, 6))
+    assert ("semaine", D(2026, 11, 2)) not in faites and not (tmp_path / "bureau" / "Semaine du 2026-11-02").exists()
+    assert any("bloqué" in t and "4 Nov." in x for t, x in garde_fous)
+    deux = tmp_path / "deux"
+    deux.mkdir()
+    ecrire_jours(str(deux), [(D(2026, 11, 4), {"positions": PERTE, "fin": False})])
+    ecrire_jours(str(deux), [(D(2026, 11, 4), {})], symbole="SPX500")
+    with pytest.raises(journee.JourneeIncomplete, match="NDX100"):
+        journee.charger(str(deux), D(2026, 11, 4))
+
+
+def test_v05_dossier_de_publication_interdit_previent(tmp_path, garde_fous):
+    """V-05 : sans droit d'écrire dans le dossier de publication (autorisation du Bureau refusée en arrière-plan, nouveau Python),
+    `auto` rendait 3 avec une ligne dans le journal, sans notification."""
+    import outil
+    interdit = tmp_path / "interdit"
+    interdit.mkdir()
+    interdit.chmod(0o500)
+    try:
+        fichier = tmp_path / "config.json"
+        fichier.write_text(json.dumps(dict(config_auto(tmp_path), dossier_publication=str(interdit / "Étrave TikTok"),
+                                           dossier_journaux=str(tmp_path), police="x")))
+        assert outil.main(["auto", "--config", str(fichier)]) == 3
+        assert any("accès" in t for t, _ in garde_fous)
+    finally:
+        interdit.chmod(0o700)
+
+
+def test_v07_dossier_range_apres_publication_pas_refait(tmp_path, monkeypatch, garde_fous):
+    """V-07 : ranger le dossier « Étrave TikTok » après publication refaisait toutes les vidéos depuis auto_depuis, avec une
+    notification chacune. Le registre des publications est hors du Bureau ; un registre neuf (mise à jour) repart des dossiers."""
+    import shutil
+    faites = faux_rendus(monkeypatch)
+    journaux = tmp_path / "journaux"
+    journaux.mkdir()
+    ecrire_jours(str(journaux), SEMAINE)
+    c = config_auto(tmp_path)
+    publication.auto(c, str(journaux), lambda t: None, D(2026, 11, 6))
+    assert len(faites) == 6                        # cinq jours et la semaine
+    shutil.rmtree(c["dossier_publication"])
+    faites.clear()
+    garde_fous.clear()
+    publication.auto(c, str(journaux), lambda t: None, D(2026, 11, 9))
+    assert faites == [] and not any(t == "Étrave" for t, _ in garde_fous)
+    # mise à jour depuis l'outil d'avant (pas encore de registre) : les dossiers déjà sur le Bureau ne sont pas refaits
+    c2 = config_auto(tmp_path, dossier_etat=str(tmp_path / "etat2"), dossier_publication=str(tmp_path / "bureau2"))
+    publication.auto(c2, str(journaux), lambda t: None, D(2026, 11, 6))
+    shutil.rmtree(c2["dossier_etat"])
+    faites.clear()
+    publication.auto(c2, str(journaux), lambda t: None, D(2026, 11, 6))
+    assert faites == []
+
+
+def test_v09_seance_illisible_previent_une_fois_par_jour_et_s_acquitte(tmp_path, monkeypatch, garde_fous):
+    """V-09 : une séance illisible prévenait à chaque lancement, sans fin, et bloquait la semaine et le mois pour toujours. Une
+    notification par jour au plus ; `outil.py accepter` la prend telle quelle, `outil.py ignorer` la laisse de côté."""
+    import outil
+    faites = faux_rendus(monkeypatch)
+    journaux = tmp_path / "journaux"
+    journaux.mkdir()
+    ecrire_jours(str(journaux), SEMAINE)
+    with open(journaux / "trades-NDX100.csv", "w", encoding="utf-8") as f:     # un trade que l'exécution ne retrouve pas
+        f.write("1793900000;2026-11-04;15:50;NDX100;1;0.10;-1.0000;-999.00;1000.00;Stop;0;USD\r\n")
+    c = config_auto(tmp_path)
+    for _ in range(2):                              # 22:20 puis 23:50 : une seule notification ce soir-là
+        publication.auto(c, str(journaux), lambda t: None, D(2026, 11, 6))
+    assert sum(1 for t, _ in garde_fous if "illisible" in t) == 1 and ("semaine", D(2026, 11, 2)) not in faites
+    publication.auto(c, str(journaux), lambda t: None, D(2026, 11, 9))
+    assert sum(1 for t, _ in garde_fous if "illisible" in t) == 2               # le lendemain, un rappel
+    fichier = tmp_path / "config.json"
+    fichier.write_text(json.dumps(dict(c, dossier_journaux=str(journaux), police="x")))
+    assert outil.main(["accepter", "--jour", "2026-11-04", "--config", str(fichier)]) == 0
+    garde_fous.clear()
+    publication.auto(c, str(journaux), lambda t: None, D(2026, 11, 9))
+    assert D(2026, 11, 4) in faites and ("semaine", D(2026, 11, 2)) in faites
+    assert not any("illisible" in t for t, _ in garde_fous)
+    # « ignorer » : un jour sans aucune séance (le robot ne tournait pas) ne bloque plus la semaine
+    autre = tmp_path / "autre"
+    autre.mkdir()
+    ecrire_jours(str(autre), [(D(2026, 11, k), {}) for k in (2, 3, 5, 6)])
+    c2 = config_auto(tmp_path, dossier_etat=str(tmp_path / "etat2"), dossier_publication=str(tmp_path / "bureau2"))
+    faites.clear()
+    publication.auto(c2, str(autre), lambda t: None, D(2026, 11, 6))
+    assert ("semaine", D(2026, 11, 2)) not in faites
+    fichier.write_text(json.dumps(dict(c2, dossier_journaux=str(autre), police="x")))
+    assert outil.main(["ignorer", "--jour", "2026-11-04", "--config", str(fichier)]) == 0
+    publication.auto(c2, str(autre), lambda t: None, D(2026, 11, 6))
+    assert faites[-1] == ("semaine", D(2026, 11, 2))
+
+
+def test_v12_pas_de_recap_d_une_periode_commencee_avant_le_premier_journal(tmp_path, monkeypatch):
+    """V-12 : la démo lancée le lundi 30/11 publiait le soir même « Récap du mois de novembre. Mois rouge… Une séance »."""
+    faites = faux_rendus(monkeypatch)
+    journaux = tmp_path / "journaux"
+    journaux.mkdir()
+    ecrire_jours(str(journaux), [(D(2026, 11, 30), {"positions": PERTE})])
+    publication.auto(config_auto(tmp_path, auto_depuis="2026-11-30"), str(journaux), lambda t: None, D(2026, 11, 30))
+    assert faites == [D(2026, 11, 30)]
+
+
+def test_v20_deux_passages_en_meme_temps(tmp_path, monkeypatch):
+    """V-20 : `auto` ou `recap` lancé à la main pendant le passage de launchd (ou d'Étrave) fabriquait deux fois le même jour (voix
+    demandée deux fois, même nom provisoire). Un verrou : le second passage s'arrête sans rien faire."""
+    import threading
+    import time
+    import outil
+    faux_rendus(monkeypatch)
+    faites = []
+
+    def lente(j, config, sortie, journal=print, rendre=True, exiger_voix=True, **k):
+        faites.append(j["jour"])
+        time.sleep(0.5)
+        chemin = os.path.join(sortie, "v.mp4")
+        open(chemin, "wb").write(b"\0")
+        return chemin
+    monkeypatch.setattr(publication.recap, "fabriquer", lente)
+    journaux = tmp_path / "journaux"
+    journaux.mkdir()
+    ecrire_jours(str(journaux), [(D(2026, 11, 2), {})])
+    c = config_auto(tmp_path)
+    passages = [threading.Thread(target=publication.auto, args=(c, str(journaux), lambda t: None, D(2026, 11, 2))) for _ in range(2)]
+    for p in passages:
+        p.start()
+    for p in passages:
+        p.join()
+    assert faites == [D(2026, 11, 2)]
+    import etat
+    lignes = []
+    with etat.verrou(c):
+        assert publication.auto(c, str(journaux), lignes.append, D(2026, 11, 3)) == [] and "en cours" in lignes[-1]
+        fichier = tmp_path / "config.json"
+        fichier.write_text(json.dumps(dict(c, dossier_journaux=str(journaux), police="x")))
+        assert outil.main(["recap", "--jour", "2026-11-02", "--config", str(fichier)]) == 6
+
+
+def test_v22_periode_deja_publiee_pas_rechargee(tmp_path, monkeypatch):
+    """V-22 : chaque lancement rechargeait toutes les semaines et tous les mois depuis auto_depuis avant de tester s'ils étaient
+    publiés (environ 70 s par lancement après un an). Le registre est lu d'abord."""
+    import recap_periode
+    faux_rendus(monkeypatch)
+    journaux = tmp_path / "journaux"
+    journaux.mkdir()
+    ecrire_jours(str(journaux), SEMAINE)
+    c = config_auto(tmp_path)
+    publication.auto(c, str(journaux), lambda t: None, D(2026, 11, 6))
+    monkeypatch.setattr(recap_periode, "charger", lambda *a, **k: pytest.fail("période déjà publiée rechargée"))
+    publication.auto(c, str(journaux), lambda t: None, D(2026, 11, 6))

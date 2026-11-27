@@ -58,6 +58,10 @@ TIGE, VAGUES = "M20 5v27", "M3 33c2.8-2.3 5.7-2.3 8.5 0M28.5 33c2.8-2.3 5.7-2.3 
 POLICE = police.DEFAUT        # le fichier de la police, pour mesurer les textes (réglé par fabriquer)
 
 
+class CommandeBloquee(RuntimeError):
+    """V-06 : un rendu HyperFrames ou un ffmpeg qui dépasse son délai, arrêté (le mode automatique prévient et réessaie plus tard)."""
+
+
 def e(texte):
     return html.escape(str(texte), quote=True)
 
