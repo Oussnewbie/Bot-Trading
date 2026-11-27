@@ -3,7 +3,12 @@
 Même parcours que l'onglet Connexions de Vigie. Les alertes de tous les jours, elles, partent de l'EA (MetaTrader) :
 l'interface peut être fermée sans rien changer aux alertes.
 """
+import glob
+import html
 import json
+import os
+import re
+import time
 import urllib.error
 import urllib.request
 
@@ -91,3 +96,111 @@ def appeler_ok(appel, jeton, methode, corps):
 
 def _raison(reponse):
     return reponse.get("description") or f"HTTP {reponse.get('status')}"
+
+
+# ───────────────────────── relais des messages de l'EA (décision de l'utilisateur du 27/11/2026) ─────────────────────────
+# MetaTrader pour Mac oublie l'autorisation WebRequest à chaque redémarrage : l'EA n'envoie plus Telegram. Il écrit un fichier par
+# message, Etrave/telegram-<secondes>-<n°>-<symbole>.txt (« v1;<genre>;<numéro> », puis le texte avec ses **gras**), sous un nom
+# provisoire puis renommé. Étrave les envoie dans l'ordre, en HTML (titres en gras), et les efface.
+FICHIER_MESSAGE = re.compile(r"telegram-(\d+)-(\d{5})-([A-Za-z0-9._-]{1,40})\.txt")
+RETARD_S = 30 * 60                  # au-delà, le message dit son heure : Étrave était fermée
+GARDE_SANS_TELEGRAM_S = 24 * 3600   # Telegram pas configuré : les messages sont jetés après 24 heures
+ENVOIS_MAX = 20                     # par passage ; Telegram accepte environ un message par seconde dans une discussion
+
+
+def rendre_html(texte):
+    """Le texte de l'EA en HTML de Telegram : & < > échappés d'abord (« S&P 500 »), puis **gras** en <b>gras</b>."""
+    return re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", html.escape(texte, quote=False))
+
+
+def texte_brut(texte):
+    return texte.replace("**", "")
+
+
+def messages_en_attente(dossier):
+    """Les messages déposés par l'EA, dans l'ordre : (secondes, n°, symbole, chemin). Les fichiers provisoires sont ignorés."""
+    trouves = []
+    for chemin in glob.glob(os.path.join(dossier, "telegram-*.txt")):
+        m = FICHIER_MESSAGE.fullmatch(os.path.basename(chemin))
+        if m:
+            trouves.append((int(m.group(1)), int(m.group(2)), m.group(3), chemin))
+    return sorted(trouves)
+
+
+def _effacer(chemin):
+    try:
+        os.remove(chemin)
+    except OSError:
+        pass
+
+
+def _mettre_de_cote(chemin):
+    """Un message que Telegram refuse, ou illisible, est gardé à part (.refuse) : il ne bloque pas les suivants."""
+    try:
+        os.replace(chemin, chemin[:-len(".txt")] + ".refuse")
+    except OSError:
+        _effacer(chemin)
+
+
+def relayer(dossier, appel=appeler, maintenant=None, attendre=time.sleep, pause_jusqu=0):
+    """Envoie les messages de l'EA. Retourne l'état du relais : attente (messages restants), dernier (ok, injoignable, refus,
+    pause, inactif ou vide), erreur, envoyes, pauseJusqu (Telegram a demandé d'attendre), essai (résultat de « Essai depuis
+    MetaTrader »). Ne lève jamais d'erreur réseau : un message non envoyé reste pour le passage suivant, dans l'ordre."""
+    maintenant = time.time() if maintenant is None else maintenant
+    cles = lire_reglages(dossier)
+    jeton, discussion = cles.get("telegram_jeton", ""), cles.get("telegram_discussion", "")
+    messages = messages_en_attente(dossier)
+    etat = {"attente": len(messages), "dernier": "", "quand": int(maintenant), "erreur": "", "envoyes": 0, "pauseJusqu": pause_jusqu,
+            "essai": None}
+    if jeton == "" or discussion == "":
+        for quand, _, _, chemin in messages:
+            if maintenant - quand > GARDE_SANS_TELEGRAM_S:
+                _effacer(chemin)
+        etat.update(attente=len(messages_en_attente(dossier)), dernier="inactif")
+        return etat
+    if maintenant < pause_jusqu:
+        etat["dernier"] = "pause"
+        return etat
+    for rang, (quand, _, _, chemin) in enumerate(messages[:ENVOIS_MAX]):
+        if rang:
+            attendre(1.0)
+        try:
+            with open(chemin, "r", encoding="utf-8-sig", errors="replace") as f:
+                brut = f.read().replace("\r\n", "\n")
+        except OSError:
+            continue
+        entete, _, texte = brut.partition("\n")
+        champs = entete.split(";")
+        if len(champs) != 3 or champs[0] != "v1" or not texte.strip():
+            _mettre_de_cote(chemin)
+            etat["erreur"] = f"message illisible mis de côté ({os.path.basename(chemin)})"
+            continue
+        genre, numero = champs[1], champs[2]
+        if maintenant - quand > RETARD_S:
+            texte = texte.rstrip("\n") + "\n\n⏱ Envoyé en retard (message de " + time.strftime("%H:%M", time.localtime(quand)) + ")"
+        try:
+            reponse = appeler_ok(appel, jeton, "sendMessage", {"chat_id": discussion, "text": rendre_html(texte), "parse_mode": "HTML"})
+            if not reponse.get("ok") and reponse.get("status") != 429:
+                # le HTML refusé (balise mal formée…) : renvoyé une fois en texte simple
+                reponse = appeler_ok(appel, jeton, "sendMessage", {"chat_id": discussion, "text": texte_brut(texte)})
+        except Injoignable as erreur:
+            etat.update(dernier="injoignable", erreur=str(erreur))
+            break
+        if not reponse.get("ok") and reponse.get("status") == 429:
+            attente = (reponse.get("parameters") or {}).get("retry_after")
+            attente = attente if isinstance(attente, (int, float)) and 0 < attente <= 3600 else 5
+            etat.update(dernier="pause", pauseJusqu=int(maintenant + attente), erreur=f"Telegram demande d’attendre {int(attente)} s")
+            break
+        if not reponse.get("ok"):
+            _mettre_de_cote(chemin)
+            etat.update(dernier="refus", erreur=f"Telegram a refusé un message ({_raison(reponse)})")
+            if genre == "essai":
+                etat["essai"] = {"numero": numero, "resultat": "refus"}
+            continue
+        _effacer(chemin)
+        etat["envoyes"] += 1
+        etat["dernier"] = "ok"
+        if genre == "essai":
+            etat["essai"] = {"numero": numero, "resultat": "ok"}
+    etat["attente"] = len(messages_en_attente(dossier))
+    return etat

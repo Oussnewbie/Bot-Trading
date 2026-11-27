@@ -587,7 +587,7 @@ def test_ex2_risque_reel_d_plafonne():
     corps = fonction("bool LegOpen(SLeg &g, int dir, double stop, string quoi, double ref = 0)")
     assert "MathAbs(px - gEntry) / ts * tv" in corps
     assert "double capR = MathFloor(gV8RiskMoney / perLotReal / step + 0.000001) * step;" in corps
-    assert '"\\nRisque " + Montant(lots * (estD && perLotReal > 0 ? perLotReal : perLot))' in corps   # format des messages du 27/11/2026
+    assert '"\\n**Risque** " + Montant(lots * (estD && perLotReal > 0 ? perLotReal : perLot))' in corps   # format des messages du 27/11/2026
 
 
 def test_ex3_journal_version_2():
@@ -874,15 +874,17 @@ def appels(nom):
 
 def test_telegram_ne_recoit_que_connexion_ordres_entrees_et_clotures():
     vers_telegram = [a for a in appels("Notify") if re.search(r",\s*true\)$", a)]
-    reperes = ['I_PLUG + "Connecté · "', 'I_PIN + "Ordres posés · "', 'Notify(id + "\\nEntrée " + PxF(gEntry)', '"\\nEntrée " + PxF(g.entry)',
-               '(gDir == 1 ? "Achat A · " : "Vente A · ")', '(g.dir == 1 ? "Achat " : "Vente ") + g.nom']
+    reperes = ['I_GREEN + "**Connecté · "', 'I_WAIT + "**Ordres posés · "', 'Notify(id + "**\\n\\n**Entrée** " + PxF(gEntry)',
+               '"**\\n\\n**Entrée** " + PxF(g.entry)', 'I_TARGET + "**OBJECTIF ATTEINT · "',
+               '(gDir == 1 ? "**ACHAT A clôturé · " : "**VENTE A clôturée · ")', '(g.dir == 1 ? "ACHAT " : "VENTE ") + g.nom']
     assert len(vers_telegram) == len(reperes)
     for repere in reperes:
         assert sum(repere in a for a in vers_telegram) == 1, repere
     corps = fonction("void Notify(string msg, bool tg = false)")
-    # tout va au journal ; push, WhatsApp et Telegram seulement sur demande
-    assert corps.index("Print(full);") < corps.index("if(!tg)") < corps.index("SendNotification(") < corps.index("gQueue[n] = msg;")
-    assert "string p = msg;" in corps          # le titre du message porte déjà le marché : pas d'en-tête « Étrave · <symbole> »
+    # tout va au journal, sans les marques de gras ; push et WhatsApp aussi ; Telegram par Étrave seulement sur demande
+    assert 'string net = msg;\n   StringReplace(net, "**", "");' in corps
+    assert corps.index("Print(full);") < corps.index("if(!tg)") < corps.index("SendNotification(") < corps.index("gQueue[n] = net;")
+    assert "string p = net;" in corps and 'TelegramEtrave(msg, "msg", 0);' in corps
 
 
 def test_les_alertes_de_securite_vont_dans_etrave():
@@ -912,18 +914,22 @@ def test_message_de_connexion_une_fois_par_configuration():
     lecture = fonction("void ReadSettings()")
     assert 'if(gTgOn && gTgHello != gTgToken + "|" + gTgChat)' in lecture
     bloc = lecture[lecture.index('if(gTgOn && gTgHello'):]
-    assert bloc.index('gTgHello = gTgToken + "|" + gTgChat;') < bloc.index("Notify(I_PLUG")
+    assert bloc.index('gTgHello = gTgToken + "|" + gTgChat;') < bloc.index("Notify(I_GREEN")
     assert lecture.index("gRiskPct  = risk;") < lecture.index("if(gTgOn && gTgHello")   # le risque annoncé est celui appliqué
     assert lecture.index("gTgtR     = tgt;") < lecture.index("if(gTgOn && gTgHello")    # l'objectif annoncé aussi
     message = [a for a in appels("Notify") if "Connecté · " in a][0]
     assert "ACCOUNT_LOGIN" not in message                                    # pas de numéro de compte sur Telegram
+    assert '"**\\n\\n**Compte** "' in message and '"\\n**Risque** "' in message and '"\\n**Objectif** "' in message
 
 
 def test_les_clotures_donnent_le_resultat_en_R_et_en_dollars():
     clotures = [a for a in appels("Notify") if "SoldeTxt()" in a and re.search(r",\s*true\)$", a)]
-    assert len(clotures) == 2                                                    # la cassure A et les entrées B, C, D
+    assert len(clotures) == 3                                                    # A, A à l'objectif, entrées B, C, D
     for appel in clotures:
-        assert '"\\n" + RTxt2(r) + "\\n" + Dollars(net)' in appel and "IcoSortie(why) + why" in appel and '"\\nSolde " + SoldeTxt()' in appel
+        assert '**Résultat** " + RTxt2(r) + "\\n" + GainPerte(net)' in appel and '"\\n\\n**Solde** " + SoldeTxt()' in appel
+    assert sum("MotifTxt(why)" in a for a in clotures) == 2                      # le motif, sauf à l'objectif (dans le titre)
+    gp = fonction("string GainPerte(double net)")
+    assert 'return (NormalizeDouble(net, 2) < 0 ? "**Perte** " : "**Gain** ") + Dollars(net);' in gp
 
 
 def nombre_fr(v, dec):
@@ -1118,15 +1124,17 @@ def test_court_et_montant_dans_l_ea():
 
 
 def test_messages_telegram_une_info_par_ligne():
-    """Format validé par l'utilisateur le 27/11/2026 : un titre avec le marché, puis une info par ligne, sans phrase."""
+    """Format validé par l'utilisateur le 27/11/2026 : titre en gras avec le marché, blocs séparés d'une ligne vide, une info par
+    ligne avec son nom en gras, sans phrase."""
     for appel in appels("Notify"):
         if re.search(r",\s*true\)$", appel):
-            assert "_Symbol" in appel.split('"\\n')[0] or "Notify(id +" in appel, appel[:60]          # le marché dans le titre
+            assert "Marche()" in appel.split('"\\n')[0] or "Notify(id +" in appel, appel[:60]          # le marché dans le titre
+            assert '**\\n\\n' in appel, appel[:60]                                                     # titre en gras, puis un bloc
             for phrase in ("Tu recevras", "Depuis le début", "Règle mémoire", "glissement", "Valables jusqu"):
                 assert phrase not in appel, (phrase, appel[:60])
-    assert 'string id = (gDir == 1 ? I_UP + "Achat A · " : I_DOWN + "Vente A · ") + _Symbol;' in EA
-    cloture = [a for a in appels("Notify") if '(gDir == 1 ? "Achat A · " : "Vente A · ")' in a][0]
-    assert cloture.startswith('Notify((why == "Objectif" ? I_TARGET :') and '(why == "Objectif" ? "Objectif atteint" : IcoSortie(why) + why)' in cloture
+    assert 'string id = (gDir == 1 ? I_UP + "**ACHAT A · " : I_DOWN + "**VENTE A · ") + Marche();' in EA
+    marche = fonction("string Marche()")
+    assert 'gInstr == "nasdaq" ? "Nasdaq" : gInstr == "sp500" ? "S&P 500" : _Symbol' in marche
 
 
 # ───────────────────────── objectif dans le script TradingView ─────────────────────────
@@ -1139,3 +1147,46 @@ def test_objectif_de_a_dans_le_script():
     assert 'strategy.close_all(comment = "Objectif de A")' in bloc
     assert 'notify("OBJECTIF DE A ATTEINT' in bloc
     assert PINE.index("string whyA = strategy.closedtrades.exit_comment(aClosedK)") < PINE.index("        recordClose(cur, aClosedK)")
+
+
+
+# ───────────────────────── Telegram envoyé par Étrave (décision de l'utilisateur du 27/11/2026) ─────────────────────────
+# Sur ce Mac, MetaTrader oublie l'autorisation WebRequest à chaque redémarrage. L'EA n'envoie plus Telegram lui-même : il écrit un
+# fichier par message (Etrave\telegram-<secondes>-<n°>-<symbole>.txt, écrit sous un nom provisoire puis renommé) qu'Étrave envoie.
+
+def test_un_fichier_par_message_ecrit_d_un_coup():
+    ecrire = fonction("bool TelegramEcrire(string nom, string contenu)")
+    assert 'string tmp = UI_DIR + nom + ".tmp";' in ecrire and "FileWriteString(h, contenu);" in ecrire
+    assert 'FileMove(tmp, FILE_COMMON, UI_DIR + nom + ".txt", FILE_COMMON | FILE_REWRITE)' in ecrire
+    envoi = fonction("bool TelegramEtrave(string texte, string genre, long numero)")
+    assert 'StringFormat("telegram-%I64d-%05d-%s", (long)TimeGMT(), gTgSeq % 100000, gSymFile)' in envoi and "gTgSeq++;" in envoi
+    assert '"v1;" + genre + ";" + IntegerToString(numero) + "\\n" + texte' in envoi
+    assert "if(MQLInfoInteger(MQL_TESTER) || !InpUseUI)" in envoi
+    assert "gTgToken" not in envoi and "gTgChat" not in envoi                  # jamais le jeton ni la discussion dans le fichier
+    minuteur = fonction("void OnTimer()")
+    assert "TelegramReessayer();" in minuteur                                  # un fichier impossible à écrire est réessayé
+
+
+def test_l_ea_n_envoie_plus_telegram_lui_meme():
+    envoi = fonction("void FlushNotifs()")
+    assert "SendTelegram(" not in envoi and "SendWhatsApp(msg);" in envoi     # WhatsApp garde son envoi par MetaTrader
+    essai = fonction("void ReadSettings()")
+    assert 'TelegramEtrave(I_WIN + "**Essai réussi · " + Marche() + "**\\n\\nMetaTrader → Étrave → Telegram", "essai", test) ? "relaye" : "fichier"' in essai
+    assert 'gTgLast = "etrave";' in EA
+
+
+def test_emojis_en_couleur():
+    """⬆ ⬇ ⚖ ✋ s'affichent comme des emojis seulement suivis du sélecteur U+FE0F."""
+    assert "string IcoVS(ushort code) { return ShortToString(code) + ShortToString(0xFE0F) + \" \"; }" in EA
+    for nom, code in (("I_UP", "0x2B06"), ("I_DOWN", "0x2B07"), ("I_SCALE", "0x2696"), ("I_HAND", "0x270B")):
+        assert re.search(rf"#define {nom}\s+IcoVS\({code}\)", EA), nom
+    for nom, code in (("I_GREEN", "0x1F7E2"), ("I_WAIT", "0x23F3"), ("I_CLOCK", "0x1F553")):
+        assert re.search(rf"#define {nom}\s+Ico\({code}\)", EA), nom
+
+
+def test_motif_de_sortie_en_clair():
+    motif = fonction("string MotifTxt(string why)")
+    for why, texte in (("Stop", "Stop touché"), ("Fermeture manuelle", "Fermé à la main")):
+        assert f'if(why == "{why}")\n      return IcoSortie(why) + "{texte}";' in motif, why
+    assert 'if(StringFind(why, "nterface") >= 0)\n      return IcoSortie(why) + "Fermé depuis Étrave";' in motif
+    assert motif.rstrip().endswith("return IcoSortie(why) + why;\n  }")

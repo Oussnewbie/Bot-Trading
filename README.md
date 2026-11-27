@@ -130,9 +130,10 @@ automatiquement ».
 - **Compte « hedging » obligatoire.** Sur un compte « netting », B et D sont coupées.
 - **Numéros magiques** : A = 50930, B = +1, D1 à D3 = +3 à +5. Le filet de sécurité de l'EA surveille de 50930 à 50939 : ne fais
   jamais tourner sur le même compte un autre robot qui utilise l'un de ces numéros.
-- **Telegram** : dans Outils > Options > Expert Advisors, autorise `https://api.telegram.org` pour WebRequest. Telegram (comme
-  WhatsApp et la notification push) ne reçoit que la connexion réussie, les ordres posés, les entrées exécutées et chaque clôture
-  avec son résultat en R et en dollars : un titre avec le marché, puis une info par ligne. Les alertes de sécurité (stop absent chez le courtier, fermeture de sécurité, ordre refusé,
+- **Telegram** : envoyé par Étrave (depuis le 27/11/2026 : MetaTrader pour Mac oubliait l'autorisation WebRequest à chaque
+  redémarrage). L'EA dépose chaque message dans le dossier d'Étrave, qui l'envoie dans les secondes qui suivent ; Étrave doit donc
+  tourner, et « Lire le risque, les cases et Telegram dans l'interface Étrave » rester coché (sinon, pas de Telegram). Telegram ne reçoit que la connexion réussie, les ordres posés, les entrées exécutées et chaque clôture
+  avec son résultat en R et en dollars : un titre en gras avec le marché, puis des blocs séparés d'une ligne vide, une info par ligne. Les alertes de sécurité (stop absent chez le courtier, fermeture de sécurité, ordre refusé,
   jour manqué, heure fausse…) s'affichent en tête de la page d'Étrave pendant 24 heures. Le journal de MetaTrader garde tout.
 - **Où le faire tourner** : un ordinateur sans mise en veille pour la démo, un VPS Windows pour le réel. MetaTrader doit rester ouvert
   de 9:30 à 15:50.

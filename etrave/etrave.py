@@ -46,6 +46,7 @@ RACINE = os.path.dirname(ICI)
 SOURCE_EA = os.path.join(RACINE, "robot", "Strategy-V11.mq5")
 PORT = 8788
 CORPS_MAX = 64 * 1024
+RELAIS_PERIODE_S = 5            # relais des messages Telegram de l'EA (27/11/2026)
 EN_TETE_JETON = "x-etrave-jeton"
 # `tasklist` lance un programme : on ne le redemande pas à chaque rafraîchissement de la page.
 MT5_OUVERT_CACHE_S = 5.0
@@ -98,6 +99,9 @@ class Application:
         self._mt5_terminaux = mt5_terminaux or mt5.terminaux
         self.journal = journal or (lambda message: None)
         self._ouvert = (0.0, None)
+        # Relais Telegram (27/11/2026) : état du dernier passage, publié dans /api/etat
+        self._relais = {"attente": 0, "dernier": "", "quand": 0, "erreur": "", "envoyes": 0, "pauseJusqu": 0, "essai": None}
+        self._verrou_relais = threading.Lock()
         self._interrupteur = None                       # AUD-09 : dernière vérification (verifier_interrupteur)
         self._interrupteur_annonce = set()              # franchissements déjà écrits dans le journal par ce processus
         self._verrou_interrupteur = threading.Lock()
@@ -119,7 +123,8 @@ class Application:
             "lancement": self.lancement(self._mt5_terminaux(etats)),
             # AUD-09 : la dernière vérification de l'interrupteur (None avant la première), par symbole et avec son marché
             "interrupteur": self._interrupteur,
-            "alertes": pont.lire_alertes(self.dossier),     # alertes de sécurité de l'EA (27/11/2026 : ici, plus sur Telegram)
+            "alertes": pont.lire_alertes(self.dossier),
+            "telegramRelais": self._relais,                     # 27/11/2026 : Telegram part d'Étrave     # alertes de sécurité de l'EA (27/11/2026 : ici, plus sur Telegram)
             "video": self.video(),
         }
 
@@ -335,6 +340,29 @@ class Application:
         return {"exports": export.exports_faits(self.dossier), "dossier": racine,
                 "journaux": os.path.join(racine, export.SOUS_DOSSIER_JOURNAUX),
                 "enCours": export.trimestre_de(export.aujourdhui_ny())}
+
+    def relayer_telegram(self, maintenant=None, attendre=time.sleep):
+        """Envoie les messages que l'EA a déposés pour Telegram (décision de l'utilisateur du 27/11/2026). Ne lève jamais d'erreur ;
+        un seul passage à la fois."""
+        if not self._verrou_relais.acquire(blocking=False):
+            return self._relais
+        try:
+            precedent = self._relais
+            r = telegram.relayer(self.dossier, self.appel_telegram, maintenant=maintenant, attendre=attendre,
+                                 pause_jusqu=precedent.get("pauseJusqu", 0))
+            if r["essai"] is None:
+                r["essai"] = precedent.get("essai")
+            if not r["dernier"]:
+                r["dernier"] = precedent.get("dernier", "")
+                r["erreur"] = r["erreur"] or precedent.get("erreur", "")
+            if r["erreur"] and r["erreur"] != precedent.get("erreur"):
+                self.journal(f"Telegram : {r['erreur']}")
+            self._relais = r
+        except Exception as erreur:
+            self.journal(f"relais Telegram impossible ({type(erreur).__name__}), nouvel essai dans 5 secondes")
+        finally:
+            self._verrou_relais.release()
+        return self._relais
 
     def sauvegarder_journaux(self):
         """Copie les journaux de l'EA qui ont changé dans « Étrave exports/journaux/ » (demande de l'utilisateur du 27/11/2026).
@@ -654,6 +682,15 @@ def main(arguments=None):
     depart = threading.Timer(5.0, exporter_puis_reprogrammer)
     depart.daemon = True
     depart.start()
+
+    def relayer_puis_reprogrammer():                    # 27/11/2026 : les messages Telegram de l'EA partent d'ici
+        serveur.application.relayer_telegram()
+        minuterie = threading.Timer(RELAIS_PERIODE_S, relayer_puis_reprogrammer)
+        minuterie.daemon = True
+        minuterie.start()
+    relais = threading.Timer(3.0, relayer_puis_reprogrammer)
+    relais.daemon = True
+    relais.start()
 
     def verifier_interrupteur_puis_reprogrammer():      # AUD-09 : toutes les 10 minutes, comme l'export
         serveur.application.verifier_interrupteur()

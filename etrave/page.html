@@ -1240,13 +1240,23 @@ async function testTelegramMt5() {
   catch (error) { mt5Test = { error: error.message }; }
   renderConnections();
 }
-/** Ce que l'EA a répondu à la demande d'essai en cours, s'il a répondu. */
+/** Ce que l'EA, puis Étrave, ont fait de la demande d'essai en cours (27/11/2026 : le message passe par Étrave). */
 function mt5TestOutcome() {
   if (!mt5Test || !mt5Test.numero || !state) return null;
+  const relais = state.telegramRelais;
+  if (relais && relais.essai && String(relais.essai.numero) === String(mt5Test.numero)) return { symbole: 'Étrave', resultat: relais.essai.resultat };
   for (const e of state.eas) {
     const [numero, ...rest] = String(e.telegram_essai || '').split(':');
     if (numero === mt5Test.numero) return { symbole: e.symbole, resultat: rest.join(':') };
   }
+  return null;
+}
+/** L'état du relais Telegram d'Étrave, en une ligne quand quelque chose ne va pas. */
+function relaisProbleme() {
+  const r = state && state.telegramRelais;
+  if (!r) return null;
+  if (r.dernier === 'injoignable') return `Étrave n’arrive pas à joindre Telegram (${r.erreur}). ${r.attente} message(s) en attente, nouvel essai toutes les 5 secondes.`;
+  if (r.dernier === 'refus' || r.dernier === 'pause') return `${r.erreur}. ${r.attente} message(s) en attente.`;
   return null;
 }
 const secretInput = (id, placeholder, type) => el('input', { type: type || 'password', id, placeholder, autocomplete: 'off', spellcheck: false, 'aria-label': placeholder });
@@ -1258,7 +1268,6 @@ function fold(key, title, defaultOpen, summary, ...children) {
   return node;
 }
 const statusLine = (on, text) => el('div', { class: `status${on ? ' on' : ''}` }, el('span', { class: 'dot' }), text);
-const MT5_BLOCKED = 'MetaTrader bloque l’envoi. Dans MetaTrader 5 : Outils > Options > Expert Advisors, coche « Autoriser WebRequest pour les URL listées » et ajoute https://api.telegram.org, puis réessaie.';
 function renderConnections() {
   const host = $('connections');
   if (!state) return host.replaceChildren(el('div', { class: 'empty' }, 'Chargement…'));
@@ -1285,8 +1294,9 @@ function renderConnections() {
   if (mt5Test) {
     const answer = mt5TestOutcome();
     if (mt5Test.error) outcome.append(el('div', { class: 'banner bad' }, mt5Test.error));
-    else if (answer && answer.resultat === 'ok') outcome.append(el('div', { class: 'banner ok' }, `MetaTrader (${answer.symbole}) a envoyé son message d’essai : les alertes des trades arriveront.`));
-    else if (answer && answer.resultat === 'bloque') outcome.append(el('div', { class: 'banner bad' }, MT5_BLOCKED));
+    else if (answer && answer.resultat === 'ok') outcome.append(el('div', { class: 'banner ok' }, 'Telegram a reçu le message d’essai de MetaTrader (passé par Étrave) : les alertes des trades arriveront.'));
+    else if (answer && answer.resultat === 'relaye') outcome.append(el('div', { class: 'banner' }, `L’EA (${answer.symbole}) a déposé son message d’essai : Étrave l’envoie dans les secondes qui viennent…`));
+    else if (answer && answer.resultat === 'fichier') outcome.append(el('div', { class: 'banner bad' }, `L’EA (${answer.symbole}) n’a pas pu écrire son message pour Étrave : vérifie qu’il tourne et que « Lire le risque, les cases et Telegram dans l’interface Étrave » est coché dans ses réglages.`));
     else if (answer && answer.resultat === 'occupe') outcome.append(el('div', { class: 'banner' }, `L’EA (${answer.symbole}) est occupé (cassure guettée, entrée surveillée ou trade en cours) : il ne fait pas d’essai à ce moment-là. Réessaie après la sortie de 15:50 New York.`));
     else if (answer && answer.resultat === 'inactif') outcome.append(el('div', { class: 'banner' }, 'L’EA n’a pas encore pris le jeton et la discussion : réessaie dans quelques secondes.'));
     else if (answer && answer.resultat === 'expire') outcome.append(el('div', { class: 'banner' }, 'La demande est arrivée trop tard à l’EA : réessaie.'));
@@ -1294,18 +1304,18 @@ function renderConnections() {
     else if (mt5Test.pending || Date.now() - mt5Test.depuis < 20000) outcome.append(el('div', { class: 'banner' }, 'Demande envoyée à MetaTrader, réponse dans quelques secondes…'));
     else outcome.append(el('div', { class: 'banner bad' }, 'MetaTrader n’a pas répondu. Vérifie que l’EA tourne (pastille en haut de la page) et que « Lire le risque, les cases et Telegram dans l’interface Étrave » est coché dans ses réglages.'));
   }
-  const sending = live.find((e) => e.telegram_envoi === 'bloque');
+  const probleme = ready ? relaisProbleme() : null;
   const telegram = fold('telegram', 'Alertes Telegram', true, ready ? 'configuré' : 'non configuré',
     el('div', { class: 'hint' }, 'Facultatif. Connexion réussie, ordres posés, entrées exécutées et clôtures (en R et en dollars) arrivent sur ton téléphone. Les alertes de sécurité s’affichent en tête de cette page, pas sur Telegram.'),
     statusLine(ready, ready ? (live.length && !live.some((e) => e.telegram) ? 'Configuré (l’EA le prend dans les 2 secondes)' : 'Configuré') : c.telegramJeton ? 'Jeton enregistré, discussion à choisir' : 'Non configuré'),
-    sending ? el('div', { class: 'banner bad' }, MT5_BLOCKED) : null,
+    probleme ? el('div', { class: 'banner bad' }, probleme) : null,
     // les cinq étapes : ouvertes tant que Telegram n'est pas configuré, puis repliées (le choix fait ici est retenu)
     pli(`telegram-etapes:${ready ? 1 : 0}`, !ready, 'etapes', ['Les étapes'], el('ol', {},
       el('li', {}, 'Dans Telegram, ouvre une discussion avec @BotFather (le compte officiel, coche bleue) et envoie /newbot.'),
       el('li', {}, 'Il te donne un jeton : colle-le ci-dessous et enregistre.'),
       el('li', {}, 'Toujours dans Telegram, ouvre ton nouveau bot et envoie-lui un message.'),
       el('li', {}, 'Clique sur « Trouver ma discussion et tester ».'),
-      el('li', {}, 'Dans MetaTrader 5 : Outils > Options > Expert Advisors, coche « Autoriser WebRequest pour les URL listées » et ajoute https://api.telegram.org. Puis clique sur « Essai depuis MetaTrader ».'))),
+      el('li', {}, 'Clique sur « Essai depuis MetaTrader » : le message part de l’EA et Étrave l’envoie sur Telegram. Rien à régler dans MetaTrader.'))),
     el('div', { class: 'secret-row' }, tokenInput,
       el('button', { class: 'btn primary', onclick: () => { if (tokenInput.value.trim()) { telegramResult = null; mt5Test = null; renderConnections.drawn = false; saveConnection({ telegram_jeton: tokenInput.value, telegram_discussion: '' }); } } }, 'Enregistrer le jeton')),
     el('div', { class: 'secret-row' },

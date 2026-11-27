@@ -302,6 +302,8 @@ bool     gTgOn      = false;    // Telegram actif
 string   gTgToken   = "", gTgChat = "";
 string   gTgLast    = "jamais"; // résultat du dernier envoi Telegram : ok, bloque (WebRequest interdit) ou refus <code>
 string   gTgTest    = "";       // réponse à la dernière demande d'essai : <numéro>:<résultat>
+int      gTgSeq     = (int)(GetTickCount() % 100000);   // numéro d'ordre des messages pour Étrave (même seconde)
+string   gTgWaitNom[], gTgWaitTxt[];                       // messages pour Étrave pas encore écrits
 string   gTgHello   = "";       // configuration Telegram (jeton|discussion) déjà saluée par le message de connexion
 string   gAlertWait[];          // alertes de sécurité pour Étrave pas encore écrites (fichier verrouillé)
 long     gTestSeen  = -1;       // dernière demande d'essai vue (-1 = fichier jamais lu)
@@ -616,6 +618,7 @@ string SoldeTxt()
   }
 // Pictogrammes des messages, écrits par leur numéro pour ne pas dépendre de l'encodage de ce fichier. Au-delà de 0xFFFF
 // (punaise, cible, panneau stop…), deux unités UTF-16 (paire de substitution) : les chaînes MQL5 sont en UTF-16.
+string IcoVS(ushort code) { return ShortToString(code) + ShortToString(0xFE0F) + " "; }   // ⬆ ⬇ ⚖ ✋ en couleur (emoji)
 string Ico(uint code)
   {
    if(code <= 0xFFFF)
@@ -633,17 +636,42 @@ string Ico(uint code)
 #define I_NONE    Ico(0x26D4)   // sens interdit
 #define I_WARN    Ico(0x26A0)   // attention
 #define I_GEAR    Ico(0x2699)   // réglage
-#define I_HAND    Ico(0x270B)   // main
+#define I_HAND    IcoVS(0x270B) // main
 #define I_PIN     Ico(0x1F4CC)  // punaise : ordres posés
-#define I_UP      Ico(0x1F4C8)  // courbe qui monte : achat exécuté
-#define I_DOWN    Ico(0x1F4C9)  // courbe qui descend : vente exécutée
+#define I_UP      IcoVS(0x2B06) // flèche vers le haut : achat
+#define I_DOWN    IcoVS(0x2B07) // flèche vers le bas : vente
 #define I_PLUG    Ico(0x1F50C)  // prise : connexion réussie
 #define I_TARGET  Ico(0x1F3AF)  // cible : objectif atteint
 #define I_STOP    Ico(0x1F6D1)  // panneau stop : stop touché
-#define I_SCALE   Ico(0x2696)   // balance : stop au prix d'entrée
+#define I_SCALE   IcoVS(0x2696) // balance : stop au prix d'entrée
 #define I_LOCKED  Ico(0x1F512)  // cadenas : stop remonté après la pyramide
-#define I_CLOCK   Ico(0x1F552)  // horloge : sortie de fin de journée
+#define I_CLOCK   Ico(0x1F553)  // horloge : sortie de fin de journée
+#define I_GREEN   Ico(0x1F7E2)  // rond vert : connecté
+#define I_WAIT    Ico(0x23F3)   // sablier : ordres posés, en attente
 #define I_BANK    Ico(0x1F4B0)  // sac d'argent : solde
+
+// Motif de sortie en clair, avec son pictogramme (messages Telegram, format du 27/11/2026)
+string MotifTxt(string why)
+  {
+   if(why == "Stop")
+      return IcoSortie(why) + "Stop touché";
+   if(why == "Fermeture manuelle")
+      return IcoSortie(why) + "Fermé à la main";
+   if(StringFind(why, "nterface") >= 0)
+      return IcoSortie(why) + "Fermé depuis Étrave";
+   return IcoSortie(why) + why;
+  }
+
+string GainPerte(double net)
+  {
+   return (NormalizeDouble(net, 2) < 0 ? "**Perte** " : "**Gain** ") + Dollars(net);
+  }
+
+// Le marché en clair dans les titres : Nasdaq, S&P 500
+string Marche()
+  {
+   return gInstr == "nasdaq" ? "Nasdaq" : gInstr == "sp500" ? "S&P 500" : _Symbol;
+  }
 
 // Pictogramme du motif de sortie, dans les messages Telegram des clôtures
 string IcoSortie(string why)
@@ -738,7 +766,9 @@ string SendTelegram(string msg)   // "ok", "bloque" (MetaTrader interdit l'adres
 // l'entrée ni un stop.
 void Notify(string msg, bool tg = false)
   {
-   string full = BOT + " · " + _Symbol + "\n" + msg;
+   string net = msg;
+   StringReplace(net, "**", "");
+   string full = BOT + " · " + _Symbol + "\n" + net;
    Print(full);
    if(MQLInfoInteger(MQL_TESTER) || MQLInfoInteger(MQL_OPTIMIZATION))
       return;
@@ -746,18 +776,20 @@ void Notify(string msg, bool tg = false)
       AlerteEtrave(msg);
    if(!tg)
       return;
+   if(gTgOn)
+      TelegramEtrave(msg, "msg", 0);   // décision du 27/11/2026 : Telegram part d'Étrave, plus de MetaTrader
    if(InpPush)
      {
-      string p = msg;
+      string p = net;
       StringReplace(p, "\n", " · ");
       SendNotification(StringSubstr(p, 0, 255));
      }
    bool wa = InpWhatsApp && InpWaPhone != "" && InpWaKey != "";
    int  n  = ArraySize(gQueue);
-   if((wa || gTgOn) && n < QUEUE_MAX)
+   if(wa && n < QUEUE_MAX)
      {
       ArrayResize(gQueue, n + 1);
-      gQueue[n] = msg;
+      gQueue[n] = net;
      }
   }
 
@@ -788,8 +820,57 @@ void FlushNotifs()
    ArrayResize(gQueue, n - 1);
    if(wa)
       SendWhatsApp(msg);
-   if(gTgOn)
-      gTgLast = SendTelegram(msg);
+  }
+
+// Décision de l'utilisateur du 27/11/2026 : MetaTrader pour Mac oublie l'autorisation WebRequest à chaque redémarrage. L'EA
+// n'envoie plus Telegram : il écrit un fichier par message, Etrave\telegram-<secondes>-<n°>-<symbole>.txt (« v1;<genre>;<numéro> »,
+// puis le texte avec ses **gras**), sous un nom provisoire puis renommé : Étrave ne lit jamais un message à moitié écrit, les
+// envoie dans l'ordre et les efface. Jamais le jeton ni la discussion dans le fichier. Un fichier impossible à écrire est réessayé
+// toutes les 2 secondes (OnTimer), 50 au plus en attente.
+bool TelegramEtrave(string texte, string genre, long numero)
+  {
+   if(MQLInfoInteger(MQL_TESTER) || !InpUseUI)
+      return false;
+   string nom = StringFormat("telegram-%I64d-%05d-%s", (long)TimeGMT(), gTgSeq % 100000, gSymFile);
+   gTgSeq++;
+   gTgLast = "etrave";
+   string contenu = "v1;" + genre + ";" + IntegerToString(numero) + "\n" + texte;
+   if(TelegramEcrire(nom, contenu))
+      return true;
+   int n = ArraySize(gTgWaitNom);
+   if(n < 50)
+     {
+      ArrayResize(gTgWaitNom, n + 1);
+      ArrayResize(gTgWaitTxt, n + 1);
+      gTgWaitNom[n] = nom;
+      gTgWaitTxt[n] = contenu;
+     }
+   return false;
+  }
+
+bool TelegramEcrire(string nom, string contenu)
+  {
+   string tmp = UI_DIR + nom + ".tmp";
+   int h = FileOpen(tmp, FILE_WRITE | FILE_TXT | FILE_ANSI | FILE_COMMON, 0, CP_UTF8);
+   if(h == INVALID_HANDLE)
+      return false;
+   FileWriteString(h, contenu);
+   FileClose(h);
+   return FileMove(tmp, FILE_COMMON, UI_DIR + nom + ".txt", FILE_COMMON | FILE_REWRITE);
+  }
+
+void TelegramReessayer()
+  {
+   int n = ArraySize(gTgWaitNom);
+   if(n == 0 || !TelegramEcrire(gTgWaitNom[0], gTgWaitTxt[0]))
+      return;
+   for(int i = 1; i < n; i++)
+     {
+      gTgWaitNom[i - 1] = gTgWaitNom[i];
+      gTgWaitTxt[i - 1] = gTgWaitTxt[i];
+     }
+   ArrayResize(gTgWaitNom, n - 1);
+   ArrayResize(gTgWaitTxt, n - 1);
   }
 
 //+------------------------------------------------------------------+
@@ -1352,10 +1433,14 @@ bool RecordClose(bool force)   // false = un deal de sortie n'est pas encore dan
    AppendTrade(tx, r, net, why);
    Print(BOT + " · " + _Symbol + " · cassure A sortie à " + Px(px) + " (" + why + (gPyr ? ", avec pyramide" : "") + ") : " + RTxt(r) + ", " + PctS(pct) +
          " ; depuis le début " + (string)gN + " trades, " + RTxt(gSumR) + (InpUseMem && gSkipNext ? " ; règle mémoire : le prochain signal ne sera pas pris" : ""));
-   Notify((why == "Objectif" ? I_TARGET : r > 0.05 ? I_WIN : r < -0.05 ? I_LOSS : I_FLAT) + (gDir == 1 ? "Achat A · " : "Vente A · ") + _Symbol +
-          "\n" + RTxt2(r) + "\n" + Dollars(net) +
-          "\n" + (why == "Objectif" ? "Objectif atteint" : IcoSortie(why) + why) +
-          "\nSolde " + SoldeTxt(), true);
+   if(why == "Objectif")
+      Notify(I_TARGET + "**OBJECTIF ATTEINT · " + Marche() + "**\n\n**" + (gDir == 1 ? "Achat A" : "Vente A") + "** clôturé" +
+             "\n**Résultat** " + RTxt2(r) + "\n" + GainPerte(net) +
+             "\n\n**Solde** " + SoldeTxt(), true);
+   else
+      Notify((r > 0.05 ? I_WIN : r < -0.05 ? I_LOSS : I_FLAT) + (gDir == 1 ? "**ACHAT A clôturé · " : "**VENTE A clôturée · ") + Marche() + "**\n\n" +
+             "**Résultat** " + RTxt2(r) + "\n" + GainPerte(net) + "\n" + MotifTxt(why) +
+             "\n\n**Solde** " + SoldeTxt(), true);
    // Décision de l'utilisateur du 27/11/2026 : l'objectif de A touché, tout est clôturé et plus aucune entrée ce jour-là
    if(why == "Objectif")
       ObjectifTouche();
@@ -1436,16 +1521,16 @@ void SyncPosition()
       gCloseWhy = "";
       gBalStart = AccountInfoDouble(ACCOUNT_BALANCE);
       DropPendingDraw();
-      string id = (gDir == 1 ? I_UP + "Achat A · " : I_DOWN + "Vente A · ") + _Symbol;
+      string id = (gDir == 1 ? I_UP + "**ACHAT A · " : I_DOWN + "**VENTE A · ") + Marche();
       double lvlIn = gDir == 1 ? gOrH : gOrL;
       // le détail reste au journal de MetaTrader ; Telegram reçoit l'essentiel, une info par ligne (format du 27/11/2026)
       Print(BOT + " · " + _Symbol + " · cassure A exécutée à " + Px(gEntry) + ", glissement " + Pts((gEntry - lvlIn) * gDir) + " (niveau " + Px(lvlIn) + ")" +
             (InpBeR > 0 ? ", stop à l'entrée dès " + Px(gEntry + gDir * InpBeR * gRisk) : "") +
             (InpUsePyr ? ", pyramide à " + Px(gEntry + gDir * InpPyrR * gRisk) : "") + ", sortie à " + (ShortDay(ToNY(t)) ? InpFlatShort : InpFlat) + " NY");
-      Notify(id + "\nEntrée " + PxF(gEntry) + "\nStop " + PxF(gSL) +
-             (gTgtTrade > 0 ? "\nObjectif " + PxF(gEntry + gDir * gTgtTrade * gRisk) : "") +
-             "\nTaille " + Nombre(gLots, VolDigits(SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_STEP))) + " lot" +
-             "\nRisque " + Montant(gRiskMoney), true);
+      Notify(id + "**\n\n**Entrée** " + PxF(gEntry) + "\n**Stop** " + PxF(gSL) +
+             (gTgtTrade > 0 ? "\n**Objectif** " + PxF(gEntry + gDir * gTgtTrade * gRisk) : "") +
+             "\n\n**Taille** " + Nombre(gLots, VolDigits(SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_STEP))) + " lot" +
+             "\n**Risque** " + Montant(gRiskMoney), true);
       gDayTxt = (gDir == 1 ? "Achat" : "Vente") + " en cours";
       SaveState();
      }
@@ -1720,12 +1805,12 @@ bool Setup()   // true = terminé (trade préparé ou pas de trade), false = don
          " ranges, " + DoubleToString(lots, vd) + " lot, " + RiskTxt(realPct) + " risqués" + (InpFixedLots > 0 ? " (lots fixes)" : "") +
          (cut ? ", taille réduite par la marge (il aurait fallu " + DoubleToString(want, vd) + " lot)" : "") + ", valables jusqu'à " + endT + " NY" +
          ((gPendDir != -1 && !gSrvL) || (gPendDir != 1 && !gSrvS) ? ", un côté surveillé par l'EA (entrée au marché)" : ", posés chez le courtier"));
-   Notify(I_PIN + "Ordres posés · " + _Symbol +
-          "\n" + (gPendDir != -1 ? "Achat " + PxF(gOrH) : "Achat bloqué (" + whyL + ")") +
-          "\n" + (gPendDir != 1 ? "Vente " + PxF(gOrL) : "Vente bloquée (" + whyS + ")") +
-          "\nStop " + PtsF(dist * gStopMult) +
-          "\nTaille " + Nombre(lots, vd) + " lot" +
-          "\nRisque " + Montant(gRiskMoney) +
+   Notify(I_WAIT + "**Ordres posés · " + Marche() + "**\n\n" +
+          I_UP + (gPendDir != -1 ? "**Achat** " + PxF(gOrH) : "**Achat** bloqué (" + whyL + ")") + "\n" +
+          I_DOWN + (gPendDir != 1 ? "**Vente** " + PxF(gOrL) : "**Vente** bloquée (" + whyS + ")") +
+          "\n\n**Stop** " + PtsF(dist * gStopMult) +
+          "\n**Taille** " + Nombre(lots, vd) + " lot" +
+          "\n**Risque** " + Montant(gRiskMoney) +
           (cut ? "\n" + I_WARN + "Taille réduite (marge)" : ""), true);
    SaveState();
    return true;
@@ -2374,11 +2459,11 @@ bool LegOpen(SLeg &g, int dir, double stop, string quoi, double ref = 0)
    Print(BOT + " · " + _Symbol + " · entrée " + g.nom + " exécutée : " + quoi + ", stop " + Px(sl) + (estD ? " (entrée de A)" : "") +
          ", risque au plus celui de la cassure (" + DoubleToString(gV8RiskMoney, 2) + ")" + (InpBeR > 0 ? ", stop à l'entrée dès " + Px(g.entry + dir * InpBeR * g.risk) : "") +
          ((g.pyrOk && InpUsePyr) ? ", pyramide à " + Px(g.entry + dir * InpPyrR * g.risk) : ""));
-   Notify((dir == 1 ? I_UP + "Achat " : I_DOWN + "Vente ") + g.nom + " · " + _Symbol +
-          "\nEntrée " + PxF(g.entry) +
-          "\nStop " + PxF(sl) +
-          "\nTaille " + Nombre(lots, vd) + " lot" +
-          "\nRisque " + Montant(lots * (estD && perLotReal > 0 ? perLotReal : perLot)), true);
+   Notify((dir == 1 ? I_UP + "**ACHAT " : I_DOWN + "**VENTE ") + g.nom + " · " + Marche() +
+          "**\n\n**Entrée** " + PxF(g.entry) +
+          "\n**Stop** " + PxF(sl) +
+          "\n\n**Taille** " + Nombre(lots, vd) + " lot" +
+          "\n**Risque** " + Montant(lots * (estD && perLotReal > 0 ? perLotReal : perLot)), true);
    // repères sur le graphique : lettre de l'entrée et stop de départ
    color lc = g.nom == "B" ? clrDodgerBlue : StringSubstr(g.nom, 0, 1) == "D" ? clrTeal : clrMediumOrchid;
    Txt(GV + "in" + g.nom + "_" + (string)g.day, t, g.entry, " " + g.nom + " " + Px(g.entry), lc, (ENUM_ANCHOR_POINT)(dir == 1 ? ANCHOR_LEFT_UPPER : ANCHOR_LEFT_LOWER));
@@ -2548,10 +2633,9 @@ bool LegRecord(SLeg &g, bool force)
    AppendLegTrade(g, tx, r, net, why);
    Print(BOT + " · " + _Symbol + " · entrée " + g.nom + " sortie à " + Px(px) + " (" + why + (g.pyr ? ", avec pyramide" : "") + ") : " + RTxt(r) + ", " + PctS(pct) +
          " ; depuis le début " + (string)gN + " trades, " + RTxt(gSumR));
-   Notify((r > 0.05 ? I_WIN : r < -0.05 ? I_LOSS : I_FLAT) + (g.dir == 1 ? "Achat " : "Vente ") + g.nom + " · " + _Symbol +
-          "\n" + RTxt2(r) + "\n" + Dollars(net) +
-          "\n" + IcoSortie(why) + why +
-          "\nSolde " + SoldeTxt(), true);
+   Notify((r > 0.05 ? I_WIN : r < -0.05 ? I_LOSS : I_FLAT) + "**" + (g.dir == 1 ? "ACHAT " : "VENTE ") + g.nom + (g.dir == 1 ? " clôturé · " : " clôturée · ") + Marche() + "**\n\n" +
+          "**Résultat** " + RTxt2(r) + "\n" + GainPerte(net) + "\n" + MotifTxt(why) +
+          "\n\n**Solde** " + SoldeTxt(), true);
    // journal d'exécution : une ligne par position de la jambe (départ et ajout)
    ExecQueue(g.id, g.nom, g.dir, g.plan, g.vstop, why, g.riskMoney);
    if(g.id2 != 0 && g.id2 != g.id)
@@ -3182,12 +3266,11 @@ void ReadSettings()
             else if(test != gTestSeen)
               {
                gTestSeen = test;
-               // AUD-23 (audit du 26/11/2026) : l'envoi bloque l'EA jusqu'à 3 s ; refusé aussi pendant un trade ou une entrée guettée
+               // AUD-23 (audit du 26/11/2026) : refusé pendant un trade ou une entrée guettée. Depuis le 27/11/2026, l'essai passe par
+               // Étrave (fichier) : « relaye » ; c'est Étrave qui dit si Telegram l'a reçu.
                string res = !gTgOn ? "inactif" : (gPend || gSetupDue || gIn || OpenLegs() > 0 || EnvoiDiffere()) ? "occupe" : MathAbs((long)TimeGMT() - test) > CMD_MAX_AGE ? "expire" :
-                            SendTelegram(BOT + " · " + _Symbol + "\n" + I_WIN + "Essai réussi : MetaTrader envoie bien les alertes.");
+                            TelegramEtrave(I_WIN + "**Essai réussi · " + Marche() + "**\n\nMetaTrader → Étrave → Telegram", "essai", test) ? "relaye" : "fichier";
                gTgTest = IntegerToString(test) + ":" + res;
-               if(res == "ok" || res == "bloque" || StringFind(res, "refus") == 0)
-                  gTgLast = res;
               }
            }
         }
@@ -3214,11 +3297,10 @@ void ReadSettings()
      {
       gTgHello = gTgToken + "|" + gTgChat;
       ENUM_ACCOUNT_TRADE_MODE tm = (ENUM_ACCOUNT_TRADE_MODE)AccountInfoInteger(ACCOUNT_TRADE_MODE);
-      Notify(I_PLUG + "Connecté · " + _Symbol +
-             "\nCompte " + (tm == ACCOUNT_TRADE_MODE_REAL ? "RÉEL" : tm == ACCOUNT_TRADE_MODE_CONTEST ? "concours" : "démo") +
-             (gActive ? "" : "\nMarché désactivé dans Étrave") +
-             "\nRisque " + (InpFixedLots > 0 ? Court(InpFixedLots) + " lot fixe" : Court(gRiskPct) + " %") +
-             "\n" + (gTgtR > 0 ? "Objectif " + Court(gTgtR) + " R" : "Sans objectif"), true);
+      Notify(I_GREEN + "**Connecté · " + Marche() + "**\n\n**Compte** " + (tm == ACCOUNT_TRADE_MODE_REAL ? "RÉEL" : tm == ACCOUNT_TRADE_MODE_CONTEST ? "concours" : "démo") +
+             (gActive ? "" : "\n**Marché** désactivé dans Étrave") +
+             "\n**Risque** " + (InpFixedLots > 0 ? Court(InpFixedLots) + " lot fixe" : Court(gRiskPct) + " %") +
+             "\n**Objectif** " + (gTgtR > 0 ? Court(gTgtR) + " R" : "aucun"), true);
      }
   }
 
@@ -4199,6 +4281,7 @@ void OnTimer()
    CheckClock();
    FlushNotifs();
    TradesWrite("");   // X-20 : lignes du journal des trades en attente
+   TelegramReessayer();   // messages pour Étrave pas encore écrits
    AlertesWrite("");  // alertes de sécurité pour Étrave en attente
    FlushState();
    WriteState();
