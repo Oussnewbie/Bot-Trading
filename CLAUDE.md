@@ -61,7 +61,7 @@ video/     (branche communication/outil-video) vidéos TikTok : récap de séanc
 - **Le Pine** (pas de TradingView) : n'affirme jamais qu'un `.pine` modifié passe l'analyseur. La version du 21/11/2026 l'avait
   passé ; les modifications suivantes n'ont pas été analysées.
 - **Étrave sous Windows** (lancement de MetaTrader avec le profil, installation de l'EA et du profil dans le dossier de données,
-  fermeture, démarrage avec Windows, `Etrave.bat --tout`) et la police Bahnschrift. Le même chemin est vérifié sur Mac en vrai
+  fermeture, démarrage avec Windows, `Etrave.bat --tout`) et l'aspect de la page avec Consolas et Segoe UI. Le même chemin est vérifié sur Mac en vrai
   (26/11/2026 : double-clic sur `Etrave.command`, EA recompilé, profil posé, MetaTrader ouvert, deux EA `trading_auto=1`,
   heure du serveur détectée GMT+2, fermeture propre depuis la page).
 - **Pas de `.ex5` dans le dépôt.** On compile sur ce Mac, ou l'utilisateur avec F7 dans MetaEditor, ou avec le bouton d'Étrave.
@@ -179,11 +179,21 @@ video/     (branche communication/outil-video) vidéos TikTok : récap de séanc
   étiquettes posées dans les zones sûres de TikTok (`police.py` mesure les textes ; un test le vérifie). Musique facultative
   (`musique` de la configuration), jamais dans le dépôt.
 - Jours fériés et demi-séances : aucun trade (`InpSkipShort`), même si `FlatMin` prévoit une sortie à 12:45.
-- **Page d'Étrave (« carte marine », 25/11/2026)** : thème clair par défaut, mode nuit ; chiffres en DIN (Bahnschrift sous Windows,
-  DIN Alternate en gras seulement sur Mac), aucune police extérieure (CSP). L'onglet Séance dessine les fenêtres des règles
-  (`REGLES_NY`, accord avec l'EA vérifié par un test) et ne les allume que si l'EA a des ordres ou des positions. Le magenta
-  (`--mark`) est réservé à l'aiguille « maintenant ». Les noms des variables CSS sont utilisés par le script : changer leurs valeurs,
-  pas leurs noms. Pas de « · » pour joindre des textes générés par la page.
+- **Page d'Étrave (« terminal de trading sombre », décision de l'utilisateur du 27/11/2026, remplace la « carte marine » du
+  25/11/2026)** : thème sombre par défaut quel que soit le réglage de l'ordinateur, clair au bouton (choix retenu sous la clé
+  `theme-terminal`). Chiffres en chasse fixe des polices du système (`--f-num` : ui-monospace, SF Mono, Menlo, Consolas, Cascadia
+  Mono ; Chrome sur Mac prend Menlo), texte en police du système ; aucune police extérieure (CSP). Une seule couleur d'accent, le
+  bleu du logo (actions, voyants « en marche », fenêtre en cours, courbe) ; vert et rouge réservés aux résultats, le rouge servant
+  aussi aux alarmes de sécurité (arrêt d'urgence plein, compte réel, EA arrêté, bandeaux graves) ; le magenta (`--mark`) est réservé
+  à l'aiguille « maintenant ». Coins de 2 px, filets fins, aucune ombre, contraste AA vérifié dans les deux thèmes. Hiérarchie de
+  l'onglet Séance : barre d'état (voyant par marché, démo/RÉEL, heure de New York, date de l'EA, « Arrêt d'urgence ») ; une ligne
+  par marché (sens, état du jour, entrée, stop, range, règle en R tirée de `pos_r`, résultat ouvert en grand, « Clôturer ») ;
+  interrupteur ; frise des règles (`REGLES_NY`, accord avec l'EA vérifié par un test ; fenêtres allumées seulement si l'EA a des
+  ordres ou des positions) ; compte ; ligne « Vidéo du jour » (champ `video` de `/api/etat`, rien si absent) ; courbe ; trades et
+  exports repliés. Les explications passent derrière un « ? » ou un pli (« Détail », « Les étapes ») dont l'ouverture est retenue
+  (`foldOpen`) ; les avertissements de sécurité restent visibles. Les noms des variables CSS sont utilisés par le script : changer
+  leurs valeurs, pas leurs noms. Pas de « · » pour joindre des textes générés par la page. Vérifier l'aspect à 390 px de large :
+  la fenêtre de Chrome ne descend pas sous 500 px, passer par un Chrome headless (`Emulation.setDeviceMetricsOverride`).
 - **Étrave, audit du 26/11/2026 (27/11/2026)** : bouton « Arrêt d'urgence » (mot ARRET : les deux cases décochées et une clôture
   demandée à chaque EA en marche, `pont.arret_urgence`) ; « Autoriser ce compte réel » (mot REEL, seulement le numéro d'un EA en
   marche sur un compte réel, `pont.autoriser_compte_reel`) ; risque de 0,05 à 1 %, mot RISQUE au-delà de 0,5 % ; « Fermer

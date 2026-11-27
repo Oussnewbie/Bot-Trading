@@ -5,201 +5,268 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>__NOM__ · interface</title>
 <style>
-  /* Étrave : une carte marine plutôt qu'un tableau de bord. Fond d'eau claire, encre bleu-noir, bleu du logo pour les actions,
-     magenta des cartes marines réservé à l'aiguille « maintenant ». Chiffres en DIN (instruments de bord), texte du système.
-     Aucune ressource extérieure : la page est fermée à internet (Content-Security-Policy). */
+  /* Étrave : un poste de trader, de nuit (décision du propriétaire du 27/11/2026, « terminal de trading sombre »). Sombre par
+     défaut, clair en option. Chiffres en chasse fixe (polices du système), texte en police du système. Une seule couleur
+     d'accent, le bleu du logo : actions, état « en marche », fenêtre en cours, courbe. Vert et rouge réservés aux résultats ; le
+     rouge sert aussi aux alarmes de sécurité (arrêt d'urgence, compte réel, EA arrêté). Magenta (--mark) réservé à l'aiguille
+     « maintenant ». Coins de 2 px, filets fins plutôt que des boîtes, aucune ombre. Aucune ressource extérieure : la page est
+     fermée à internet (Content-Security-Policy). Les noms des variables sont lus par le script : changer leurs valeurs, pas leurs
+     noms. */
   :root {
-    color-scheme: light;
-    --page: #f6f8fa; --surface: #ffffff; --raised: #eaf1f6; --water: #e2edf5; --water-2: #c5dbec;
-    --border: #cbd5de; --grid: #dde4ea; --axis: #94a3b2;
-    --ink: #18222e; --ink-2: #46546a; --muted: #5f6c7c;
-    --accent: #2f7bd9; --accent-ink: #ffffff; --accent-wash: rgba(47,123,217,.10);
-    --mark: #b4307e;
-    --good: #1d7a46; --warning: #8f5b00; --critical: #bf3a30; --critical-fill: #bf3a30;
-    --f-text: "Segoe UI Variable Text", "Segoe UI", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
-    --f-num: "Bahnschrift", "DIN Alternate", "DIN 2014", "Segoe UI", system-ui, sans-serif;
-    --col: 172px;   /* colonne des noms : la frise et les lignes des marchés partagent le même axe */
-  }
-  :root[data-theme="dark"] {
     color-scheme: dark;
-    --page: #0e1620; --surface: #131e2a; --raised: #1a2836; --water: #16293b; --water-2: #234662;
-    --border: #2a3b4c; --grid: #213140; --axis: #4f6275;
-    --ink: #dce6ee; --ink-2: #a9b8c6; --muted: #8b9cad;
-    --accent: #5a9ef0; --accent-ink: #0e1620; --accent-wash: rgba(90,158,240,.14);
-    --mark: #e06bb0;
-    --good: #48c29a; --warning: #e0a93a; --critical: #ec5a55; --critical-fill: #d9463f;
+    --page: #0b1016; --surface: #10171f; --raised: #172230; --water: #111b26; --water-2: #253a50;
+    --border: #263342; --grid: #18232e; --axis: #4b5c6e;
+    --ink: #e1e7ee; --ink-2: #aab7c4; --muted: #8b9bac;
+    --accent: #6aa8f0; --accent-ink: #0b1016; --accent-wash: rgba(106,168,240,.12);
+    --mark: #e46cb4;
+    --good: #3dd68c; --warning: #e8a83e; --critical: #ff6b61; --critical-fill: #e5483b;
+    --f-text: -apple-system, BlinkMacSystemFont, "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+    --f-num: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "Cascadia Mono", "Liberation Mono", monospace;
+    --col: 200px;   /* colonne des noms : la frise et les lignes des marchés partagent le même axe */
+  }
+  :root[data-theme="light"] {
+    color-scheme: light;
+    --page: #f3f5f7; --surface: #ffffff; --raised: #e9eef3; --water: #e4ebf2; --water-2: #c3d3e3;
+    --border: #cdd5de; --grid: #e1e6ec; --axis: #8a98a8;
+    --ink: #111922; --ink-2: #3d4b5c; --muted: #5a6878;
+    --accent: #1b64c4; --accent-ink: #ffffff; --accent-wash: rgba(27,100,196,.10);
+    --mark: #b4307e;
+    --good: #12773f; --warning: #8a5600; --critical: #c1352b; --critical-fill: #c1352b;
   }
   * { box-sizing: border-box; }
   [hidden] { display: none !important; }
   html { background: var(--page); }
-  body { margin: 0; background: var(--page); color: var(--ink); font: 15px/1.5 var(--f-text); -webkit-font-smoothing: antialiased; }
+  body { margin: 0; background: var(--page); color: var(--ink); font: 14px/1.45 var(--f-text); -webkit-font-smoothing: antialiased; }
   button, input, select { font: inherit; color: inherit; }
-  .wrap { max-width: 1120px; margin: 0 auto; padding: 0 28px 64px; }
+  .wrap { max-width: 1240px; margin: 0 auto; padding: 0 24px 56px; }
   .num, .fig, table { font-variant-numeric: tabular-nums; }
+  .num { font-family: var(--f-num); }
   .up { color: var(--good); } .down { color: var(--critical); }
   .up, .down { white-space: nowrap; }
 
-  /* ───────── En-tête : la marque à gauche, l'état du robot à droite, en texte ───────── */
-  .top { display: flex; align-items: center; gap: 24px; flex-wrap: wrap; padding: 22px 0 18px; }
-  .brand { display: flex; align-items: center; gap: 12px; margin-right: auto; }
-  .brand svg { width: 34px; height: 34px; color: var(--accent); flex: none; }
-  .brand .name { font: 700 21px/1 var(--f-num); letter-spacing: .2em; text-transform: uppercase; }   /* le logo : ÉTRAVE en capitales */
-  .brand .tagline { color: var(--muted); font-size: 13px; margin-top: 4px; }
-  .etat { display: flex; gap: 28px; margin: 0; flex-wrap: wrap; }
-  .etat div { min-width: 0; }
-  .etat dt { color: var(--muted); font-size: 12px; }
-  .etat dd { margin: 1px 0 0; font-weight: 600; font-size: 14px; display: flex; align-items: center; gap: 7px; white-space: nowrap; }
-  .etat dd .num { font-family: var(--f-num); font-size: 16px; }
-  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); flex: none; display: inline-block; }
-  .dot.good { background: var(--good); } .dot.warn { background: var(--warning); } .dot.bad { background: var(--critical-fill); }
-  .reel { color: var(--critical); border: 1.5px solid var(--critical); border-radius: 3px; padding: 0 6px; letter-spacing: .04em; }
+  /* ───────── Barre d'état : la marque, ce que fait le robot, l'heure de New York, l'arrêt d'urgence ───────── */
+  .top { display: flex; align-items: center; gap: 10px 18px; flex-wrap: wrap; padding: 12px 0; border-bottom: 1px solid var(--border); }
+  .brand { display: flex; align-items: center; gap: 9px; }
+  .brand svg { width: 24px; height: 24px; color: var(--accent); flex: none; }
+  .brand .name { font: 700 15px/1 var(--f-num); letter-spacing: .2em; text-transform: uppercase; }   /* le logo : ÉTRAVE en capitales */
+  .brand .tagline { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .etat { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 0; margin: 0 auto 0 0; }
+  .etat > div { display: flex; align-items: baseline; gap: 7px; padding: 0 14px; border-left: 1px solid var(--border); min-width: 0; }
+  .etat dt { color: var(--muted); font-size: 11px; letter-spacing: .06em; text-transform: uppercase; }
+  .etat dd { margin: 0; font: 500 13px/1.4 var(--f-num); display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+  .etat .sym { display: inline-flex; align-items: center; gap: 6px; }
+  .etat .sym + .sym { margin-left: 8px; }
+  .etat .type { text-transform: uppercase; letter-spacing: .06em; }
+  .dot { width: 7px; height: 7px; border-radius: 1px; background: var(--muted); flex: none; display: inline-block; }   /* un voyant */
+  .dot.good { background: var(--accent); } .dot.warn { background: var(--warning); } .dot.bad { background: var(--critical-fill); }
+  .reel { color: var(--critical); border: 1px solid var(--critical); border-radius: 2px; padding: 0 5px; letter-spacing: .06em; font-weight: 700; }
 
-  nav { display: flex; gap: 26px; border-bottom: 1px solid var(--border); margin-bottom: 26px; overflow-x: auto; }
-  nav button { background: none; border: 0; padding: 10px 0 9px; cursor: pointer; color: var(--muted); font-weight: 600; font-size: 15px;
+  nav { display: flex; gap: 24px; border-bottom: 1px solid var(--border); margin-bottom: 18px; overflow-x: auto; }
+  nav button { background: none; border: 0; padding: 10px 0 8px; cursor: pointer; color: var(--muted); font-weight: 600; font-size: 13px;
                border-bottom: 2px solid transparent; margin-bottom: -1px; white-space: nowrap; }
   nav button:hover { color: var(--ink); }
-  nav button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--ink); }
+  nav button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent); }
 
   /* ───────── Pièces communes ───────── */
-  .btn { padding: 7px 14px; border-radius: 4px; border: 1px solid var(--border); background: var(--surface); cursor: pointer; font-weight: 600; font-size: 14px; }
+  .btn { padding: 6px 12px; border-radius: 2px; border: 1px solid var(--border); background: var(--surface); cursor: pointer; font-weight: 600; font-size: 13px; line-height: 1.35; }
   .btn:hover { border-color: var(--axis); } .btn:disabled { opacity: .45; cursor: not-allowed; }
   .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
   .btn.danger { border-color: var(--critical); color: var(--critical); background: transparent; }
-  .btn.danger:hover { background: var(--critical); color: var(--surface); }
-  .btn.ghost { border-color: transparent; background: transparent; color: var(--ink-2); padding: 6px 4px; font-weight: 500; font-size: 13px; }
+  .btn.danger:hover:not(:disabled) { background: var(--critical-fill); border-color: var(--critical-fill); color: var(--page); }
+  .btn.ghost { border-color: transparent; background: transparent; color: var(--ink-2); padding: 6px 4px; font-weight: 500; font-size: 12px; }
   .btn.ghost:hover { color: var(--ink); }
-  .btn.small { padding: 5px 12px; font-size: 13px; white-space: nowrap; }
+  .btn.small { padding: 4px 10px; font-size: 12px; white-space: nowrap; }
+  /* l'arrêt d'urgence : le seul bouton plein de la barre, toujours visible */
+  #btn-urgence { background: var(--critical-fill); border-color: var(--critical-fill); color: var(--page); font-weight: 700; letter-spacing: .07em; text-transform: uppercase; padding: 7px 14px; }
+  #btn-urgence:hover { background: var(--critical); border-color: var(--critical); }
   input:focus-visible, select:focus-visible, button:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-  input[type="text"], input[type="password"], input[type="number"], select { background: var(--surface); border: 1px solid var(--border); border-radius: 4px; padding: 7px 10px; min-width: 0; }
+  input[type="text"], input[type="password"], input[type="number"], select { background: var(--surface); border: 1px solid var(--border); border-radius: 2px; padding: 6px 9px; min-width: 0; }
+  input[type="number"] { font-family: var(--f-num); }
 
-  .banner { border-left: 3px solid var(--warning); background: var(--surface); padding: 10px 14px; margin-bottom: 10px; color: var(--ink-2); max-width: 80ch; }
-  .banner.bad { border-left-color: var(--critical-fill); } .banner.ok { border-left-color: var(--good); }
+  .banner { border: 1px solid var(--border); border-left: 3px solid var(--warning); border-radius: 2px; background: var(--surface); padding: 8px 12px; margin-bottom: 8px; color: var(--ink-2); }
+  .banner.bad { border-left-color: var(--critical-fill); background: color-mix(in srgb, var(--critical-fill) 9%, var(--surface)); }
+  .banner.ok { border-left-color: var(--accent); }
   .banner b { color: var(--ink); }
-  #banner:not(:empty) { margin-bottom: 22px; }
+  .banner .btn { margin-left: 4px; }
+  #banner:not(:empty) { margin-bottom: 16px; }
 
-  /* Blocs des onglets Risque et Connexions : un panneau par sujet, repliable, sans ombre */
-  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 20px 22px; margin-bottom: 18px; min-width: 0; }
-  details.card > summary { list-style: none; cursor: pointer; display: flex; align-items: baseline; gap: 10px; margin: -20px -22px; padding: 20px 22px; }
+  /* Onglets Risque et Connexions : une section par sujet, séparée par un filet, repliable, sans boîte */
+  .card { border-top: 1px solid var(--border); padding: 14px 0 20px; min-width: 0; }
+  #tab-risk > .card:first-child, #connections > .card:first-child { border-top: 0; padding-top: 2px; }   /* le filet des onglets suffit */
+  details.card > summary { list-style: none; cursor: pointer; display: flex; align-items: baseline; gap: 10px; }
   details.card > summary::-webkit-details-marker { display: none; }
-  details.card > summary::after { content: ''; width: 7px; height: 7px; border-right: 1.5px solid var(--muted); border-bottom: 1.5px solid var(--muted);
-                                  transform: rotate(-45deg); margin-left: 8px; align-self: center; flex: none; order: 3; }
-  details.card[open] > summary::after { transform: rotate(45deg); }
-  details.card[open] > summary { margin-bottom: 0; padding-bottom: 10px; }
+  details.card > summary::after, .bloc > details > summary::after { content: ''; width: 6px; height: 6px; border-right: 1.5px solid var(--muted); border-bottom: 1.5px solid var(--muted);
+                                  transform: rotate(-45deg); margin-left: 6px; align-self: center; flex: none; order: 3; }
+  details.card[open] > summary::after, .bloc > details[open] > summary::after { transform: rotate(45deg); }
+  details.card[open] > summary { margin-bottom: 12px; }
   details.card > summary h2 { margin-right: auto; }
-  details.card > summary .sum { color: var(--muted); font-size: 13px; text-align: right; }
+  details.card > summary .sum { color: var(--muted); font: 12px var(--f-num); text-align: right; }
   h1, h2, h3 { font-weight: 600; letter-spacing: 0; }
-  .card h2, .bloc h2 { margin: 0; font-size: 17px; } .card h2 small, .bloc h2 small { color: var(--muted); font-weight: 400; font-size: 14px; }
-  .hint { color: var(--muted); font-size: 13px; margin-bottom: 12px; max-width: 78ch; }
-  .card .head-row, .bloc .head-row { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 10px; }
+  .card h2, .bloc h2 { margin: 0; font-size: 14px; } .card h2 small, .bloc h2 small { color: var(--muted); font-weight: 400; font-size: 13px; }
+  .card h3 { margin: 18px 0 4px; font-size: 14px; }
+  .hint { color: var(--muted); font-size: 12px; margin-bottom: 10px; max-width: 78ch; }
+  .card .head-row, .bloc .head-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
   .card p { color: var(--ink-2); margin: 0 0 10px; max-width: 78ch; }
   .card ol, .card ul { color: var(--ink-2); margin: 0 0 12px; padding-left: 20px; max-width: 78ch; } .card li { margin: 4px 0; }
   .status { display: inline-flex; align-items: center; gap: 8px; font-weight: 600; margin-bottom: 12px; }
-  .status .dot { background: var(--muted); } .status.on .dot { background: var(--good); }
+  .status .dot { background: var(--muted); } .status.on .dot { background: var(--accent); }
   .secret-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 10px; }
   .secret-row input { flex: 1; min-width: 200px; max-width: 460px; }
-  .empty { color: var(--muted); padding: 22px 0; }
-  .chips { display: flex; gap: 0; flex-wrap: wrap; }
-  .chip { padding: 4px 11px; border: 1px solid var(--border); background: var(--surface); cursor: pointer; font-size: 13px; font-weight: 600; color: var(--ink-2); margin-left: -1px; }
-  .chip:first-child { border-radius: 4px 0 0 4px; margin-left: 0; } .chip:last-child { border-radius: 0 4px 4px 0; }
-  .chip[aria-pressed="true"] { background: var(--ink); border-color: var(--ink); color: var(--page); position: relative; }
+  .empty { color: var(--muted); padding: 18px 0; }
+  .chips { display: inline-flex; flex-wrap: wrap; border: 1px solid var(--border); border-radius: 2px; }
+  .chip { padding: 3px 10px; border: 0; border-left: 1px solid var(--border); background: transparent; cursor: pointer; font: 600 12px/1.5 var(--f-num); color: var(--ink-2); }
+  .chip:first-child { border-left: 0; }
+  .chip[aria-pressed="true"] { background: var(--ink); color: var(--page); }
   .switch { display: inline-flex; align-items: center; gap: 9px; cursor: pointer; font-weight: 600; }
-  .switch input { width: 17px; height: 17px; accent-color: var(--accent); margin: 0; }
+  .switch input { width: 15px; height: 15px; accent-color: var(--accent); margin: 0; }
   .checks { display: flex; flex-direction: column; gap: 8px; }
-  .tag { font-family: var(--f-num); font-size: 13px; color: var(--muted); letter-spacing: .02em; }
+  .tag { font-family: var(--f-num); font-size: 12px; color: var(--muted); }
 
-  /* Chiffres : un libellé, une valeur en DIN, une ligne d'explication. Pas de boîtes. */
-  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 0; margin-bottom: 8px; }
-  .tile { padding: 2px 20px 14px; border-left: 1px solid var(--grid); min-width: 0; container-type: inline-size; }
+  /* Plis : une explication derrière un « ? », un détail derrière « Détail ». La page ne montre d'abord que les chiffres et les états. */
+  .aide { display: inline-block; }
+  .aide > summary { list-style: none; cursor: pointer; width: 18px; height: 18px; display: grid; place-items: center; border: 1px solid var(--border); border-radius: 2px; color: var(--muted); font: 600 11px/1 var(--f-num); }
+  .aide > summary::-webkit-details-marker { display: none; }
+  .aide > summary:hover, .aide[open] > summary { color: var(--ink); border-color: var(--axis); }
+  .aide-texte { position: absolute; left: 0; right: 0; z-index: 3; margin: 6px 0 0; padding: 10px 12px; max-width: 72ch; background: var(--raised); border: 1px solid var(--border); border-radius: 2px;
+                color: var(--ink-2); font-size: 13px; font-weight: 400; line-height: 1.5; }
+  .pli > summary, .detail > summary, .etapes > summary { list-style: none; cursor: pointer; display: inline-flex; align-items: center; gap: 7px; }
+  .pli > summary::-webkit-details-marker, .detail > summary::-webkit-details-marker, .etapes > summary::-webkit-details-marker { display: none; }
+  .pli > summary::before, .detail > summary::before, .etapes > summary::before { content: ''; width: 5px; height: 5px; border-right: 1.5px solid var(--muted); border-bottom: 1.5px solid var(--muted); transform: rotate(-45deg); flex: none; }
+  .pli[open] > summary::before, .detail[open] > summary::before, .etapes[open] > summary::before { transform: rotate(45deg); }
+  .etapes { margin: 0 0 10px; } .etapes > summary { color: var(--ink-2); font-size: 13px; font-weight: 600; margin-bottom: 6px; }
+
+  /* Chiffres : un libellé court, une valeur en chasse fixe, une ligne d'explication. Des filets, pas de boîtes. */
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); margin-bottom: 6px; }
+  .tile { padding: 10px 16px 12px; border-left: 1px solid var(--grid); min-width: 0; container-type: inline-size; }
   .tile:first-child { padding-left: 0; border-left: 0; }
-  .tile .label { color: var(--muted); font-size: 13px; }
-  .tile .value { font: 600 clamp(18px, 12cqw, 24px)/1.2 var(--f-num); margin-top: 3px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
-  .tile .sub { color: var(--ink-2); font-size: 13px; margin-top: 2px; }
-  .tile.hero .value { font-size: clamp(26px, 15cqw, 34px); }
+  .tile .label { color: var(--muted); font-size: 11px; letter-spacing: .06em; text-transform: uppercase; }
+  .tile .value { font: 600 clamp(17px, 11cqw, 22px)/1.2 var(--f-num); margin-top: 4px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; letter-spacing: -.01em; }
+  .tile .sub { color: var(--muted); font-size: 12px; margin-top: 3px; }
+  .tile.hero .value { font-size: clamp(22px, 13cqw, 28px); }
   .tile.alert .value { color: var(--critical); }
-  .tiles.sim { margin: 8px 0 14px; }
-  @media (max-width: 620px) { .tile { border-left: 0; padding-left: 0; } }
+  .tiles.sim { margin: 4px 0 14px; }
+  @media (max-width: 620px) {
+    .tiles { grid-template-columns: 1fr 1fr; border-bottom: 0; }
+    .tile, .tile:first-child { border-left: 0; padding: 10px 10px 12px 0; border-bottom: 1px solid var(--grid); }
+  }
 
-  /* ───────── La séance : titre, frise des règles, une ligne par marché ───────── */
-  .seance-head { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
-  .seance-head h1 { font: 700 26px/1.2 var(--f-num); margin: 0; }
+  /* ───────── Aujourd'hui : la date et la phase, puis une ligne par marché, le résultat ouvert en grand ───────── */
+  .seance-head { display: flex; align-items: baseline; gap: 4px 16px; flex-wrap: wrap; margin: 2px 0 14px; }
+  .seance-head h1 { font: 600 16px/1.3 var(--f-text); margin: 0; }
   .seance-head h1::first-letter { text-transform: uppercase; }
-  .seance-sous { color: var(--ink-2); margin: 4px 0 14px; max-width: 80ch; }
-  .frise { position: relative; margin: 0 0 6px; }
-  .frise svg { display: block; width: 100%; overflow: visible; }
-  .frise text { fill: var(--muted); font: 12px var(--f-text); font-variant-numeric: tabular-nums; }
-  .frise .rang { fill: var(--ink-2); font-size: 13px; }
-  .frise .heure { fill: var(--ink-2); font-family: var(--f-num); }
-  .frise .maintenant { fill: var(--mark); font: 600 13px var(--f-num); }
-  .frise-note { color: var(--muted); font-size: 12px; margin: 2px 0 26px; padding-left: var(--col); }
+  .seance-sous { color: var(--ink-2); margin: 0; font-size: 13px; max-width: 90ch; }
 
-  .marches-head { display: flex; align-items: baseline; gap: 12px; border-bottom: 1px solid var(--ink); padding-bottom: 6px; }
-  .marches-head h2 { margin: 0; font-size: 17px; }
-  .marches-head .sum { color: var(--muted); font-size: 13px; }
-  .inst { display: grid; grid-template-columns: var(--col) minmax(0, 1fr) auto; gap: 4px 0; padding: 16px 0; border-bottom: 1px solid var(--grid); align-items: start; }
-  .inst .who { padding-right: 14px; } .inst .res { padding-left: 18px; }
-  .inst .who { display: flex; flex-direction: column; gap: 3px; }
-  .inst .who b { font-size: 16px; }
-  .inst .who .ea { color: var(--muted); font-size: 13px; display: flex; align-items: center; gap: 6px; }
-  .inst dl { display: grid; grid-template-columns: 128px minmax(0, 1fr); gap: 4px 14px; margin: 0; color: var(--ink-2); font-size: 14px; }
-  .inst dt { color: var(--muted); } .inst dd { margin: 0; overflow-wrap: anywhere; }
-  .inst dd.fort { color: var(--ink); font-weight: 600; }
-  .inst .res { text-align: right; display: flex; flex-direction: column; align-items: flex-end; gap: 10px; }
-  .inst .res .fig { font: 600 22px/1.1 var(--f-num); }
+  .sec-head { position: relative; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding-bottom: 8px; }
+  .sec-head h2 { margin: 0; font-size: 13px; font-weight: 600; color: var(--ink-2); }
+  .sec-head .sum, .marches-head .sum { color: var(--muted); font-size: 12px; }
+  .sec-head .chips { margin-left: auto; }
+
+  #instruments { border-top: 1px solid var(--border); }
+  .inst { display: grid; grid-template-columns: var(--col) minmax(0, 1fr) minmax(180px, auto); gap: 10px 0; padding: 16px 0 14px; border-bottom: 1px solid var(--border); align-items: start; }
+  .inst .who { display: flex; flex-direction: column; gap: 5px; padding-right: 16px; min-width: 0; }
+  .inst .who .switch b, .inst .who > b { font-size: 14px; letter-spacing: .08em; text-transform: uppercase; }
+  .inst .who .ea { color: var(--muted); font-size: 12px; display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+  .inst .jour { min-width: 0; }
+  .inst .sens { font: 700 18px/1.2 var(--f-num); letter-spacing: .06em; text-transform: uppercase; }
+  .inst .sens .lots { font-weight: 400; font-size: 13px; letter-spacing: 0; text-transform: none; color: var(--muted); margin-left: 12px; }
+  .inst .jour-txt { color: var(--ink-2); margin-top: 3px; overflow-wrap: anywhere; }
+  .niveaux { display: flex; flex-wrap: wrap; gap: 2px 18px; font: 13px/1.6 var(--f-num); margin-top: 8px; }
+  .niveaux .k, .jambes .k { color: var(--muted); font: 12px var(--f-text); margin-right: 7px; }
+  .jambes { margin-top: 6px; color: var(--ink-2); font-size: 13px; overflow-wrap: anywhere; }
+  .regle-r { display: block; width: 100%; max-width: 340px; height: auto; margin-top: 10px; overflow: visible; }
+  .regle-r text { fill: var(--muted); font: 10px var(--f-num); }
+  .inst .res { text-align: right; display: flex; flex-direction: column; align-items: flex-end; gap: 4px; padding-left: 16px; }
+  .inst .res .fig { font: 600 42px/1 var(--f-num); letter-spacing: -.02em; }
+  .inst .res .rien { color: var(--muted); font-size: 13px; padding-top: 4px; }
+  .inst .res .sub { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 2px 12px; font: 14px var(--f-num); }
+  .inst .res .quoi { color: var(--muted); font-size: 12px; }
+  .inst .res .btn { margin-top: 8px; }
   .inst .vide { grid-column: 2 / -1; color: var(--muted); }
-  .marches-note { color: var(--muted); font-size: 13px; margin: 10px 0 34px; }
-  #interrupteur { margin-top: 14px; } #interrupteur .banner { margin-bottom: 8px; }
-  .interrupteur { color: var(--ink-2); font-size: 14px; margin: 0 0 8px; max-width: 80ch; } .interrupteur b { color: var(--ink); }
-  @media (max-width: 760px) { .inst { grid-template-columns: minmax(0, 1fr) auto; } .inst dl { grid-column: 1 / -1; grid-row: 2; grid-template-columns: 110px minmax(0, 1fr); } }
+  .inst.muet .jour, .inst.muet .res .fig, .inst.muet .res .sub { opacity: .55; }   /* EA arrêté : dernier état connu, estompé */
+  .detail { margin-top: 10px; }
+  .detail > summary { color: var(--muted); font-size: 12px; }
+  .detail dl { display: grid; grid-template-columns: 120px minmax(0, 1fr); gap: 3px 12px; margin: 8px 0 0; color: var(--ink-2); font-size: 13px; }
+  .detail dt { color: var(--muted); } .detail dd { margin: 0; overflow-wrap: anywhere; }
+  #interrupteur { margin-top: 12px; } #interrupteur .banner { margin-bottom: 8px; }
+  .interrupteur { color: var(--ink-2); font-size: 13px; margin: 0 0 6px; } .interrupteur b { color: var(--ink); font-weight: 600; }
+  .interrupteur p { margin: 4px 0 0 13px; color: var(--muted); max-width: 90ch; }
+  @media (max-width: 760px) {
+    .inst { grid-template-columns: minmax(0, 1fr) auto; }
+    .inst .jour { grid-column: 1 / -1; grid-row: 2; }
+    .inst .res { padding-left: 8px; }
+    .inst .res .fig { font-size: 32px; }
+    .inst .res .sub { flex-direction: column; align-items: flex-end; font-size: 13px; }
+    .inst .vide { grid-column: 1 / -1; }
+  }
 
-  .bloc { margin: 0 0 34px; }
-  .bloc > h2, .bloc > .head-row { border-bottom: 1px solid var(--ink); padding-bottom: 6px; margin-bottom: 14px; }
-  .bloc details > summary { list-style: none; cursor: pointer; display: flex; align-items: baseline; gap: 10px; border-bottom: 1px solid var(--ink); padding-bottom: 6px; }
-  .bloc details > summary::-webkit-details-marker { display: none; }
-  .bloc details > summary::after { content: 'afficher'; color: var(--accent); font-size: 13px; font-weight: 600; order: 3; }
-  .bloc details[open] > summary::after { content: 'masquer'; }
-  .bloc details > summary .sum { color: var(--muted); font-size: 13px; margin-left: auto; }
+  .bloc { position: relative; margin: 30px 0 0; }
+  .bloc > details > summary { list-style: none; cursor: pointer; display: flex; align-items: baseline; gap: 10px; border-top: 1px solid var(--border); padding: 10px 0; }
+  .bloc > details > summary::-webkit-details-marker { display: none; }
+  .bloc > details > summary h2 { font-size: 13px; color: var(--ink-2); }
+  .bloc > details > summary .sum { color: var(--muted); font: 12px var(--f-num); margin-left: auto; text-align: right; }
+
+  .frise { position: relative; margin: 4px 0 0; }
+  .frise svg { display: block; width: 100%; overflow: visible; }
+  .frise text { fill: var(--muted); font: 11px var(--f-text); font-variant-numeric: tabular-nums; }
+  .frise .rang { fill: var(--ink-2); font-size: 12px; }
+  .frise .heure { fill: var(--muted); font-family: var(--f-num); }
+  .frise .maintenant { fill: var(--mark); font: 600 12px var(--f-num); }
 
   .scroll { overflow-x: auto; }
-  table { width: 100%; border-collapse: collapse; }
-  th { text-align: left; color: var(--muted); font-weight: 600; font-size: 13px; padding: 8px 10px; border-bottom: 1px solid var(--border); white-space: nowrap; }
-  th.num, td.num { text-align: right; }
-  td { padding: 8px 10px; border-bottom: 1px solid var(--grid); white-space: nowrap; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; color: var(--muted); font-weight: 600; font-size: 11px; letter-spacing: .06em; text-transform: uppercase; padding: 6px 10px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  th.num, td.num { text-align: right; } th.num { font-family: var(--f-text); }
+  tbody td:first-child { text-align: left; }   /* la date, sous son titre */
+  td { padding: 6px 10px; border-bottom: 1px solid var(--grid); white-space: nowrap; }
+  tbody tr:hover td { background: var(--surface); }
   td:first-child, th:first-child { padding-left: 0; } td:last-child, th:last-child { padding-right: 0; }
-  @media (max-width: 620px) { .opt { display: none; } td, th { padding-left: 4px; padding-right: 4px; } table { font-size: 13px; } }
+  @media (max-width: 620px) { .opt { display: none; } td, th { padding-left: 4px; padding-right: 4px; } table { font-size: 12px; } }
 
   .chart { position: relative; width: 100%; }
   .chart svg { display: block; width: 100%; overflow: visible; }
-  .chart text { fill: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
-  .tip { position: absolute; pointer-events: none; background: var(--surface); border: 1px solid var(--border); border-radius: 4px; padding: 8px 11px; font-size: 13px; white-space: nowrap; z-index: 2; }
-  .tip b { display: block; font: 600 15px var(--f-num); } .tip span { display: block; color: var(--ink-2); }
+  .chart text { fill: var(--muted); font: 11px var(--f-num); font-variant-numeric: tabular-nums; }
+  .tip { position: absolute; pointer-events: none; background: var(--raised); border: 1px solid var(--border); border-radius: 2px; padding: 7px 10px; font-size: 12px; white-space: nowrap; z-index: 2; }
+  .tip b { display: block; font: 600 14px var(--f-num); } .tip span { display: block; color: var(--ink-2); }
 
   /* Réglage du risque */
   .risk-row { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin: 6px 0 12px; }
   .risk-row .big { display: flex; align-items: baseline; gap: 8px; }
-  .risk-row .big input { width: 112px; font: 600 26px var(--f-num); padding: 4px 10px; text-align: right; }
-  .risk-row .big span { font-size: 16px; color: var(--ink-2); }
+  .risk-row .big input { width: 120px; font: 600 28px var(--f-num); padding: 4px 10px; text-align: right; }
+  .risk-row .big span { font-size: 14px; color: var(--ink-2); }
   .risk-row input[type="range"] { flex: 1; min-width: 180px; accent-color: var(--accent); }
-  .lever { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 4px; }
+  .lever { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 4px; font-family: var(--f-num); }
   .lever input { width: 90px; text-align: right; }
+  #lever-hint { color: var(--muted); font: 12px var(--f-text); }
   .savebar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 16px; }
   .savebar .msg { color: var(--ink-2); flex: 1; min-width: 200px; } .savebar .msg.err { color: var(--critical); }
   .form { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px 14px; margin-bottom: 12px; max-width: 760px; }
-  .form label { display: block; font-weight: 600; font-size: 13px; margin-bottom: 4px; } .form input { width: 100%; }
+  .form label { display: block; font-weight: 600; font-size: 12px; color: var(--ink-2); margin-bottom: 4px; } .form input, .form select { width: 100%; }
 
-  dialog { background: var(--surface); color: var(--ink); border: 1px solid var(--border); border-radius: 6px; padding: 22px; max-width: 460px; width: calc(100% - 32px); }
-  dialog::backdrop { background: rgba(14,22,32,.55); }
-  dialog h3 { margin: 0 0 8px; font-size: 18px; } dialog p { color: var(--ink-2); margin: 0 0 14px; }
+  dialog { background: var(--surface); color: var(--ink); border: 1px solid var(--border); border-radius: 2px; padding: 20px; max-width: 460px; width: calc(100% - 32px); }
+  dialog::backdrop { background: rgba(3,6,10,.7); }
+  dialog h3 { margin: 0 0 8px; font-size: 17px; } dialog p { color: var(--ink-2); margin: 0 0 14px; }
   dialog .actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
-  #toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: var(--ink); color: var(--page); border-radius: 4px; padding: 10px 16px; display: none; z-index: 5; max-width: calc(100% - 32px); }
-  @media (max-width: 620px) { .wrap { padding: 0 16px 48px; } :root { --col: 112px; } .etat { gap: 18px; } }
+  #toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: var(--ink); color: var(--page); border-radius: 2px; padding: 9px 14px; display: none; z-index: 5; max-width: calc(100% - 32px); }
+  @media (max-width: 720px) {
+    .wrap { padding: 0 16px 48px; }
+    :root { --col: 112px; }
+    .etat { order: 3; flex-basis: 100%; margin: 0; }
+    .top { gap: 8px 10px; }
+    #btn-urgence { letter-spacing: .03em; padding: 7px 10px; }
+    #btn-theme { padding: 6px 2px; }
+    .etat > div, .etat > div:first-child { padding: 0 14px 0 0; border-left: 0; }
+    .brand { margin-right: auto; }
+  }
   @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+  .video-ligne { margin: 10px 0 0; color: var(--muted); font-size: 12px; }
+  .video-ligne b { color: var(--ink-2); font-weight: 600; }
 </style>
 </head>
 <body>
 <div class="wrap">
   <header class="top">
     <div class="brand">
-      <svg viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <svg viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
         <path d="M8 8c1.800 9.500 5.800 17.500 12 24 6.200-6.500 10.200-14.500 12-24"/>
         <path d="M20 5v27"/>
         <path d="M3 33c2.800-2.300 5.700-2.300 8.500 0M28.500 33c2.800-2.300 5.700-2.300 8.500 0" opacity=".55"/>
@@ -207,8 +274,8 @@
       <div><div class="name">__NOM__</div><div class="tagline" id="tagline">__SLOGAN__</div></div>
     </div>
     <dl class="etat" id="etat" aria-live="polite"></dl>
+    <button class="btn ghost" id="btn-theme" type="button">Mode clair</button>
     <button class="btn danger small" id="btn-urgence" type="button">Arrêt d’urgence</button>
-    <button class="btn ghost" id="btn-theme" type="button">Mode nuit</button>
   </header>
 
   <nav role="tablist" aria-label="Pages">
@@ -220,26 +287,35 @@
   <div id="banner"></div>
 
   <section id="tab-overview">
-    <div class="seance-head"><h1 id="seance-titre">Séance de New York</h1></div>
-    <p class="seance-sous" id="seance-sous"></p>
-    <div class="frise" id="frise"></div>
-    <p class="frise-note">Heures de New York. L’échelle est agrandie entre 9:00 et 10:00, là où se prennent les entrées.</p>
+    <div class="seance-head"><h1 id="seance-titre">Séance de New York</h1><p class="seance-sous" id="seance-sous"></p></div>
 
-    <div class="marches-head"><h2>Marchés</h2><span class="sum" id="sum-instruments"></span></div>
+    <div class="sec-head marches-head"><h2>Marchés</h2><span class="sum" id="sum-instruments"></span>
+      <details class="aide"><summary aria-label="Les cases des marchés">?</summary>
+        <p class="aide-texte marches-note">Case décochée : l’EA ne prend plus de nouveau trade sur ce marché. Une position déjà ouverte reste gérée jusqu’à sa sortie.</p></details>
+    </div>
     <div id="instruments"></div>
     <div id="interrupteur" aria-live="polite"></div>
-    <p class="marches-note">Case décochée : l’EA ne prend plus de nouveau trade sur ce marché. Une position déjà ouverte reste gérée jusqu’à sa sortie.</p>
 
     <div class="bloc">
-      <h2>Compte</h2>
+      <div class="sec-head"><h2>Fenêtres des règles</h2><span class="sum">heure de New York</span>
+        <details class="aide"><summary aria-label="Lire la frise">?</summary>
+          <p class="aide-texte frise-note">Heures de New York. L’échelle est agrandie entre 9:00 et 10:00, là où se prennent les entrées. Une fenêtre bleue est en cours, une grise est passée ; l’aiguille magenta marque l’heure, le pointillé la sortie du jour.</p></details>
+      </div>
+      <div class="frise" id="frise"></div>
+    </div>
+
+    <div class="bloc">
+      <div class="sec-head"><h2>Compte</h2></div>
       <div class="tiles main" id="tiles-overview"></div>
+      <p class="video-ligne" id="video" hidden></p>
     </div>
     <div class="bloc">
-      <div class="head-row">
+      <div class="sec-head">
         <h2>Courbe des trades pris</h2>
+        <details class="aide"><summary aria-label="Lire la courbe">?</summary>
+          <div class="aide-texte" id="curve-hint">Résultat cumulé après chaque trade clôturé par l’EA. Survole la courbe pour voir chaque trade.</div></details>
         <div class="chips" id="curve-unit" role="group" aria-label="Unité de la courbe"></div>
       </div>
-      <div class="hint" id="curve-hint">Résultat cumulé après chaque trade clôturé par l’EA.</div>
       <div class="chart" id="chart-curve"></div>
     </div>
     <div class="bloc">
@@ -249,12 +325,14 @@
       </details>
     </div>
     <div class="bloc">
-      <div class="head-row">
-        <h2>Exports trimestriels</h2>
-        <button class="btn small" id="export-now" type="button">Exporter le trimestre en cours</button>
-      </div>
-      <div class="hint">Après chaque trimestre, Étrave écrit tout seul un dossier avec les trades, le détail de l’exécution (prix visé et obtenu, spread, stops, gain et perte latents), les séances avec ou sans trade, et un résumé. Il le fait trois jours après la fin du trimestre (au démarrage, puis toutes les 6 heures), puis le garde.</div>
-      <div class="scroll" id="exports"></div>
+      <details data-fold="exports">
+        <summary><h2>Exports trimestriels</h2><span class="sum" id="sum-exports"></span></summary>
+        <div class="head-row">
+          <div class="hint" style="margin:0">Après chaque trimestre, Étrave écrit tout seul un dossier avec les trades, le détail de l’exécution (prix visé et obtenu, spread, stops, gain et perte latents), les séances avec ou sans trade, et un résumé. Il le fait trois jours après la fin du trimestre (au démarrage, puis toutes les 6 heures), puis le garde.</div>
+          <button class="btn small" id="export-now" type="button">Exporter le trimestre en cours</button>
+        </div>
+        <div class="scroll" id="exports"></div>
+      </details>
     </div>
   </section>
 
@@ -268,9 +346,9 @@
         <input type="range" id="risk-slider" min="0" max="1000" step="1" aria-label="Risque par trade">
       </div>
       <div class="chips" id="risk-presets" role="group" aria-label="Valeurs courantes"></div>
-      <h2 style="margin-top:18px">Levier de ton courtier</h2>
+      <h3>Levier de ton courtier</h3>
       <div class="hint">Il fixe la marge demandée, donc la taille maximale de la position. Plus le risque est grand, plus la position est grosse : sans assez de levier, l’EA doit la réduire.</div>
-      <div class="lever"><span>1 :</span><input type="number" id="lever-input" min="1" max="2000" step="1" inputmode="decimal" placeholder="—" aria-label="Levier du courtier"><span id="lever-hint" style="color:var(--muted);font-size:12px"></span></div>
+      <div class="lever"><span>1 :</span><input type="number" id="lever-input" min="1" max="2000" step="1" inputmode="decimal" placeholder="—" aria-label="Levier du courtier"><span id="lever-hint"></span></div>
       <div class="savebar">
         <button class="btn primary" id="risk-save" disabled>Enregistrer</button>
         <button class="btn" id="risk-cancel" disabled>Annuler</button>
@@ -447,7 +525,7 @@ const savedRisk = () => (state && state.reglages.risquePct != null ? state.regla
 const fixedLots = () => { const e = [...running(), account()].find((x) => x && x.lots_fixes > 0); return e ? e.lots_fixes : null; };
 
 // ---------------------------------------------------------------- en-tête et alertes
-/** Une ligne de l'état en haut à droite : un libellé, puis une valeur (avec sa pastille de couleur, jamais seule). */
+/** Une case de la barre d'état : un libellé court, puis une valeur (avec son voyant, jamais seul). */
 const etatItem = (label, ...valeur) => el('div', {}, el('dt', {}, label), el('dd', {}, ...valeur));
 function renderHeader() {
   const live = running();
@@ -455,16 +533,19 @@ function renderHeader() {
   const items = [];
   if (!state) items.push(etatItem('Interface', el('span', { class: 'dot bad' }), 'arrêtée'));
   else {
-    items.push(etatItem('Robot', el('span', { class: `dot ${live.length ? 'good' : 'warn'}` }), live.length ? `en marche sur ${live.map((e) => e.symbole).join(' et ')}` : 'arrêté'));
+    // un voyant par marché en marche (désactivé : orange), comme le croquis du propriétaire (27/11/2026)
+    items.push(el('div', { title: live.length ? `Robot en marche sur ${live.map((e) => e.symbole).join(' et ')}` : 'Robot arrêté' }, el('dt', {}, 'Robot'),
+      el('dd', {}, live.length ? live.map((e) => el('span', { class: 'sym' }, el('span', { class: `dot ${e.actif ? 'good' : 'warn'}` }), e.symbole)) : [el('span', { class: 'dot warn' }), 'arrêté'])));
     if (a) {
       const real = a.compte_type === 'reel';
       items.push(el('div', { title: `Compte ${a.compte_login || ''}, serveur ${a.compte_serveur || ''}` }, el('dt', {}, 'Compte'),
-        el('dd', {}, real ? el('span', { class: 'reel' }, 'RÉEL') : a.compte_type === 'demo' ? 'démo' : 'concours', el('span', { class: 'num' }, a.compte_login || ''))));
+        el('dd', {}, real ? el('span', { class: 'reel' }, 'RÉEL') : el('span', { class: 'type' }, a.compte_type === 'demo' ? 'démo' : 'concours'), el('span', { class: 'num' }, a.compte_login || ''))));
     }
-    if (live.length) items.push(etatItem('New York', live[0].horloge_ok ? null : el('span', { class: 'dot bad' }), el('span', { class: 'num' }, String(live[0].heure_ny || '').slice(-5)), live[0].horloge_ok ? null : 'heure fausse'));
+    if (live.length) items.push(el('div', { title: 'Heure de New York, donnée par l’EA' }, el('dt', {}, 'NY'),
+      el('dd', {}, live[0].horloge_ok ? null : el('span', { class: 'dot bad' }), el('span', { class: 'num' }, String(live[0].heure_ny || '').slice(-5)), live[0].horloge_ok ? null : 'heure fausse')));
     // AUD-22 (audit du 26/11/2026) : la version compilée de l'EA (date de compilation), pour voir qu'il a bien été recompilé
     const builds = [...new Set((live.length ? live : state.eas).map((e) => e.ea_build).filter(Boolean))];
-    if (builds.length) items.push(etatItem('EA compilé le', el('span', { class: 'num' }, builds.map((b) => `${dateFr(b)} ${String(b).slice(11, 16)}`).join(' et '))));
+    if (builds.length) items.push(el('div', { title: 'EA compilé le' }, el('dt', {}, 'EA du'), el('dd', {}, el('span', { class: 'num' }, builds.map((b) => `${dateFr(b)} ${String(b).slice(11, 16)}`).join(' et ')))));
   }
   $('etat').replaceChildren(...items);
 
@@ -545,8 +626,8 @@ function renderOverview() {
   const open = running().filter((e) => e.position || e.jambes > 0);
   const sum = totals();
   const tiles = [];
-  tiles.push(tile('Solde du compte', a && a.solde != null ? money(a.solde, devise) : '—',
-    a ? (a.en_marche ? (a.capital != null && open.length ? `${money(a.capital, devise)} en comptant les positions ouvertes` : `${a.compte_type === 'reel' ? 'compte réel' : 'compte démo'}, ${a.compte_serveur || ''}`) : 'dernier solde connu, EA arrêté') : 'en attente de l’EA', 'hero'));
+  tiles.push(tile('Solde', a && a.solde != null ? money(a.solde, devise) : '—',
+    a ? (a.en_marche ? (a.capital != null && open.length ? `${money(a.capital, devise)} avec les positions ouvertes` : `${a.compte_type === 'reel' ? 'compte réel' : 'compte démo'}, ${a.compte_serveur || ''}`) : 'dernier solde connu, EA arrêté') : 'en attente de l’EA', 'hero'));
   if (open.length) {
     const result = open.reduce((s, e) => s + (e.pos_resultat || 0) + (e.v8_resultat || 0), 0);
     const legs = open.reduce((s, e) => s + (e.jambes || 0), 0);
@@ -558,7 +639,7 @@ function renderOverview() {
     const waiting = running().filter((e) => e.attente);
     tiles.push(tile('Positions en cours', waiting.length ? 'Ordres posés' : 'Aucune', waiting.length ? waiting.map((e) => e.symbole).join(' et ') : running().length ? 'ni ordre ni position ouverte' : ''));
   }
-  tiles.push(tile('Résultat cumulé', sum.n ? delta(sum.argent, moneySigned(sum.argent, devise)) : '—', sum.n ? `${pctSigned(sum.pct)}, ${rSigned(sum.r)}` : 'aucun trade clôturé'));
+  tiles.push(tile('Cumul', sum.n ? delta(sum.argent, moneySigned(sum.argent, devise)) : '—', sum.n ? `${pctSigned(sum.pct)}, ${rSigned(sum.r)}` : 'aucun trade clôturé'));
   tiles.push(tile('Trades clôturés', String(sum.n), sum.n ? `${pct((100 * sum.gagnants) / sum.n)} gagnants` : ''));
   const risk = eaRisk();
   const perTrade = a && a.solde != null && risk != null ? (a.solde * risk) / 100 : null;
@@ -572,17 +653,66 @@ function renderOverview() {
   renderSeance();
   renderInstruments();
   renderInterrupteur();
+  renderVideo();
   renderCurve();
   renderTrades(devise);
 }
+/** La date du jour à New York (« 2026-11-30 ») : celle de l'EA s'il tourne, sinon celle de l'horloge de cet ordinateur. */
+function jourNy() {
+  const m = /^(\d{4})\.(\d{2})\.(\d{2})/.exec(String((running()[0] || {}).heure_ny || ''));
+  if (m) return `${m[1]}-${m[2]}-${m[3]}`;
+  try { return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date()); }
+  catch (error) { return ''; }
+}
+/** La vidéo récap lancée par Étrave en fin de journée (champ `video` de /api/etat ; absent d'un ancien serveur : rien n'est montré). */
+function renderVideo() {
+  const host = $('video');
+  const v = state && state.video;
+  if (!v || typeof v !== 'object') { host.hidden = true; return; }
+  const d = v.derniere;
+  const texte = v.installe === false ? 'Outil vidéo pas installé : pas de vidéo automatique'
+    : d && d.jour === jourNy() ? (d.resultat === 'echec' ? 'échec du lancement, la tâche de 22:20 réessaiera' : `lancée à ${d.heure_ny || '—'} NY`)
+    : v.attente || '—';
+  host.replaceChildren(...(v.installe === false ? [texte] : [el('b', {}, 'Vidéo du jour : '), texte]));
+  host.hidden = false;
+}
 const prix = (v) => (v == null ? '—' : Number(v).toLocaleString('fr-FR', { maximumFractionDigits: 2 }));
-/** Un marché : sa case et son EA à gauche, ce que fait l'EA aujourd'hui au milieu, le résultat ouvert et le bouton à droite. */
+/** Un pli (details) dont l'ouverture est retenue : les lignes redessinées toutes les 2 secondes ne se referment pas. */
+function pli(key, defaultOpen, cls, summary, ...children) {
+  const node = el('details', { class: cls, open: foldOpen(key, defaultOpen) }, el('summary', {}, ...summary), ...children);
+  node.addEventListener('toggle', () => rememberFold(key, node.open));
+  return node;
+}
+/** Où en est la cassure A, en R (le chiffre de l'EA, pos_r : résultat / risque de départ), de −1R à +2R au moins. Elle remplace la
+ *  petite courbe du croquis du 27/11/2026 : l'EA ne donne pas l'historique du prix. Le stop peut remonter (entrée, +1R) alors que le
+ *  R garde le risque de départ : la règle dit donc « −1R », jamais « stop », et ne recalcule rien depuis les prix. */
+function regleR(e) {
+  const r = e.pos_r;
+  const min = Math.min(-1, Math.floor(r)), max = Math.max(2, Math.ceil(r));
+  const W = 340, H = 30, g = 10, axe = 9;
+  const x = (v) => g + ((Math.min(Math.max(v, min), max) - min) / (max - min)) * (W - 2 * g);
+  const root = svg('svg', { class: 'regle-r', viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': `Cassure A à ${rSigned(r)} du risque de départ` });
+  root.append(svg('line', { x1: x(min), x2: x(max), y1: axe, y2: axe, stroke: 'var(--border)', 'stroke-width': 3 }));
+  root.append(svg('rect', { x: Math.min(x(0), x(r)), y: axe - 3, width: Math.max(1, Math.abs(x(r) - x(0))), height: 6, fill: r >= 0 ? 'var(--good)' : 'var(--critical)' }));
+  const pasTexte = (W - 2 * g) / (max - min) >= 30;
+  for (let v = min; v <= max; v += 1) {
+    root.append(svg('line', { x1: x(v), x2: x(v), y1: axe - 6, y2: axe + 6, stroke: v === 0 || v === -1 ? 'var(--ink-2)' : 'var(--axis)', 'stroke-width': 1 }));
+    if (!pasTexte && v !== -1 && v !== 0) continue;
+    const t = svg('text', { x: x(v), y: H - 1, 'text-anchor': v === min ? 'start' : v === max ? 'end' : 'middle' });
+    t.textContent = v === 0 ? '0' : `${v > 0 ? '+' : '−'}${Math.abs(v)}R`;
+    root.append(t);
+  }
+  root.append(svg('line', { x1: x(r), x2: x(r), y1: 0, y2: axe + 8, stroke: 'var(--ink)', 'stroke-width': 2 }));
+  return root;
+}
+/** Un marché : sa case et son EA à gauche ; au milieu ce que fait l'EA aujourd'hui (sens, état du jour, niveaux de A) ; à droite le
+ *  résultat ouvert en grand et le bouton. Le reste (filtres, entrées B et D en attente, depuis le début) est derrière « Détail ». */
 function instrumentRow(key, label, e, checked) {
   const box = key in INSTRUMENTS
-    ? el('label', { class: 'switch' }, el('input', { type: 'checkbox', checked, onchange: (event) => toggleInstrument(key, event.target) }), el('b', {}, label))
+    ? el('label', { class: 'switch', title: 'Case décochée : plus de nouveau trade sur ce marché' }, el('input', { type: 'checkbox', checked, onchange: (event) => toggleInstrument(key, event.target) }), el('b', {}, label))
     : el('b', {}, label);
   const who = el('div', { class: 'who' }, box);
-  const row = el('div', { class: 'inst' }, who);
+  const row = el('div', { class: `inst${e && !e.en_marche ? ' muet' : ''}` }, who);
   if (!e) {
     who.append(el('span', { class: 'ea' }, el('span', { class: 'dot' }), 'aucun EA'));
     row.append(el('div', { class: 'vide' }, checked ? `Pose Strategy-V11 sur un graphique M5 du ${label} dans MetaTrader 5.` : 'En pause.'));
@@ -590,22 +720,35 @@ function instrumentRow(key, label, e, checked) {
   }
   who.append(el('span', { class: 'tag' }, e.symbole),
     el('span', { class: 'ea' }, el('span', { class: `dot ${e.en_marche ? (e.actif ? 'good' : 'warn') : 'bad'}` }), e.en_marche ? (e.actif ? 'en marche' : 'en marche, désactivé') : 'arrêté'));
-  const list = el('dl', {}, el('dt', {}, 'Aujourd’hui'), el('dd', { class: 'fort' }, e.jour || '—'),
-    el('dt', {}, 'Range de 9:30'), el('dd', { class: 'num' }, e.range_haut ? `${prix(e.range_bas)} à ${prix(e.range_haut)}` : '—'));
-  if (e.position) {
-    list.append(el('dt', {}, 'Cassure A'), el('dd', { class: 'num' }, `${e.pos_sens === 1 ? 'Achat' : 'Vente'} de ${num(e.pos_lots, 2)} lot à ${prix(e.pos_entree)}, stop ${prix(e.pos_stop)}${e.pos_pyramide ? ', pyramide faite' : ''}`));
-    list.append(el('dt', {}, 'Résultat de A'), el('dd', {}, delta(e.pos_resultat || 0, `${moneySigned(e.pos_resultat, e.devise)}${e.solde_depart > 0 ? `, ${pctSigned((100 * e.pos_resultat) / e.solde_depart)}` : ''}, ${rSigned(e.pos_r)}`)));
-  }
-  if (e.v8_b || e.v9_d || e.jambes > 0) list.append(el('dt', {}, 'Entrées B et D'), el('dd', {}, [e.v8_b, e.v9_d].filter(Boolean).join(' ; '),
-    e.jambes > 0 ? ' ; ' : '', e.jambes > 0 ? delta(e.v8_resultat || 0, `ouvertes : ${moneySigned(e.v8_resultat || 0, e.devise)}`) : ''));
-  list.append(el('dt', {}, 'Filtres'), el('dd', {}, e.filtres || '—'));
-  if (e.stats_n) list.append(el('dt', {}, 'Depuis le début'), el('dd', { class: 'num' }, `${e.stats_n} trades, ${rSigned(e.stats_r)}, pire baisse −${num(e.stats_baisse, 1)}R`));
-  row.append(list);
+  const legs = e.jambes > 0;
+  const sens = e.position ? (e.pos_sens === 1 ? 'Achat' : 'Vente') : legs ? 'B et D' : e.attente ? 'Ordres' : '—';
+  const jour = el('div', { class: 'jour' },
+    sens === '—' ? null : el('div', { class: 'sens' }, sens, e.position ? el('span', { class: 'lots' }, `${num(e.pos_lots, 2)} lot${e.pos_pyramide ? ', pyramide faite' : ''}`) : null),
+    el('div', { class: 'jour-txt' }, e.jour || '—'));
+  const niveau = (k, v) => el('span', {}, el('span', { class: 'k' }, k), v);
+  const niveaux = el('div', { class: 'niveaux' });
+  if (e.position) niveaux.append(niveau('entrée A', prix(e.pos_entree)), niveau('stop', prix(e.pos_stop)));
+  if (e.range_haut) niveaux.append(niveau('range 9:30', `${prix(e.range_bas)} à ${prix(e.range_haut)}`));
+  if (niveaux.childNodes.length) jour.append(niveaux);
+  if (e.position && Number.isFinite(e.pos_r)) jour.append(regleR(e));
+  if (legs) jour.append(el('div', { class: 'jambes' }, el('span', { class: 'k' }, 'B et D'), [e.v8_b, e.v9_d].filter(Boolean).join(' ; ') || `${e.jambes} ouverte${e.jambes > 1 ? 's' : ''}`));
+  const lignes = [];
+  if (!legs && (e.v8_b || e.v9_d)) lignes.push(el('dt', {}, 'Entrées B et D'), el('dd', {}, [e.v8_b, e.v9_d].filter(Boolean).join(' ; ')));
+  lignes.push(el('dt', {}, 'Filtres'), el('dd', {}, e.filtres || '—'));
+  if (e.stats_n) lignes.push(el('dt', {}, 'Depuis le début'), el('dd', { class: 'num' }, `${e.stats_n} trades, ${rSigned(e.stats_r)}, pire baisse −${num(e.stats_baisse, 1)}R`));
+  jour.append(pli(`marche:${e.symbole}`, false, 'detail', ['Détail'], el('dl', {}, ...lignes)));
+  row.append(jour);
   const res = el('div', { class: 'res' });
   if (e.position || e.jambes > 0) {
     const ouvert = (e.pos_resultat || 0) + (e.v8_resultat || 0);
-    res.append(el('div', {}, el('div', { class: 'fig' }, delta(ouvert, moneySigned(ouvert, e.devise))), el('div', { class: 'hint', style: 'margin:0' }, e.en_marche ? 'résultat ouvert' : 'dernier résultat connu')));
-  }
+    const signe = (v) => (v > 0 ? 'up' : v < 0 ? 'down' : '');
+    res.append(el('div', { class: 'fig' }, delta(ouvert, moneySigned(ouvert, e.devise))));
+    const sub = el('div', { class: 'sub' });
+    if (e.position && !legs) sub.append(e.solde_depart > 0 ? el('span', { class: signe(ouvert) }, pctSigned((100 * ouvert) / e.solde_depart)) : '', el('span', { class: signe(e.pos_r) }, rSigned(e.pos_r)));
+    else if (e.position) sub.append(el('span', { class: signe(e.pos_resultat) }, `A ${moneySigned(e.pos_resultat, e.devise)}, ${rSigned(e.pos_r)}`), el('span', { class: signe(e.v8_resultat) }, `B et D ${moneySigned(e.v8_resultat || 0, e.devise)}`));
+    if (sub.childNodes.length) res.append(sub);
+    res.append(el('div', { class: 'quoi' }, e.en_marche ? 'résultat ouvert' : 'dernier résultat connu'));
+  } else res.append(el('div', { class: 'rien' }, e.attente ? 'ordres posés, pas de position' : 'aucune position'));
   // Le bouton reste tant qu'une entrée B, C ou D est ouverte, même après la sortie de la cassure A : l'EA ferme tout.
   if (e.en_marche && (e.position || e.attente || e.jambes > 0)) {
     res.append(el('button', { class: 'btn danger small', onclick: () => askClose(e) }, e.position || e.jambes > 0 ? 'Clôturer les positions' : 'Annuler les ordres'));
@@ -645,7 +788,9 @@ function renderInterrupteur() {
     const franchi = s && i.franchi.length > 0;
     const verdict = !s ? 'pas de seuil pour ce marché' : !franchi ? 'rien à signaler' : i.complet ? `franchi : ${i.franchi.join(', ')}. Décoche ce marché et fais le point` : `au-delà du seuil pour l’instant : ${i.franchi.join(', ')}`;
     const texte = [el('b', {}, `Interrupteur ${nom} : ${verdict}. `), `${mesures}, ${sur}.`];
-    return franchi ? el('div', { class: `banner${i.complet ? ' bad' : ''}` }, ...texte) : el('p', { class: 'interrupteur' }, ...texte);
+    if (franchi) return el('div', { class: `banner${i.complet ? ' bad' : ''}` }, ...texte);
+    // rien à signaler : une ligne ; les mesures et les seuils derrière le pli
+    return pli(`interrupteur:${symbole}`, false, 'pli interrupteur', [el('b', {}, `Interrupteur ${nom} : ${verdict}.`)], el('p', {}, `${mesures}, ${sur}.`));
   }));
 }
 
@@ -677,7 +822,7 @@ function renderSeance() {
     positions: live.some((e) => e.position || e.jambes > 0),
   };
   const sansTrade = live.length > 0 && live.every((e) => /^Pas de trade/.test(e.jour || ''));
-  $('seance-titre').textContent = ny ? `Séance du ${ny.date}` : 'Séance de New York';
+  $('seance-titre').textContent = ny ? ny.date : 'Séance de New York';
   const t = ny ? ny.minutes : null;
   const sortieTxt = hmTxt(sortie);
   $('seance-sous').textContent = !ny ? 'Le robot ne tourne pas : l’heure et l’état de la séance viennent de lui.'
@@ -701,7 +846,7 @@ function drawFrise(maintenant, sortie, finB, actif) {
   const key = [W, maintenant, sortie, finB, actif.range, actif.ordres, actif.cassure, actif.positions].join('|');
   if (host.dataset.drawn === key) return;
   host.dataset.drawn = key;
-  const col = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--col')) || 172;
+  const col = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--col')) || 200;
   const debut = hm('09:00'), pivot = hm('10:00'), fin = hm('16:00');
   const plot = W - col;
   const x = (m) => col + plot * (m <= pivot ? 0.42 * (m - debut) / (pivot - debut) : 0.42 + 0.58 * (Math.min(m, fin) - pivot) / (fin - pivot));
@@ -713,7 +858,7 @@ function drawFrise(maintenant, sortie, finB, actif) {
     ['Repli B', hm(REGLES_NY.cassure), finB, actif.positions],
     ['Positions', hm(REGLES_NY.cassure), sortie, actif.positions],
   ];
-  const top = 22, pas = 30, H = top + lignes.length * pas + 26;
+  const top = 22, pas = 26, H = top + lignes.length * pas + 26;
   const root = svg('svg', { viewBox: `0 0 ${W} ${H}`, height: H, role: 'img', 'aria-label': `Fenêtres des règles de la séance, de 9:00 à 16:00, heure de New York${maintenant != null ? `. Il est ${hmTxt(maintenant)}.` : ''}` });
   const bas = top + lignes.length * pas;
   // le temps écoulé, teinté comme l'eau derrière l'étrave
@@ -725,18 +870,22 @@ function drawFrise(maintenant, sortie, finB, actif) {
     // les heures de chaque fenêtre, seulement s'il y a la place à côté du nom (sur téléphone, l'axe suffit)
     if (col >= 150) { const heures = svg('text', { x: col - 14, y: y + 4, 'text-anchor': 'end', class: 'heure' }); heures.textContent = `${hmTxt(a)}–${hmTxt(b)}`; root.append(heures); }
     root.append(svg('line', { x1: col, x2: W, y1: y, y2: y, stroke: 'var(--grid)', 'stroke-width': 1 }));
-    root.append(svg('rect', { x: x(a), y: y - 5, width: Math.max(3, x(b) - x(a)), height: 10, rx: 2,
+    root.append(svg('rect', { x: x(a), y: y - 4, width: Math.max(3, x(b) - x(a)), height: 8, rx: 1,
       fill: encours ? 'var(--accent)' : passe ? 'var(--axis)' : 'var(--water-2)' }));
   });
   // sortie de fin de journée : un trait sur toute la hauteur
   root.append(svg('line', { x1: x(sortie), x2: x(sortie), y1: top - 6, y2: bas, stroke: 'var(--ink)', 'stroke-width': 1.5, 'stroke-dasharray': '3 3' }));
-  // axe des heures : moins d'étiquettes quand la place manque
+  // axe des heures : moins d'étiquettes quand la place manque. Les chiffres en chasse fixe sont plus larges : on mesure les bords
+  // de chaque étiquette (environ 7 px par caractère), et 9:00 et 16:00 restent toujours.
+  const bords = (h, px) => { const w = h.length * 7; return h === '9:00' ? [px, px + w] : h === '16:00' ? [px - w, px] : [px - w / 2, px + w / 2]; };
+  const limite = bords('16:00', x(hm('16:00')))[0];
   let dernier = -Infinity;
   for (const h of ['9:00', '9:30', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00']) {
     const px = x(hm(h));
     root.append(svg('line', { x1: px, x2: px, y1: bas, y2: bas + 5, stroke: 'var(--axis)', 'stroke-width': 1 }));
-    if (px - dernier < 40) continue;
-    dernier = px;
+    const [gauche, droite] = bords(h, px);
+    if (h !== '16:00' && (gauche < dernier + 8 || droite > limite - 8)) continue;
+    dernier = droite;
     const label = svg('text', { x: px, y: bas + 19, 'text-anchor': h === '9:00' ? 'start' : h === '16:00' ? 'end' : 'middle', class: 'heure' }); label.textContent = h; root.append(label);
   }
   root.append(svg('line', { x1: col, x2: W, y1: bas, y2: bas, stroke: 'var(--axis)', 'stroke-width': 1 }));
@@ -799,7 +948,7 @@ function renderCurve() {
     argent += t.net; r += t.r || 0; if (t.pct != null) compose *= 1 + t.pct / 100;
     points.push({ i: index + 1, value: unit === 'argent' ? argent : unit === 'pct' ? (compose - 1) * 100 : r, trade: t });
   });
-  const W = Math.max(320, host.clientWidth), H = W > 520 ? 280 : 220, m = { l: 62, r: 78, t: 12, b: 26 };
+  const W = Math.max(320, host.clientWidth), H = W > 520 ? 240 : 200, m = { l: 62, r: 78, t: 12, b: 26 };
   const last = points[points.length - 1];
   const drawn = [W, unit, points.length, last.value].join('|');
   if (host.dataset.drawn === drawn) return;
@@ -819,8 +968,8 @@ function renderCurve() {
     const label = svg('text', { x: x(i), y: H - 6, 'text-anchor': anchor }); label.textContent = text; root.append(label);
   }
   const line = points.map((p, index) => `${index ? 'L' : 'M'}${x(p.i).toFixed(1)},${y(p.value).toFixed(1)}`).join(' ');
-  root.append(svg('path', { d: line, fill: 'none', stroke: 'var(--accent)', 'stroke-width': 2, 'stroke-linejoin': 'round', 'stroke-linecap': 'round' }));
-  if (points.length <= 60) for (const p of points.slice(1)) root.append(svg('circle', { cx: x(p.i), cy: y(p.value), r: 3, fill: 'var(--accent)', stroke: 'var(--surface)', 'stroke-width': 1.5 }));
+  root.append(svg('path', { d: line, fill: 'none', stroke: 'var(--accent)', 'stroke-width': 1.75, 'stroke-linejoin': 'round', 'stroke-linecap': 'round' }));
+  if (points.length <= 60) for (const p of points.slice(1)) root.append(svg('circle', { cx: x(p.i), cy: y(p.value), r: 2.5, fill: 'var(--accent)', stroke: 'var(--surface)', 'stroke-width': 1.5 }));
   root.append(svg('circle', { cx: x(last.i), cy: y(last.value), r: 4.5, fill: 'var(--accent)', stroke: 'var(--surface)', 'stroke-width': 2 }));
   const end = svg('text', { x: x(last.i) + 9, y: y(last.value) + 4, style: 'fill:var(--ink);font-weight:600' }); end.textContent = show(last.value); root.append(end);
   const cross = svg('line', { y1: m.t, y2: H - m.b, stroke: 'var(--axis)', 'stroke-width': 1, visibility: 'hidden' });
@@ -870,6 +1019,8 @@ async function loadExports() {
 }
 function renderExports() {
   const host = $('exports');
+  const n = exportsInfo ? exportsInfo.exports.length : 0;
+  $('sum-exports').textContent = !exportsInfo ? '' : n ? `${n} export${n > 1 ? 's' : ''}` : 'aucun pour l’instant';
   if (!exportsInfo) return host.replaceChildren(el('div', { class: 'empty' }, 'Liste des exports indisponible.'));
   const dossier = el('p', { class: 'hint' }, 'Dossier : ', el('span', { class: 'num' }, exportsInfo.dossier));
   if (!exportsInfo.exports.length) return host.replaceChildren(dossier, el('div', { class: 'empty' }, `Aucun export pour l’instant. Le premier trimestre complet sera exporté tout seul ; « Exporter le trimestre en cours » écrit dès maintenant ${exportsInfo.enCours}.`));
@@ -1097,12 +1248,13 @@ function renderConnections() {
     el('div', { class: 'hint' }, 'Facultatif. Ordres placés, entrées, pyramide, stop déplacé et clôtures (en R, en % et en argent) arrivent sur ton téléphone.'),
     statusLine(ready, ready ? (live.length && !live.some((e) => e.telegram) ? 'Configuré (l’EA le prend dans les 2 secondes)' : 'Configuré') : c.telegramJeton ? 'Jeton enregistré, discussion à choisir' : 'Non configuré'),
     sending ? el('div', { class: 'banner bad' }, MT5_BLOCKED) : null,
-    el('ol', {},
+    // les cinq étapes : ouvertes tant que Telegram n'est pas configuré, puis repliées (le choix fait ici est retenu)
+    pli(`telegram-etapes:${ready ? 1 : 0}`, !ready, 'etapes', ['Les étapes'], el('ol', {},
       el('li', {}, 'Dans Telegram, ouvre une discussion avec @BotFather (le compte officiel, coche bleue) et envoie /newbot.'),
       el('li', {}, 'Il te donne un jeton : colle-le ci-dessous et enregistre.'),
       el('li', {}, 'Toujours dans Telegram, ouvre ton nouveau bot et envoie-lui un message.'),
       el('li', {}, 'Clique sur « Trouver ma discussion et tester ».'),
-      el('li', {}, 'Dans MetaTrader 5 : Outils > Options > Expert Advisors, coche « Autoriser WebRequest pour les URL listées » et ajoute https://api.telegram.org. Puis clique sur « Essai depuis MetaTrader ».')),
+      el('li', {}, 'Dans MetaTrader 5 : Outils > Options > Expert Advisors, coche « Autoriser WebRequest pour les URL listées » et ajoute https://api.telegram.org. Puis clique sur « Essai depuis MetaTrader ».'))),
     el('div', { class: 'secret-row' }, tokenInput,
       el('button', { class: 'btn primary', onclick: () => { if (tokenInput.value.trim()) { telegramResult = null; mt5Test = null; renderConnections.drawn = false; saveConnection({ telegram_jeton: tokenInput.value, telegram_discussion: '' }); } } }, 'Enregistrer le jeton')),
     el('div', { class: 'secret-row' },
@@ -1183,7 +1335,7 @@ function renderConnections() {
     el('div', { class: 'checks' },
       el('label', { class: 'switch' }, el('input', { type: 'checkbox', checked: c.mt5Auto, onchange: (event) => option({ auto: event.target.checked }) }), 'Ouvrir MetaTrader 5 tout seul quand Étrave démarre'),
       el('label', { class: 'switch' }, el('input', { type: 'checkbox', checked: m.demarrageWindows, disabled: !m.windows && !m.mac, onchange: (event) => option({ demarrageWindows: event.target.checked }) }), m.mac ? 'Lancer Étrave à l’ouverture de la session du Mac' : 'Lancer Étrave à l’ouverture de la session Windows')),
-    el('p', { style: 'margin-top:10px' }, m.mac ? 'Avec ces deux cases, le Mac relance tout seul Étrave puis MetaTrader à l’ouverture de ta session : le Nasdaq et le S&P 500 s’ouvrent avec la V11, et le Mac reste éveillé tant que MetaTrader tourne. Le double-clic sur Étrave fait la même chose.' : 'Avec ces deux cases, un VPS qui redémarre relance tout seul Étrave puis MetaTrader, qui se reconnecte au compte et retrouve l’EA sur son graphique (si Windows ouvre la session automatiquement).'),
+    pli('mt5-cases', false, 'etapes', ['Ce que font ces deux cases'], el('p', { style: 'margin-top:6px' }, m.mac ? 'Avec ces deux cases, le Mac relance tout seul Étrave puis MetaTrader à l’ouverture de ta session : le Nasdaq et le S&P 500 s’ouvrent avec la V11, et le Mac reste éveillé tant que MetaTrader tourne. Le double-clic sur Étrave fait la même chose.' : 'Avec ces deux cases, un VPS qui redémarre relance tout seul Étrave puis MetaTrader, qui se reconnecte au compte et retrouve l’EA sur son graphique (si Windows ouvre la session automatiquement).')),
     el('p', {}, 'Après un changement de compte, vérifie dans MetaTrader que l’EA est toujours sur son graphique et que le bouton « Trading algo » est actif : cette page te le dit en haut.'));
 
   const note = fold('note', 'Où vont ces réglages', false, '',
@@ -1238,20 +1390,23 @@ $('close-ok').addEventListener('click', async () => {
   $('dlg-close').close();
   try { await api('/api/cloturer', { symbole: closing, confirmation: 'CLOTURER' }); toast('Demande envoyée : l’EA s’en occupe dans les 2 secondes.'); } catch (error) { toast(error.message); }
 });
-// Thème : clair par défaut, nuit si l'ordinateur est réglé en sombre ; le choix fait ici est retenu.
+// Thème : sombre par défaut, quel que soit le réglage de l'ordinateur (décision du propriétaire du 27/11/2026, « terminal de
+// trading sombre ») ; le clair reste au bouton, et le choix fait ici est retenu. Clé neuve : un « clair » retenu quand le clair
+// était le défaut (« carte marine ») ne cache pas le nouveau défaut.
+const CLE_THEME = 'theme-terminal';
 function setTheme(theme) {
   document.documentElement.dataset.theme = theme;
-  $('btn-theme').textContent = theme === 'dark' ? 'Mode jour' : 'Mode nuit';
+  $('btn-theme').textContent = theme === 'dark' ? 'Mode clair' : 'Mode sombre';
 }
 $('btn-theme').addEventListener('click', () => {
   const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
   setTheme(next);
-  try { localStorage.setItem('theme', next); } catch (error) { /* stockage indisponible : sans gravité */ }
+  try { localStorage.setItem(CLE_THEME, next); } catch (error) { /* stockage indisponible : sans gravité */ }
 });
 {
   let saved = null;
-  try { saved = localStorage.getItem('theme'); } catch (error) { /* idem */ }
-  setTheme(saved === 'dark' || saved === 'light' ? saved : window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+  try { saved = localStorage.getItem(CLE_THEME); } catch (error) { /* idem */ }
+  setTheme(saved === 'light' ? 'light' : 'dark');
 }
 window.addEventListener('resize', () => { if (!$('tab-overview').hidden && state) { renderCurve(); renderSeance(); } });
 
