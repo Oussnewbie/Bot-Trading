@@ -31,8 +31,9 @@ SOUS_DOSSIER = "Etrave"
 FICHIER_REGLAGES = "reglages.txt"
 
 # Bornes du risque par trade, en % du solde (les mêmes dans l'EA : RISK_MIN, RISK_MAX). AUD-05 (audit du 26/11/2026) : plafond
-# ramené de 20 % à 1 % ; une valeur enregistrée au-dessus est ramenée au plafond par l'EA, et montrée ainsi par la page.
-RISQUE_MIN, RISQUE_MAX = 0.05, 1.0
+# de 1 %, remonté à 20 % par décision de l'utilisateur du 27/11/2026 (« pour des tests », tous comptes) ; une valeur enregistrée
+# au-dessus est ramenée au plafond par l'EA, et montrée ainsi par la page.
+RISQUE_MIN, RISQUE_MAX = 0.05, 20.0
 # Au-delà de ce risque, il faut confirmer en toutes lettres (AUD-05 : 0,5 %, avant 1 %). La page lit ce seuil ici (bornes).
 RISQUE_A_CONFIRMER = 0.5
 LEVIER_MAX = 2000.0
@@ -197,8 +198,8 @@ def reglages_publics(dossier):
     """Ce que la page peut savoir des réglages : jamais le jeton ni la discussion Telegram."""
     cles = lire_reglages(dossier)
     risque, levier = _nombre(cles.get("risque_pct")), _nombre(cles.get("levier"))
-    # AUD-05 : comme l'EA, une valeur au-dessus du plafond (2,5 % enregistrés avant le 26/11/2026) vaut le plafond ;
-    # risqueEnregistre garde la valeur du fichier pour que la page explique « Réglé à 2,5 %, ramené au plafond de 1 % ».
+    # AUD-05 : comme l'EA, une valeur au-dessus du plafond vaut le plafond ; risqueEnregistre garde la valeur du fichier pour
+    # que la page explique « Réglé à 35 %, ramené au plafond de 20 % ».
     valable = risque is not None and risque >= RISQUE_MIN - 1e-9
     return {
         "risquePct": min(risque, RISQUE_MAX) if valable else None,

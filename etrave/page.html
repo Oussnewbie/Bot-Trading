@@ -342,7 +342,7 @@
       <div class="hint">La part du solde perdue quand le stop est touché (1R). C’est le seul réglage : tout le reste garde les valeurs du test.</div>
       <div class="status" id="risk-status"><span class="dot"></span><span></span></div>
       <div class="risk-row">
-        <div class="big"><input type="number" id="risk-input" min="0.05" max="1" step="0.05" inputmode="decimal" aria-label="Risque par trade, en pourcentage du solde"><span>% du solde</span></div>
+        <div class="big"><input type="number" id="risk-input" min="0.05" max="20" step="0.05" inputmode="decimal" aria-label="Risque par trade, en pourcentage du solde"><span>% du solde</span></div>
         <input type="range" id="risk-slider" min="0" max="1000" step="1" aria-label="Risque par trade">
       </div>
       <div class="chips" id="risk-presets" role="group" aria-label="Valeurs courantes"></div>
@@ -1050,10 +1050,11 @@ async function exportNow(trimestre) {
 }
 
 // ---------------------------------------------------------------- risque
-// AUD-05 (audit du 26/11/2026) : plafond de 1 % (avant 20 %), mot RISQUE au-delà de 0,5 % ; les bornes viennent du serveur (pont.py).
-const RISK_PRESETS = [0.1, 0.25, 0.5, 0.75, 1];
-function bounds() { return state ? state.reglages.bornes : { risqueMin: 0.05, risqueMax: 1, risqueAConfirmer: 0.5, levierMax: 2000 }; }
-/** AUD-05 : un risque enregistré au-dessus du plafond (2,5 % d'avant le 26/11/2026) est appliqué au plafond par l'EA. */
+// AUD-05 (audit du 26/11/2026) : mot RISQUE au-delà de 0,5 % ; plafond de 1 % remonté à 20 % (décision de l'utilisateur du
+// 27/11/2026, pour des tests) ; les bornes viennent du serveur (pont.py).
+const RISK_PRESETS = [0.25, 0.5, 1, 2.5, 5, 10, 20];
+function bounds() { return state ? state.reglages.bornes : { risqueMin: 0.05, risqueMax: 20, risqueAConfirmer: 0.5, levierMax: 2000 }; }
+/** AUD-05 : un risque enregistré au-dessus du plafond est appliqué au plafond par l'EA. */
 const clampedRisk = () => (state && state.reglages.risqueEnregistre != null && state.reglages.risqueEnregistre > bounds().risqueMax + 1e-9 ? state.reglages.risqueEnregistre : null);
 const clampedText = () => (clampedRisk() != null ? `Réglé à ${riskText(clampedRisk())}, ramené au plafond de ${riskText(bounds().risqueMax)}.` : '');
 function roundRisk(v) { const step = v < 1 ? 0.05 : v < 5 ? 0.1 : 0.5; return Number((Math.round(v / step) * step).toFixed(2)); }

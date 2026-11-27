@@ -62,19 +62,31 @@ def test_sans_fichier_rien_n_est_impose_a_l_ea(dossier):
     assert not r["telegramJeton"] and not r["telegramDiscussion"]
 
 
-def test_risque_entre_les_bornes_et_confirmation_au_dela_de_1_pct(dossier):
-    # AUD-05 (audit du 26/11/2026) : plafond ramené de 20 % à 1 %, mot RISQUE demandé au-delà de 0,5 % (avant : 1 %)
+def test_risque_entre_les_bornes_et_confirmation_au_dela_de_0_5_pct(dossier):
+    # AUD-05 : mot RISQUE demandé au-delà de 0,5 %. Plafond : 1 % après l'audit, 20 % depuis la décision de l'utilisateur du
+    # 27/11/2026 (« pour des tests », tous comptes)
     assert pont.regler(dossier, {"risquePct": 0.5}) == ["risque_pct"]
     assert pont.lire_reglages(dossier)["risque_pct"] == "0.5"
-    for hors_bornes in (0, 0.04, 1.01, 2.5, 20, 20.01, -1, "abc", None, True, "nan", "inf"):
+    for hors_bornes in (0, 0.04, 20.01, 25, 100, 1e9, -1, -20, "abc", "", None, True, "nan", "inf", "-inf", [20], {"x": 1}):
         with pytest.raises(pont.Refus):
             pont.regler(dossier, {"risquePct": hors_bornes}, "RISQUE")
+    assert pont.lire_reglages(dossier)["risque_pct"] == "0.5"       # aucune valeur hors bornes écrite
     with pytest.raises(pont.Refus, match="RISQUE"):
         pont.regler(dossier, {"risquePct": 0.75})                   # monter au-delà de 0,5 % : il faut le mot
+    with pytest.raises(pont.Refus, match="RISQUE"):
+        pont.regler(dossier, {"risquePct": 20})                     # le plafond aussi
     assert pont.lire_reglages(dossier)["risque_pct"] == "0.5"       # rien n'a été écrit
     pont.regler(dossier, {"risquePct": 1}, "RISQUE")
     assert pont.reglages_publics(dossier)["risquePct"] == 1.0
-    pont.regler(dossier, {"risquePct": 0.75})                       # baisser ne demande rien
+    pont.regler(dossier, {"risquePct": 2.5}, "RISQUE")
+    assert pont.reglages_publics(dossier)["risquePct"] == 2.5
+    with pytest.raises(pont.Refus, match="RISQUE"):
+        pont.regler(dossier, {"risquePct": 20}, "risque ")          # monter : le mot exact, en majuscules
+    assert pont.lire_reglages(dossier)["risque_pct"] == "2.5"
+    pont.regler(dossier, {"risquePct": "20"}, "RISQUE")             # le plafond, en texte : accepté avec le mot
+    assert pont.reglages_publics(dossier)["risquePct"] == 20.0 and pont.lire_reglages(dossier)["risque_pct"] == "20"
+    pont.regler(dossier, {"risquePct": 1})                          # baisser ne demande rien
+    pont.regler(dossier, {"risquePct": 0.75})
     pont.regler(dossier, {"risquePct": "0,25"})                     # virgule française acceptée
     assert pont.lire_reglages(dossier)["risque_pct"] == "0.25"
 
@@ -852,25 +864,47 @@ def test_valeurs_non_finies_jamais_dans_le_json(serveur, dossier):
     assert "allow_nan=False" in open(os.path.join(RACINE, "etrave", "etrave.py"), encoding="utf-8").read()
 
 
-def test_plafond_du_risque_a_1_pct(serveur, dossier):
-    """AUD-05 : plafond de 20 % ramené à 1 %, mot RISQUE au-delà de 0,5 %. Un risque déjà enregistré au-dessus (2,5 %) est montré
-    ramené au plafond, comme l'EA l'applique, et la valeur enregistrée reste visible pour que la page l'explique."""
-    assert pont.RISQUE_MAX == 1.0 and pont.RISQUE_A_CONFIRMER == 0.5
+def test_plafond_du_risque_a_20_pct(serveur, dossier):
+    """AUD-05 : mot RISQUE au-delà de 0,5 % ; plafond de 1 % après l'audit, remonté à 20 % par décision de l'utilisateur du
+    27/11/2026 (« pour des tests », tous comptes). Un risque enregistré au-dessus du plafond est montré ramené au plafond, comme
+    l'EA l'applique, et la valeur enregistrée reste visible pour que la page l'explique."""
+    assert pont.RISQUE_MAX == 20.0 and pont.RISQUE_A_CONFIRMER == 0.5
     pont.ecrire_cles(os.path.join(dossier, pont.FICHIER_REGLAGES), {"risque_pct": "2.5"})
     r = pont.reglages_publics(dossier)
-    assert r["risquePct"] == 1.0 and r["risqueEnregistre"] == 2.5
-    assert r["bornes"]["risqueMax"] == 1.0 and r["bornes"]["risqueAConfirmer"] == 0.5
-    assert pont.regler(dossier, {"risquePct": 0.75}) == ["risque_pct"]   # depuis 2,5 % (vu 1 %), baisser ne demande rien
+    assert r["risquePct"] == 2.5 and r["risqueEnregistre"] == 2.5        # 2,5 % n'est plus ramené à 1 %
+    pont.ecrire_cles(os.path.join(dossier, pont.FICHIER_REGLAGES), {"risque_pct": "35"})
+    r = pont.reglages_publics(dossier)
+    assert r["risquePct"] == 20.0 and r["risqueEnregistre"] == 35.0      # au-dessus du plafond : vaut le plafond
+    assert r["bornes"]["risqueMax"] == 20.0 and r["bornes"]["risqueAConfirmer"] == 0.5
+    assert pont.regler(dossier, {"risquePct": 10}) == ["risque_pct"]     # depuis 35 % (vu 20 %), baisser ne demande rien
     pont.ecrire_cles(os.path.join(dossier, pont.FICHIER_REGLAGES), {"risque_pct": "0.01"})
     assert pont.reglages_publics(dossier)["risquePct"] is None           # sous le minimum : ignorée, comme dans l'EA
-    assert appeler(serveur, "GET", "/api/risque?pct=1")[0] == 200
-    assert appeler(serveur, "GET", "/api/risque?pct=1.5")[0] == 400 and appeler(serveur, "GET", "/api/risque?pct=nan")[0] == 400
-    # la page : mêmes bornes de repli que le serveur, aucun bouton au-dessus du plafond, et la phrase qui explique le plafond
+    for pct in ("0.05", "1", "1.5", "20"):
+        assert appeler(serveur, "GET", f"/api/risque?pct={pct}")[0] == 200
+    for pct in ("20.01", "0", "-1", "nan", "inf", "abc"):
+        assert appeler(serveur, "GET", f"/api/risque?pct={pct}")[0] == 400
+    # la page : mêmes bornes de repli que le serveur, des boutons jusqu'au plafond et pas au-delà, et la phrase du plafond
     repli = re.search(r"risqueMin: ([\d.]+), risqueMax: ([\d.]+), risqueAConfirmer: ([\d.]+)", PAGE).groups()
     assert tuple(map(float, repli)) == (pont.RISQUE_MIN, pont.RISQUE_MAX, pont.RISQUE_A_CONFIRMER)
     boutons = [float(v) for v in re.search(r"const RISK_PRESETS = \[([^\]]+)\]", PAGE).group(1).split(",")]
-    assert max(boutons) <= pont.RISQUE_MAX and 'id="risk-input" min="0.05" max="1"' in PAGE
+    assert max(boutons) == pont.RISQUE_MAX and min(boutons) >= pont.RISQUE_MIN and boutons == sorted(boutons)
+    assert 'id="risk-input" min="0.05" max="20"' in PAGE
     assert "ramené au plafond de" in PAGE and "AUD-05" in PAGE
+
+
+def test_risque_a_20_pct_par_la_page(serveur, dossier):
+    """Décision de l'utilisateur du 27/11/2026 : 20 % se règle depuis la page, avec le mot RISQUE ; au-delà, refusé ; deux
+    envois identiques (double clic) laissent la même valeur."""
+    faux_etat(dossier)
+    code, brut, _ = appeler(serveur, "POST", "/api/reglages", {"valeurs": {"risquePct": 20}})
+    assert code == 422 and "RISQUE" in json.loads(brut)["error"]
+    for _ in range(2):
+        code, brut, _ = appeler(serveur, "POST", "/api/reglages", {"valeurs": {"risquePct": 20}, "confirmation": "RISQUE"})
+        assert code == 200 and json.loads(brut)["reglages"]["risquePct"] == 20.0
+    assert pont.lire_reglages(dossier)["risque_pct"] == "20"
+    code, brut, _ = appeler(serveur, "POST", "/api/reglages", {"valeurs": {"risquePct": 20.5}, "confirmation": "RISQUE"})
+    assert code == 422 and "20 %" in json.loads(brut)["error"]
+    assert pont.lire_reglages(dossier)["risque_pct"] == "20"
 
 
 def test_compte_reel_autorise_seulement_avec_le_mot_reel(serveur, dossier):

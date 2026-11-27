@@ -176,7 +176,7 @@ input bool         InpPanel     = true;         // Panneau d'information
 #define UI_DIR      "Etrave\\"   // sous-dossier du dossier commun de MetaTrader, partagé avec l'interface
 #define UI_PERIOD   2            // secondes entre deux lectures des réglages et deux écritures de l'état
 #define RISK_MIN    0.05         // bornes du risque lu dans l'interface (% du solde) ; hors bornes, la valeur est ignorée
-#define RISK_MAX    1.0          // AUD-05 (audit du 26/11/2026) : plafond dur, 20 % avant (ruine possible selon la marge)
+#define RISK_MAX    20.0         // plafond dur (AUD-05) : 1 % après l'audit, 20 % depuis la décision de l'utilisateur du 27/11/2026 (essais)
 #define LEVER_MAX   2000.0
 #define MARGIN_USE  0.90         // part de la marge libre que la position, pyramide comprise, peut demander
 #define CMD_MAX_AGE 120          // secondes : une demande de l'interface plus vieille est ignorée
@@ -2996,8 +2996,8 @@ void ReadSettings()
                if(k == "risque_pct")
                  {
                   double x = StringToDouble(v);
-                  // AUD-05 (audit du 26/11/2026) : au-dessus du plafond, la valeur est ramenée au plafond (avant : acceptée
-                  // jusqu'à 20 %)
+                  // AUD-05 (audit du 26/11/2026) : au-dessus du plafond (RISK_MAX, 20 % depuis le 27/11/2026), la valeur est
+                  // ramenée au plafond
                   if(x >= RISK_MIN - 1e-9 && MathIsValidNumber(x))
                     {
                      risk = MathMin(x, RISK_MAX);

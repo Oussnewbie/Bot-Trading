@@ -34,7 +34,7 @@ etrave/    interface web locale de l'EA (Python sans dépendance), export.py (ex
 .claude/   commands/audit.md (/audit) et agents/auditeur.md (auditeur adapté au robot) ; rapports dans audits/ (ignoré)
 video/     (branche communication/outil-video) vidéos TikTok : récap de séance et présentation, `python3 video/outil.py` ; README
 ```
-- Tests : `.venv/bin/python -m pytest robot etrave -q` (175 tests et 1 ignoré sans l'outil vidéo au 27/11/2026 ; sur la branche
+- Tests : `.venv/bin/python -m pytest robot etrave -q` (176 tests et 1 ignoré sans l'outil vidéo au 27/11/2026 ; sur la branche
   `communication/outil-video`, ajouter `video`). Le `.venv` (Python 3.15) n'existe que dans le clone principal
   `~/Documents/GitHub/Bot-Trading` : depuis un worktree (dont `Bot-Trading-main`), utiliser `~/Documents/GitHub/Bot-Trading/.venv/bin/python`.
 - Étrave en essai : `.venv/bin/python etrave/etrave.py --sans-navigateur --port 8799 --dossier <dossier jetable>`, puis
@@ -129,9 +129,11 @@ video/     (branche communication/outil-video) vidéos TikTok : récap de séanc
   relire ; un état sans numéro (d'avant le correctif) n'est repris que sur un compte démo ; rien n'est écrit (`Sv`) tant que le
   compte est inconnu (démarrage de MetaTrader). Verrou par symbole (AUD-11) : variable globale temporaire
   `StratV11_verrou_<symbole>_<magic>` et son battement `_bat` (minuteur toutes les 2 s, posé même sans interface).
-- **Risque plafonné à 1 %** (AUD-05, 27/11/2026, choix de Claude sur délégation de l'utilisateur) : `RISK_MAX` = 1.0 dans l'EA et
-  Étrave ; une valeur plus haute est ramenée à 1 % (l'utilisateur avait enregistré 2,5 % : pire baisse −80 % dans la simulation de
-  la page). Ne le remonte jamais sans son accord. **Ce plafond ne vaut que pour le risque en %** : avec `InpFixedLots` > 0, la
+- **Risque plafonné à 20 %** (décision de l'utilisateur du 27/11/2026, « pour des tests », sur tous les comptes, réel compris) :
+  `RISK_MAX` = 20.0 dans l'EA et `RISQUE_MAX` dans Étrave ; une valeur plus haute est ramenée à 20 %. Le mot RISQUE reste demandé
+  au-delà de 0,5 %. Avant : 1 % (AUD-05, 27/11/2026, choix de Claude sur délégation). Ne change pas ce plafond sans l'accord de
+  l'utilisateur. Vérifié au testeur (NDX100, octobre 2026, 10 000 $, 1:100) : l'EA prend 19 à 20 % par cassure, et B ou D peuvent
+  risquer autant que A le même jour (un jour à −45 %). **Ce plafond ne vaut que pour le risque en %** : avec `InpFixedLots` > 0, la
   taille vient des lots fixes et n'est pas plafonnée (calcul des lots dans `Strategy-V11.mq5`, vérifié le 27/11/2026).
 - Les numéros magiques 50930 à 50935 sont partagés avec d'anciennes versions (V9, ORB v6) ; le filet de sécurité et
   `EaPositions` surveillent 50930 à 50939. Préfixe d'état `StratV11_`. Compte
@@ -194,7 +196,8 @@ video/     (branche communication/outil-video) vidéos TikTok : récap de séanc
   la fenêtre de Chrome ne descend pas sous 500 px, passer par un Chrome headless (`Emulation.setDeviceMetricsOverride`).
 - **Étrave, audit du 26/11/2026 (27/11/2026)** : bouton « Arrêt d'urgence » (mot ARRET : les deux cases décochées et une clôture
   demandée à chaque EA en marche, `pont.arret_urgence`) ; « Autoriser ce compte réel » (mot REEL, seulement le numéro d'un EA en
-  marche sur un compte réel, `pont.autoriser_compte_reel`) ; risque de 0,05 à 1 %, mot RISQUE au-delà de 0,5 % ; « Fermer
+  marche sur un compte réel, `pont.autoriser_compte_reel`) ; risque de 0,05 à 20 % (1 % jusqu'à la décision de l'utilisateur du
+  27/11/2026), mot RISQUE au-delà de 0,5 % ; « Fermer
   MetaTrader » refusé aussi sur le dernier état connu d'un EA muet (mot FERMER pour passer outre) ; « Installer l'EA » refusé
   pendant un trade ; au double-clic, MetaTrader n'est pas lancé si la compilation a échoué (`lancement.json`) ; version compilée
   (`ea_build`) affichée ; taille estimée et lot minimum dans l'onglet Risque (`risque.estimer_taille`) ; valeurs non finies refusées.
@@ -228,7 +231,8 @@ video/     (branche communication/outil-video) vidéos TikTok : récap de séanc
     TradingView.
   - **Audit du 26/11/2026** (rapport `audits/2026-11-26-2345.md`, hors dépôt), corrigés le 27/11/2026 avec un contrôle chacun
     (`test_aud…`) : AUD-01 (compte réel autorisé seulement depuis Étrave), AUD-02 (état propre au compte), AUD-03 et AUD-04 (heure
-    contre-vérifiée par `InpSrvGMT`, écart annoncé par rapport à l'heure attendue), AUD-05 (risque plafonné à 1 %), AUD-06 (après une
+    contre-vérifiée par `InpSrvGMT`, écart annoncé par rapport à l'heure attendue), AUD-05 (risque plafonné à 1 %, remonté à 20 % par
+    l'utilisateur le 27/11/2026), AUD-06 (après une
     réponse perdue, l'historique des deals et des ordres est relu avant tout renvoi de A ; doublon de A de même taille ouvert à moins
     de 30 s fermé, plus pris pour une pyramide), AUD-07 (ordre stop déjà posé repris à la relance, état écrit avant la pose), AUD-08
     (stop du courtier relu chaque minute, `VerifierStops` : reposé ou position fermée), AUD-11 (un seul graphique par symbole),
@@ -299,7 +303,8 @@ propriétaire ne retire jamais une règle de sécurité. Contradictions connues 
 - **Heure de New York** : l'EA la calcule depuis l'heure du serveur et la règle d'heure d'été américaine (MQL5 n'a pas de base de
   fuseaux horaires).
 - **Période de test séparée** : il n'en reste plus sur le Nasdaq (voir « Discipline ») ; la seule donnée neuve est la démo.
-- **Taille de position maximale** : en lots fixes (`InpFixedLots` > 0), le plafond de 1 % ne s'applique pas. Pas de plafond sur les
+- **Taille de position maximale** : le risque en % va jusqu'à 20 % par trade (décision de l'utilisateur du 27/11/2026, « pour des
+  tests », tous comptes) ; en lots fixes (`InpFixedLots` > 0), ce plafond ne s'applique pas. Pas de plafond sur les
   lots fixes : décision de l'utilisateur du 27/11/2026.
 - **Commissions du backtest** : le Pine n'a pas de commission par défaut (limite du backtest TradingView, que l'utilisateur lit à la
   main) ; l'EA et le simulateur comptent le spread réel et le glissement.

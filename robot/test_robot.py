@@ -720,9 +720,11 @@ def test_aud02_l_etat_appartient_a_un_compte():
     assert tick.index("if(!gEtatCharge)") < tick.index("SyncPosition();")
 
 
-def test_aud05_risque_plafonne_a_1_pct():
-    """AUD-05 : jusqu'à 20 % par trade était accepté (ruine possible selon la marge) ; au-delà du plafond, ramené au plafond."""
-    assert re.search(r"#define RISK_MAX\s+1\.0\b", EA)
+def test_aud05_risque_plafonne_a_20_pct():
+    """AUD-05 : au-delà du plafond, le risque est ramené au plafond. Plafond de 1 % du 27/11/2026 (audit), remonté à 20 % le même
+    jour par décision de l'utilisateur (« pour des tests », tous comptes, mot RISQUE dans Étrave au-delà de 0,5 %)."""
+    assert re.search(r"#define RISK_MAX\s+20\.0\b", EA)
+    assert re.search(r"#define RISK_MIN\s+0\.05\b", EA)
     lecture = fonction("void ReadSettings()")
     assert "risk = MathMin(x, RISK_MAX);" in lecture
     assert "double risk   = MathMin(InpRiskPct, RISK_MAX);" in lecture
