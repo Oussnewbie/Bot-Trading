@@ -16,7 +16,7 @@ chacun).
 - **Règles verrouillées en constantes** dans l'EA et le Pine : toutes les entrées (A, B, D1-D3), stop à 3 ranges (A, B ; taille des
   D), stop posé des D à l'entrée de A (V11), plancher de bruit (H1) coupé, pyramide, mémoire. Profil V10 choisi par l'utilisateur comme le plus rentable (critère gain) ; V11 retenue le 26/11/2026 comme meilleur compromis gain / pire baisse. Seuls restent réglables le
   compte (risque, lots fixes ; solde, taille de contrat et pas de lot dans le Pine), l'heure du serveur (détectée seule hors
-  testeur, `InpSrvAuto`), les FOMC en plus, l'exécution, les notifications et l'affichage. Demande de l'utilisateur du 26/11/2026 :
+  testeur, `InpSrvAuto`, et contre-vérifiée par `InpSrvGMT` : changer de courtier = régler `InpSrvGMT`, voir AUD-03), les FOMC en plus, l'exécution, les notifications et l'affichage. Demande de l'utilisateur du 26/11/2026 :
   « un double-clic, tout se met en place, je règle tout depuis Étrave ». Ne rends pas une règle réglable sans que l'utilisateur le demande.
 - Hors sujet : bitcoin, or, devises, DAX.
 
@@ -34,7 +34,9 @@ etrave/    interface web locale de l'EA (Python sans dépendance), export.py (ex
 .claude/   commands/audit.md (/audit) et agents/auditeur.md (auditeur adapté au robot) ; rapports dans audits/ (ignoré)
 video/     (branche communication/outil-video) vidéos TikTok : récap de séance et présentation, `python3 video/outil.py` ; README
 ```
-- Tests : `.venv/bin/python -m pytest robot etrave -q` (164 tests ; sur la branche `communication/outil-video`, ajouter `video`). Le `.venv` du dépôt tourne sous Python 3.15.
+- Tests : `.venv/bin/python -m pytest robot etrave -q` (175 tests et 1 ignoré sans l'outil vidéo au 27/11/2026 ; sur la branche
+  `communication/outil-video`, ajouter `video`). Le `.venv` (Python 3.15) n'existe que dans le clone principal
+  `~/Documents/GitHub/Bot-Trading` : depuis un worktree (dont `Bot-Trading-main`), utiliser `~/Documents/GitHub/Bot-Trading/.venv/bin/python`.
 - Étrave en essai : `.venv/bin/python etrave/etrave.py --sans-navigateur --port 8799 --dossier <dossier jetable>`, puis
   `http://127.0.0.1:8799`. Pour voir la page avec des données, écrire de faux `etat-<symbole>.txt` (format dans
   `etrave/test_interface.py`, `faux_etat`) et un `trades-<symbole>.csv`, et les réécrire toutes les 2 secondes (au-delà de 15 s sans
@@ -129,7 +131,8 @@ video/     (branche communication/outil-video) vidéos TikTok : récap de séanc
   `StratV11_verrou_<symbole>_<magic>` et son battement `_bat` (minuteur toutes les 2 s, posé même sans interface).
 - **Risque plafonné à 1 %** (AUD-05, 27/11/2026, choix de Claude sur délégation de l'utilisateur) : `RISK_MAX` = 1.0 dans l'EA et
   Étrave ; une valeur plus haute est ramenée à 1 % (l'utilisateur avait enregistré 2,5 % : pire baisse −80 % dans la simulation de
-  la page). Ne le remonte jamais sans son accord.
+  la page). Ne le remonte jamais sans son accord. **Ce plafond ne vaut que pour le risque en %** : avec `InpFixedLots` > 0, la
+  taille vient des lots fixes et n'est pas plafonnée (calcul des lots dans `Strategy-V11.mq5`, vérifié le 27/11/2026).
 - Les numéros magiques 50930 à 50935 sont partagés avec d'anciennes versions (V9, ORB v6) ; le filet de sécurité et
   `EaPositions` surveillent 50930 à 50939. Préfixe d'état `StratV11_`. Compte
   **hedging** obligatoire.
@@ -162,7 +165,7 @@ video/     (branche communication/outil-video) vidéos TikTok : récap de séanc
   nom provisoire puis renommé. C'est la matière des ajustements futurs : glissement réel, spread, excursions, jours sans trade.
 - **Journal des bougies** (`bougies-<symbole>.csv`, `BougiesRow`) : les bougies M5 de 30 min avant le range jusqu'à la sortie, écrites
   une fois par jour avec la ligne « fin » (hors séance, une lecture). Sert la vidéo récap (`video/`). Testeur 12 mois NDX100 à 0,25 %
-  sur 300 000 $ avec ce journal : 448 trades, +64 931,85 $, identique à la référence.
+  sur 300 000 $ avec ce journal : 448 trades, +64 931,85 $, identique à la référence (avant X-13 ; après : 449 trades, +65 324,88 $).
 - **Vidéos** (`video/`) : rien de personnel ni de fichier sous licence dans le dépôt (prénom, montant, certificat, voix, clé, voix_id,
   sons Mixkit, police DIN) : tout est dans `~/.config/etrave-video/config.json` et des dossiers locaux. Un test le vérifie en lisant
   les valeurs dans cette configuration. Démo, réel ou testeur : seulement dans la description de la publication (choix de l'utilisateur), jamais dans la vidéo, la couverture ni les noms de fichiers. Les
@@ -248,8 +251,8 @@ video/     (branche communication/outil-video) vidéos TikTok : récap de séanc
       `gFiltTxt` ne sont pas sauvegardés (ligne « fin » fausse après un redémarrage) ; `JournalFlush(true)` dans `OnDeinit` peut dépasser le délai de MetaTrader ;
     - Étrave : l'export ne sépare pas démo et réel (colonne `source` des journaux ; « pas grave » pour l'utilisateur). Réglé le
       26/11/2026 : l'interrupteur est jugé marché par marché (ET-16) ;
-    - Vidéo, à décider avec l'utilisateur : le trait « Jusqu'à +106 pts » est vert et l'épingle des photos rouge, alors que vert et
-      rouge sont réservés au résultat ; sur Mac, la capture de MetaTrader n'est pas contrôlée (écran verrouillé).
+    - Vidéo : sur Mac, la capture de MetaTrader n'est pas contrôlée (écran verrouillé). Le trait « Jusqu'à … pts » et l'épingle des
+      photos sont passés en bleu sur la branche vidéo (VID-31, 26/11/2026).
 - Stops : fermer B/D au stop de A, B/D à l'entrée dès +0,5R, stop à +0,5R, A à l'entrée quand une jambe part ont été testés et
   rejetés (25/11/2026) ; ne pas les refaire.
 
@@ -264,8 +267,11 @@ video/     (branche communication/outil-video) vidéos TikTok : récap de séanc
 - Le dépôt GitHub est **public**. Aucune donnée personnelle dans le code (chat ID, numéro de compte réel, jetons).
 - Historique repris à zéro le 25/11/2026 à la demande de l'utilisateur : `main` ne contient que la version finale.
 - Ne mettre sur `main` que le robot, Étrave et ce qui les sert. Pas de dossier de recherche.
-- Logo d'Étrave et roadmap TikTok : hors dépôt, dans `~/Documents/Etrave-communication/` (la branche
-  `communication/roadmap-tiktok` a été supprimée le 27/11/2026).
+- Logo d'Étrave : hors dépôt, dans `~/Documents/Etrave-communication/logo/`. La branche `communication/roadmap-tiktok` et sa
+  roadmap TikTok (périmée : V10, copy trading abandonné) ont été supprimées le 27/11/2026.
+- **Historique public** : les fichiers actuels ne nomment plus la prop firm ni l'adresse Gmail de l'utilisateur, mais d'anciens
+  commits publics les contiennent encore (au 27/11/2026 : le nom dans l'arbre de 12 commits sur 23 de `main`, l'adresse Gmail
+  comme auteur de 4). Réécrire l'historique public demande l'accord explicite de l'utilisateur.
 - `.gitattributes` : fins de ligne Windows pour `.bat`, `.cmd`, `.ini` et `.set` (à l'extraction et dans le zip de GitHub).
 - Le jeton `gh` n'a pas la portée `workflow` : pousser un fichier `.github/workflows` est refusé.
 - Pousser sur `main` ne déploie rien.
@@ -292,3 +298,7 @@ ne change pas le code pour elle. Contradictions connues :
 - **Heure de New York** : l'EA la calcule depuis l'heure du serveur et la règle d'heure d'été américaine (MQL5 n'a pas de base de
   fuseaux horaires).
 - **Période de test séparée** : il n'en reste plus sur le Nasdaq (voir « Discipline ») ; la seule donnée neuve est la démo.
+- **Taille de position maximale** : en lots fixes (`InpFixedLots` > 0), le plafond de 1 % ne s'applique pas. Plafonner aussi les
+  lots fixes est une décision de l'utilisateur.
+- **Tests des règles de trading** : l'EA n'a que des contrôles du texte du code (`robot/test_robot.py`) et le testeur MetaTrader ;
+  pas de test de comportement en MQL5.
