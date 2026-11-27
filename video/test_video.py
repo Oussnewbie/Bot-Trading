@@ -359,7 +359,9 @@ def test_mode_automatique(tmp_path, monkeypatch):
     assert publication.auto(dict(config, auto_depuis="2026-04-17"), str(journaux), lambda t: None) == []
     ecrire_journee(str(journaux), datetime.date(2026, 4, 16), positions=())                               # sans trade : rien
     config["dossier_publication"] = str(tmp_path / "bureau2")
+    config["dossier_etat"] = str(tmp_path / "etat2")    # 27/11/2026 : un registre neuf (V-07), sinon « déjà publié » suffirait
     assert publication.auto(config, str(journaux), lambda t: None, datetime.date(2026, 4, 16)) == []
+    assert faites == [datetime.date(2026, 4, 16)]
 
 
 def test_semaines_et_mois_finis():
