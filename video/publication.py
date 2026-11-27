@@ -93,9 +93,53 @@ def copier_video(video, dossier, nom):
     os.replace(provisoire, os.path.join(dossier, nom))
 
 
+# Décision du propriétaire (27/11/2026) : une vidéo faite à partir des journaux du testeur ne se publie jamais, c'est un essai. Elle ne va
+# ni dans le dossier de publication (le Bureau), ni dans le registre des publications, ni dans une notification « à publier », mais
+# dans <sortie>/essais-testeur/ESSAI-…, avec ESSAI-NE-PAS-PUBLIER.txt.
+ESSAIS = "essais-testeur"
+NE_PAS_PUBLIER = """ESSAI : NE PAS PUBLIER.
+Cette vidéo est faite à partir des journaux du testeur de stratégie de MetaTrader (une simulation sur l'historique), pas d'une séance
+du robot sur un compte. Décision du propriétaire du 27/11/2026 : une vidéo du testeur ne se publie jamais.
+"""
+
+
+def est_testeur(dossier_journaux=None, source=None):
+    """Des journaux du testeur : le sous-dossier `testeur` du dossier de l'EA, ou des lignes écrites avec source=testeur."""
+    nom = os.path.basename(os.path.normpath(os.path.expanduser(dossier_journaux))) if dossier_journaux else ""
+    return nom.lower() == "testeur" or source == "testeur"
+
+
+def ranger_essai(video, config, nom, journal=print):
+    """Une vidéo du testeur, rangée hors du dossier de publication, marquée ESSAI. Rend son dossier."""
+    dossier = os.path.join(os.path.expanduser(config["sortie"]), ESSAIS, f"ESSAI-{nom}")
+    os.makedirs(dossier, exist_ok=True)
+    copier_video(video, dossier, os.path.basename(video))
+    with open(os.path.join(dossier, "ESSAI-NE-PAS-PUBLIER.txt"), "w", encoding="utf-8") as f:
+        f.write(NE_PAS_PUBLIER)
+    journal(f"{nom} : essai du testeur rangé dans {dossier} (jamais publié).")
+    return dossier
+
+
+def _jamais_par_dessus_un_essai(dossier):
+    """Un dossier du Bureau fait autrefois à partir du testeur n'est jamais écrasé (rien n'est effacé sur le Bureau sans le demander) :
+    la vraie vidéo attend que le dossier soit rangé à la main."""
+    import etat
+    if etat.vient_du_testeur(dossier):
+        raise ValueError(f"le dossier « {os.path.basename(dossier)} » du Bureau contient un essai du testeur : à ranger à la main "
+                         "avant de publier la vraie séance de ce jour")
+
+
+def essai_fait(config, nom):
+    dossier = os.path.join(os.path.expanduser(config["sortie"]), ESSAIS, f"ESSAI-{nom}")
+    return os.path.isdir(dossier) and any(n.endswith(".mp4") for n in os.listdir(dossier))
+
+
 def publier(j, video, config, journal=print):
     """Copie la vidéo dans le dossier du jour, écrit la description et la couverture. Rend le dossier."""
+    if est_testeur(source=j.get("source")):
+        raise ValueError("séance du testeur : une vidéo du testeur ne se publie jamais (décision du 27/11/2026), voir ranger_essai")
     dossier = os.path.join(os.path.expanduser(config.get("dossier_publication") or BUREAU), j["jour"].isoformat())
+    _jamais_par_dessus_un_essai(dossier)
     os.makedirs(dossier, exist_ok=True)
     copier_video(video, dossier, f"recap-{j['jour'].isoformat()}.mp4")
     with open(os.path.join(dossier, "description.txt"), "w", encoding="utf-8") as f:
@@ -134,7 +178,10 @@ def description_periode(p, config):
 def publier_periode(p, video, config):
     """Le dossier d'un récap de la semaine (« Semaine du AAAA-MM-JJ ») ou du mois (« Mois AAAA-MM »)."""
     import recap_periode
+    if est_testeur(source=p.get("source")):
+        raise ValueError("période du testeur : une vidéo du testeur ne se publie jamais (décision du 27/11/2026), voir ranger_essai")
     dossier = os.path.join(os.path.expanduser(config.get("dossier_publication") or BUREAU), recap_periode.nom_dossier(p))
+    _jamais_par_dessus_un_essai(dossier)
     os.makedirs(dossier, exist_ok=True)
     copier_video(video, dossier, os.path.basename(video))
     with open(os.path.join(dossier, "description.txt"), "w", encoding="utf-8") as f:
@@ -206,11 +253,17 @@ def _auto(config, dossier_journaux, journal, aujourd_hui, maintenant):
     racine = os.path.expanduser(config.get("dossier_publication") or BUREAU)
     # V-07 (audit du 27/11/2026) : la mémoire des publications est hors du Bureau (etat.py) ; ranger le dossier ne refait plus rien
     registre = etat.Registre(config, dossier_journaux, journal)
+    testeur = est_testeur(dossier_journaux)          # décision du 27/11/2026 : des essais, jamais publiés ni notifiés
 
     def alerter(cle, titre, texte):
         """V-09 : une notification par jour au plus pour un même souci (avant : à chaque lancement, sans fin)."""
-        if registre.a_prevenir(cle, aujourd_hui):
+        if not testeur and registre.a_prevenir(cle, aujourd_hui):
             prevenir(titre, texte)
+
+    def rien(cle, pourquoi):                          # V-22 : pas relu à chaque passage (jamais pour un essai du testeur)
+        if not testeur:
+            registre.publies[cle] = {"rien": pourquoi}
+            registre.enregistrer()
 
     if not os.path.isdir(dossier_journaux):
         journal(f"Journaux de l'EA introuvables : {dossier_journaux}")
@@ -243,7 +296,7 @@ def _auto(config, dossier_journaux, journal, aujourd_hui, maintenant):
         if jour < depuis:
             continue
         cle = jour.isoformat()
-        if registre.publie(cle, os.path.join(racine, cle)):
+        if essai_fait(config, cle) if testeur else registre.publie(cle, os.path.join(racine, cle)):
             continue
         decision = registre.decision(jour)
         if decision == "ignorer":
@@ -260,12 +313,20 @@ def _auto(config, dossier_journaux, journal, aujourd_hui, maintenant):
             continue
         for a in j.get("avertissements", []):
             journal(f"{jour} : attention, {a}.")
+        essai = testeur or est_testeur(source=j.get("source"))
+        if essai and essai_fait(config, cle):
+            continue
+        if not essai and etat.vient_du_testeur(os.path.join(racine, cle)):
+            journal(f"{jour} : le dossier « {cle} » du Bureau contient un essai du testeur ; la vraie vidéo attend qu'il soit rangé.")
+            alerter(f"essai-bureau:{cle}", "Étrave : dossier à ranger", f"« {cle} » sur le Bureau est un essai du testeur : à ranger "
+                    "à la main pour publier la vraie séance.")
+            continue
         if not j["trades"] and not config.get("auto_sans_trade"):
-            registre.publies[cle] = {"rien": "pas de trade (auto_sans_trade non réglé)"}     # V-22 : pas relu à chaque passage
-            registre.enregistrer()
+            if not essai:
+                rien(cle, "pas de trade (auto_sans_trade non réglé)")
             continue
         # la photo de l'onglet Historique : seulement le soir même (l'onglet montre « Aujourd'hui »), avant de monter la vidéo
-        if j["trades"] and not j.get("historique") and jour == aujourd_hui and config.get("historique"):
+        if j["trades"] and not j.get("historique") and jour == aujourd_hui and config.get("historique") and not essai:
             import historique
             # Correctif VID-04 (audit du 25/11/2026) : une photo ratée (fenêtre plus petite que le cadre…) arrêtait tout le mode
             # automatique, récaps de la semaine et du mois compris. La vidéo se fait alors sans la photo.
@@ -273,15 +334,19 @@ def _auto(config, dossier_journaux, journal, aujourd_hui, maintenant):
                 j["historique"] = historique.photographier_jour(config, dossier_journaux, jour, j["trades"], journal)
             except Exception as err:
                 journal(f"Photo de l'historique impossible ({type(err).__name__} : {err}) : la vidéo se fait sans.")
-        sortie = _sortie_auto(config, f"recap-{jour.isoformat()}")
-        journal(f"{jour} : {j['trades']} position(s), fabrication de la vidéo…")
+        sortie = _sortie_auto(config, f"recap-{jour.isoformat()}" + ("-essai" if essai else ""))
+        journal(f"{jour} : {j['trades']} position(s), fabrication de la vidéo{' (essai du testeur)' if essai else ''}…")
         # Correctif VID-03 (audit du 25/11/2026) : sans voix (réseau coupé, quota ElevenLabs), la vidéo était faite muette et jamais
         # refaite : la séance attend le lancement suivant. VID-18 : la voix est exigée même sans voix_id dans la configuration (une
         # nouvelle installation publiait muet). VID-19 : la notification dit la cause, pour la corriger, et toute panne prévient.
         dossier = _fabriquer_et_publier(lambda: recap.fabriquer(j, config, sortie, journal, exiger_voix=True),
-                                        lambda video: publier(j, video, config, journal), f"Récap du {nombres.date_courte(jour)}",
+                                        (lambda video: ranger_essai(video, config, cle, journal)) if essai else
+                                        (lambda video: publier(j, video, config, journal)), f"Récap du {nombres.date_courte(jour)}",
                                         cle, journal, alerter)
         if not dossier:
+            continue
+        if essai:
+            nettoyer_travail(sortie, journal)
             continue
         registre.noter_publie(cle, dossier)
         nettoyer_travail(sortie, journal)            # V-08 : après le contrôle et la copie dans le dossier de publication
@@ -295,13 +360,12 @@ def _auto(config, dossier_journaux, journal, aujourd_hui, maintenant):
         nom = recap_periode.nom_dossier({"genre": genre, "debut": debut})
         # V-22 (audit du 27/11/2026) : chaque passage rechargeait toutes les semaines et tous les mois depuis auto_depuis avant de voir
         # qu'ils étaient publiés (environ 70 s par passage après un an). Le registre d'abord.
-        if registre.publie(nom, os.path.join(racine, nom)):
+        if essai_fait(config, nom) if testeur else registre.publie(nom, os.path.join(racine, nom)):
             continue
         # V-12 (audit du 27/11/2026) : la démo lancée le lundi 30/11 publiait le soir même « Récap du mois de novembre, une séance ».
         if premier is None or debut < premier:
             journal(f"{nom} : pas de récap, la période commence avant le premier journal de l'EA ({premier}).")
-            registre.publies[nom] = {"rien": f"commence avant le premier journal ({premier})"}
-            registre.enregistrer()
+            rien(nom, f"commence avant le premier journal ({premier})")
             continue
         absents = [m for m in manquants if debut <= m[0] <= fin]
         if absents:                                  # V-01, V-03 : jamais de période avec une séance en moins
@@ -317,14 +381,24 @@ def _auto(config, dossier_journaux, journal, aujourd_hui, maintenant):
             alerter(f"bloque:{nom}", "Étrave : récap bloqué", f"{nom} : {str(err)[:140]}")
             continue
         if not p["jours"] or (not p["avec"] and not config.get("auto_sans_trade")):
-            registre.publies[nom] = {"rien": "aucune séance tradée"}
-            registre.enregistrer()
+            rien(nom, "aucune séance tradée")
             continue
-        sortie = _sortie_auto(config, nom.replace(" ", "-").lower())
+        essai = testeur or est_testeur(source=p.get("source"))
+        if essai and essai_fait(config, nom):
+            continue
+        if not essai and etat.vient_du_testeur(os.path.join(racine, nom)):
+            journal(f"{nom} : le dossier du Bureau contient un essai du testeur ; la vraie vidéo attend qu'il soit rangé.")
+            alerter(f"essai-bureau:{nom}", "Étrave : dossier à ranger", f"« {nom} » sur le Bureau est un essai du testeur : à ranger à la main.")
+            continue
+        sortie = _sortie_auto(config, nom.replace(" ", "-").lower() + ("-essai" if essai else ""))
         journal(f"{nom} : {len(p['avec'])} jour(s) de trade, fabrication de la vidéo…")
         dossier = _fabriquer_et_publier(lambda: recap_periode.fabriquer(p, config, sortie, journal, exiger_voix=True),
-                                        lambda video: publier_periode(p, video, config), nom, nom, journal, alerter)
+                                        (lambda video: ranger_essai(video, config, nom, journal)) if essai else
+                                        (lambda video: publier_periode(p, video, config)), nom, nom, journal, alerter)
         if not dossier:
+            continue
+        if essai:
+            nettoyer_travail(sortie, journal)
             continue
         registre.noter_publie(nom, dossier)
         nettoyer_travail(sortie, journal)

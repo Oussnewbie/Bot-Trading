@@ -1553,3 +1553,52 @@ def test_v14_graphique_plus_grand_sous_titres_et_mouvement(tmp_path):
     instants = sorted(set(_instants(script) + [g["debut"] for g in groupes]))
     trous = [b - a for a, b in zip([0.0] + instants, instants + [duree]) if a < duree - 1.0]
     assert max(trous) <= 3.0, max(trous)
+
+
+def test_video_du_testeur_jamais_publiee(tmp_path, monkeypatch, garde_fous):
+    """Décision du propriétaire (27/11/2026) : une vidéo faite à partir des journaux du testeur ne se publie jamais, c'est un essai.
+    Ni dans le dossier de publication du Bureau, ni dans le registre des publications, ni dans une notification « à publier » : dans
+    un dossier d'essais marqué ESSAI, hors du Bureau. Que les journaux viennent de `Etrave/testeur/` ou portent source=testeur."""
+    faites = faux_rendus(monkeypatch)
+    testeur = tmp_path / "Etrave" / "testeur"
+    testeur.mkdir(parents=True)
+    ecrire_jours(str(testeur), [(D(2026, 11, k), {"source": "testeur"}) for k in (2, 3, 4, 5, 6)])
+    c = config_auto(tmp_path)
+    assert publication.auto(c, str(testeur), lambda t: None, D(2026, 11, 6)) == []
+    assert D(2026, 11, 6) in faites and ("semaine", D(2026, 11, 2)) in faites           # les essais sont faits…
+    assert not (tmp_path / "bureau").exists() or not os.listdir(tmp_path / "bureau")    # … jamais sur le Bureau
+    registre = tmp_path / "etat" / "registre.json"
+    assert not registre.exists() or "2026-11-06" not in registre.read_text(encoding="utf-8")
+    assert not any(t == "Étrave" or "publier" in x for t, x in garde_fous)
+    essais = tmp_path / "rendus" / "essais-testeur"
+    assert sorted(os.listdir(essais))[:2] == ["ESSAI-2026-11-02", "ESSAI-2026-11-03"]
+    assert "NE PAS PUBLIER" in (essais / "ESSAI-2026-11-06" / "ESSAI-NE-PAS-PUBLIER.txt").read_text(encoding="utf-8")
+    faites.clear()
+    publication.auto(c, str(testeur), lambda t: None, D(2026, 11, 6))                     # un essai déjà fait n'est pas refait
+    assert faites == []
+    # des journaux du testeur copiés ailleurs (source=testeur) : même règle
+    copie = tmp_path / "copie"
+    copie.mkdir()
+    ecrire_jours(str(copie), [(D(2026, 11, 2), {"source": "testeur"})])
+    publication.auto(config_auto(tmp_path, dossier_etat=str(tmp_path / "etat2")), str(copie), lambda t: None, D(2026, 11, 2))
+    assert not (tmp_path / "bureau").exists() or not os.listdir(tmp_path / "bureau")
+    # et la publication elle-même refuse une séance du testeur
+    j = journee.charger(str(copie), D(2026, 11, 2))
+    video = tmp_path / "v.mp4"
+    video.write_bytes(b"\0")
+    with pytest.raises(ValueError, match="testeur"):
+        publication.publier(j, str(video), {"dossier_publication": str(tmp_path / "bureau")})
+    # un ancien dossier du Bureau fait à partir du testeur ne compte jamais comme la publication d'une vraie séance, et n'est pas écrasé
+    vieux = tmp_path / "bureau3" / "2026-11-03"
+    vieux.mkdir(parents=True)
+    (vieux / "recap-2026-11-03.mp4").write_bytes(b"\0")
+    (vieux / "description.txt").write_text(publication.COMPTE["testeur"], encoding="utf-8")
+    reel = tmp_path / "reel"
+    reel.mkdir()
+    ecrire_jours(str(reel), [(D(2026, 11, 2), {}), (D(2026, 11, 3), {})])
+    faites.clear()
+    c3 = config_auto(tmp_path, dossier_etat=str(tmp_path / "etat3"), dossier_publication=str(tmp_path / "bureau3"))
+    publication.auto(c3, str(reel), lambda t: None, D(2026, 11, 3))
+    assert faites == [D(2026, 11, 2)] and (vieux / "recap-2026-11-03.mp4").read_bytes() == b"\0"
+    assert any("ranger" in t for t, _ in garde_fous)
+    assert publication.COMPTE["testeur"] in (vieux / "description.txt").read_text(encoding="utf-8")

@@ -196,10 +196,14 @@ def main(arguments=None):
         print(f"— {datetime.datetime.now():%Y-%m-%d %H:%M} —", flush=True)
         racine = os.path.expanduser(config.get("dossier_publication") or publication.BUREAU)
         try:          # le droit d'écrire dans le dossier de publication (sur Mac, la première fois, macOS demande l'autorisation)
+            if args.testeur:           # décision du 27/11/2026 : les essais du testeur ne vont jamais dans le dossier de publication
+                raise StopIteration
             os.makedirs(racine, exist_ok=True)
             essai = os.path.join(racine, f".ecriture-{os.getpid()}")
             open(essai, "w").close()
             os.remove(essai)
+        except StopIteration:
+            pass
         except OSError as err:
             print(f"Impossible d'écrire dans {racine} ({err}). Sur Mac : Réglages Système, Confidentialité et sécurité, "
                   "Fichiers et dossiers (ou Accès complet au disque), autoriser python3.")

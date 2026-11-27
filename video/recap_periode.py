@@ -409,7 +409,7 @@ def scene_bilan(p, rep, texte):
     """Les records de la période, le petit mot, l'abonnement et la mention : la même fin que le récap de chaque séance."""
     ident = "pi"
     entete, script_entete = _entete(ident, p, "Bilan de la semaine" if p["genre"] == "semaine" else "Bilan du mois")
-    lignes, script, reperes = [], [], [{"t": 0.15, "son": "paper-page-turn-1104", "gain_db": -6, "secondaire": True, "pan": -0.15}]
+    lignes, script, reperes = [], [], []          # la page tournée du début est celle du volet (V-17 : pas deux fois)
     k_t, n = len(p["avec"]), len(p["jours"])
     rangs = [("Jours de trade", f"{k_t} sur {n}", COUL["encre"]), ("Jours gagnants", str(len(p["gagnants"])), COUL["vert"])]
     if p["meilleur"] and p["meilleur"]["total"] > 0:

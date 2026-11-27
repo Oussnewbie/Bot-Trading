@@ -116,7 +116,9 @@ PRISES = {
     "clic": [("click-typewriter-soft-1125", 0), ("click-classic-1117", 0), ("water-bubble-1317", 0), ("click-typewriter-soft-1125", -2),
              ("click-classic-1117", 2)],
     "camera": [("swoosh-wind-cinematic-1471", 0), ("air-zoom-vacuum-2608", 0), ("swoosh-wind-cinematic-1471", -2)],
-    "volet": [("swoosh-fast-transitions-3115", 0), ("whoosh-fast-transition-1490", 0)],
+    # le volet a besoin d'une attaque nette sur la coupe (earshot critique : un souffle qui monte, comme whoosh-fast-transition-1490,
+    # ne donne aucune attaque à ±100 ms de la coupe) : le seul swoosh réel et net du dossier, en deux hauteurs, et une page tournée
+    "volet": [("swoosh-fast-transitions-3115", 0), ("paper-page-turn-1104", 0), ("swoosh-fast-transitions-3115", -2), ("paper-page-turn-1104", -2)],
 }
 
 
@@ -1061,7 +1063,7 @@ def scene_bilan(j, rep, unite, texte):
     t = total(j, unite)
     mot = mot_du_jour(j, t)
     k_mot = len(texte.split(mot)[0].split())          # le rang du premier mot du petit mot dans la réplique
-    lignes, script, reperes = [], [], [{"t": 0.15, "son": "paper-page-turn-1104", "gain_db": -6, "secondaire": True, "pan": -0.15}]
+    lignes, script, reperes = [], [], []          # la page tournée du début est celle du volet (V-17 : pas deux fois)
     for i, m in enumerate(j["marches"]):
         v = valeur(m, unite)
         vr = round(v, DECIMALES[unite]) if v is not None else None

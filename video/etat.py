@@ -77,6 +77,16 @@ def verrou(config):
         f.close()
 
 
+def vient_du_testeur(dossier_publication):
+    """Un dossier de publication fait autrefois à partir des journaux du testeur (sa description le dit) : jamais pris pour la
+    publication d'une vraie séance (décision du propriétaire du 27/11/2026 : une vidéo du testeur ne se publie jamais)."""
+    try:
+        with open(os.path.join(dossier_publication, "description.txt"), encoding="utf-8") as f:
+            return "testeur de stratégie" in f.read()
+    except OSError:
+        return False
+
+
 class Registre:
     """Le registre des publications et des décisions d'un dossier de journaux. Un fichier abîmé est mis de côté (jamais d'arrêt du
     mode automatique pour lui : V-02) et un nouveau registre repart des dossiers du Bureau."""
@@ -122,7 +132,8 @@ class Registre:
         noté dans le registre)."""
         if cle in self.publies:
             return True
-        if dossier_publication and os.path.isdir(dossier_publication) and any(n.endswith(".mp4") for n in os.listdir(dossier_publication)):
+        if (dossier_publication and os.path.isdir(dossier_publication) and any(n.endswith(".mp4") for n in os.listdir(dossier_publication))
+                and not vient_du_testeur(dossier_publication)):
             self.noter_publie(cle, dossier_publication)
             return True
         return False
