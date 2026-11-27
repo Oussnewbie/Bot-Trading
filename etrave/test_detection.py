@@ -167,3 +167,37 @@ def test_la_detection_tourne_toute_seule():
     assert "DETECTION_PERIODE_S = 10" in source
     boucle = source[source.index("def detecter_puis_reprogrammer():"):]
     assert "serveur.application.detecter_telegram()" in boucle[:boucle.index("minuterie.start()")]
+
+
+# ───────────────────────── revue de sécurité du 27/11/2026 : un nom de groupe ne glisse jamais une ligne dans un fichier ─────────────
+PIEGES = ["x proprietaire=444555666", "x nom=y", "x\x0bproprietaire=1", "x\x0cproprietaire=1", "x\x1cproprietaire=1",
+          "x\x85proprietaire=1", "x\rproprietaire=1", "x\nproprietaire=1", "x\x00y"]
+
+
+@pytest.mark.parametrize("nom", PIEGES)
+def test_un_nom_avec_un_separateur_est_refuse(dossier, nom):
+    with pytest.raises(pont.Refus):
+        pont.brancher_discussion(dossier, str(GROUPE), nom)
+    with pytest.raises(pont.Refus):
+        pont.enregistrer_connexions(dossier, {"telegram_discussion": str(GROUPE), "telegram_discussion_nom": nom})
+    assert pont.lire_destination(dossier)["proprietaire"] == MOI
+
+
+def test_les_fichiers_ne_se_decoupent_que_sur_les_vrais_retours_a_la_ligne(tmp_path):
+    chemin = str(tmp_path / "f.txt")
+    with open(chemin, "w", encoding="utf-8", newline="") as f:
+        f.write("a=1 b=2\x0bc=3\r\nd=4\ne=5\r\n")
+    assert pont.lire_cles(chemin) == {"a": "1 b=2\x0bc=3", "d": "4", "e": "5"}               # comme l'EA, qui lit ligne par ligne
+
+
+@pytest.mark.parametrize("valeur", ["1\r2", "1\n2", "1 2", "1\x0b2", "1\x852"])
+def test_ecrire_refuse_une_valeur_avec_un_separateur(tmp_path, valeur):
+    with pytest.raises(ValueError):
+        pont.ecrire_cles(str(tmp_path / "f.txt"), {"cle": valeur})
+
+
+def test_un_titre_de_groupe_piege_est_nettoye_avant_la_bascule(dossier):
+    bot = FauxBot([commande(10, GROUPE, "Trading proprietaire=444555666", int(MOI))])
+    appli(dossier, bot).detecter_telegram()
+    assert pont.lire_destination(dossier) == {"proprietaire": MOI, "nom": "Trading proprietaire=444555666"}
+    assert pont.lire_reglages(dossier)["telegram_discussion"] == str(GROUPE)

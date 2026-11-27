@@ -75,7 +75,10 @@ REGLES = {
                             "Discussion Telegram : c’est un nombre (négatif pour un groupe). Le bouton « Trouver ma "
                             "discussion » le remplit pour toi."),
 }
-NOM_DISCUSSION = re.compile(r"[^\r\n]{1,80}")   # 27/11/2026 : le nom du groupe choisi, affiché dans la page (jamais un secret)
+# Revue de sécurité du 27/11/2026 : contrôles, \x85, U+2028 et U+2029 coupent aussi une ligne pour Python. Un nom de groupe (choisi par
+# n'importe qui sur Telegram) ne doit jamais glisser une ligne « cle=valeur » dans un fichier : ces caractères sont refusés partout.
+SEPARATEURS = re.compile(r"[\x00-\x1f\x7f-\x9f\u2028\u2029]")
+NOM_DISCUSSION = re.compile(r"[^\x00-\x1f\x7f-\x9f\u2028\u2029]{1,80}")   # le nom du groupe choisi, affiché dans la page
 PROPRIETAIRE = re.compile(r"\d{4,20}")   # le compte Telegram de la discussion privée : seul lui fait basculer les alertes vers un groupe
 SYMBOLE = re.compile(r"[A-Za-z0-9._#+-]{1,40}")   # fullmatch (ET-09) : « $ » acceptait un « \n » final
 
@@ -125,7 +128,7 @@ def lire_cles(chemin, strict=False):
             raise Refus("Le fichier de réglages est occupé par MetaTrader : réessaie dans un instant.")
         return {}
     cles = {}
-    for ligne in texte.splitlines():
+    for ligne in re.split(r"\r?\n", texte):        # comme l'EA, qui lit ligne par ligne : jamais splitlines() (U+2028, \x0b…)
         cle, egal, valeur = ligne.partition("=")
         if egal and cle.strip():
             cles[cle.strip()] = valeur.strip()
@@ -135,6 +138,9 @@ def lire_cles(chemin, strict=False):
 def ecrire_cles(chemin, cles):
     """Écriture d'un seul coup : fichier provisoire puis remplacement. Sous Windows le remplacement échoue pendant la
     fraction de seconde où l'EA lit le fichier : on réessaie."""
+    for cle, valeur in cles.items():
+        if SEPARATEURS.search(str(cle)) or SEPARATEURS.search(str(valeur)):
+            raise ValueError(f"réglage {cle} : un séparateur de ligne n'a rien à faire dans une valeur")
     os.makedirs(os.path.dirname(chemin), exist_ok=True)
     provisoire = chemin + ".tmp"
     with open(provisoire, "w", encoding="utf-8", newline="") as f:

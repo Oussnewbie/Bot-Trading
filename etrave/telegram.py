@@ -217,6 +217,12 @@ def relayer(dossier, appel=appeler, maintenant=None, attendre=time.sleep, pause_
 COMMANDE_START = re.compile(r"/start(?:@(\w+))?(?:\s.*)?", re.S)
 
 
+def titre_propre(titre):
+    """Le titre d'un groupe, choisi par n'importe qui sur Telegram : contrôles et séparateurs de ligne remplacés par une espace,
+    80 caractères au plus (revue de sécurité du 27/11/2026)."""
+    return re.sub(r"\s+", " ", re.sub(r"[\x00-\x1f\x7f-\x9f\u2028\u2029]", " ", str(titre or ""))).strip()[:80]
+
+
 def proprietaire(dossier):
     """Le compte Telegram du propriétaire : celui enregistré, sinon celui de la discussion privée en cours. Vide : personne ne
     fait basculer les alertes (première installation : choix à la main dans Étrave)."""
@@ -241,4 +247,4 @@ def demande_de_bascule(nouvelle, bot, prop):
         m = COMMANDE_START.fullmatch((evt.get("text") or "").strip())
         if not m or (m.group(1) and m.group(1).lower() != (bot or "").lower()):
             return None
-    return str(chat["id"]), chat.get("title") or ""
+    return str(chat["id"]), titre_propre(chat.get("title"))

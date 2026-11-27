@@ -394,14 +394,14 @@ class Application:
                 evt = n.get("message") or n.get("channel_post") or n.get("my_chat_member") or {}
                 chat = evt.get("chat") or {}
                 if chat.get("type") in ("group", "supergroup", "channel") and chat.get("id") is not None:
-                    self._groupes[str(chat["id"])] = {"id": str(chat["id"]), "titre": chat.get("title") or "", "type": chat["type"]}
+                    self._groupes[str(chat["id"])] = {"id": str(chat["id"]), "titre": telegram.titre_propre(chat.get("title")), "type": chat["type"]}
                 if (evt.get("date") or 0) < self._detection_depart - 120:
                     continue                                    # d'avant le démarrage d'Étrave : montré, jamais rejoué
                 cles = pont.lire_reglages(self.dossier)
                 nouveau = (n.get("message") or {}).get("migrate_to_chat_id")
                 local = pont.lire_destination(self.dossier)
                 if isinstance(nouveau, int) and str(chat.get("id")) == cles.get("telegram_discussion"):
-                    pont.brancher_discussion(self.dossier, str(nouveau), local["nom"] or chat.get("title"), local["proprietaire"] or None)
+                    pont.brancher_discussion(self.dossier, str(nouveau), local["nom"] or telegram.titre_propre(chat.get("title")), local["proprietaire"] or None)
                     self.journal("Telegram : le groupe est devenu un supergroupe, les alertes le suivent")
                     continue
                 prop = telegram.proprietaire(self.dossier)
