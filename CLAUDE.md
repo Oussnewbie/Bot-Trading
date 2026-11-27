@@ -168,7 +168,7 @@ video/     (branche communication/outil-video) vidéos TikTok : récap de séanc
   sur 300 000 $ avec ce journal : 448 trades, +64 931,85 $, identique à la référence (avant X-13 ; après : 449 trades, +65 324,88 $).
 - **Vidéos** (`video/`) : rien de personnel ni de fichier sous licence dans le dépôt (prénom, montant, certificat, voix, clé, voix_id,
   sons Mixkit, police DIN) : tout est dans `~/.config/etrave-video/config.json` et des dossiers locaux. Un test le vérifie en lisant
-  les valeurs dans cette configuration. Démo, réel ou testeur : seulement dans la description de la publication (choix de l'utilisateur), jamais dans la vidéo, la couverture ni les noms de fichiers. Les
+  les valeurs dans cette configuration. Démo ou réel : seulement dans la description de la publication (choix de l'utilisateur), jamais dans la vidéo, la couverture ni les noms de fichiers. **Une vidéo faite à partir du testeur ne se publie pas** (décision de l'utilisateur du 27/11/2026) : c'est un essai. Les
   raisons des filtres et le type d'entrée (A, B, D) ne sont jamais montrés : c'est le secret de la stratégie, à la demande de l'utilisateur.
   Preuve : photo de l'onglet Historique de MetaTrader prise par l'outil le soir même (`video/historique.py`, à régler une fois),
   épinglée avec le R en fin de vidéo ; jamais d'image fabriquée à la place. Récap : voix en une seule prise par vidéo (`voix.recit`, sinon le timbre change d'une scène à l'autre), chemin du prix en points
@@ -270,7 +270,7 @@ video/     (branche communication/outil-video) vidéos TikTok : récap de séanc
 - Logo d'Étrave : hors dépôt, dans `~/Documents/Etrave-communication/logo/`. La branche `communication/roadmap-tiktok` et sa
   roadmap TikTok (périmée : V10, copy trading abandonné) ont été supprimées le 27/11/2026.
 - **Historique public** : les fichiers actuels sont propres, mais l'historique public n'a jamais été nettoyé : ne jamais affirmer
-  le contraire. Le réécrire demande l'accord explicite de l'utilisateur.
+  le contraire. L'utilisateur a décidé le 27/11/2026 de ne pas le réécrire.
 - `.gitattributes` : fins de ligne Windows pour `.bat`, `.cmd`, `.ini` et `.set` (à l'extraction et dans le zip de GitHub).
 - Le jeton `gh` n'a pas la portée `workflow` : pousser un fichier `.github/workflows` est refusé.
 - Pousser sur `main` ne déploie rien.
@@ -288,16 +288,20 @@ une session qui ne les voit pas (cloud, VPS), l'essentiel :
 - argent réel : aucune action sur un compte réel sans confirmation explicite de l'utilisateur ; mise en production dans l'ordre
   testeur MetaTrader → démo → réel.
 
-Si une règle commune contredit ce fichier, ce fichier tient (décision de l'utilisateur du 26/11/2026) : signale la contradiction,
-ne change pas le code pour elle. Contradictions connues :
+Si une règle commune contredit une décision du propriétaire écrite dans ce fichier, la décision tient (règle du 26/11/2026 de
+`~/.claude/CLAUDE.md`) : signale la contradiction, ne change pas le code pour elle. Une ligne écrite par Claude sans l'accord du
+propriétaire ne retire jamais une règle de sécurité. Contradictions connues :
 - **Perte journalière maximale** : absente de la V11. Le plafond de −2R par jour a été testé le 26/11/2026 et rejeté (gain −11 % sur
-  le Nasdaq, −23 % sur le S&P). Ne l'ajoute pas sans demande.
+  le Nasdaq, −23 % sur le S&P). L'utilisateur ne veut pas de seuil d'arrêt en dollars (sa décision du 25/11/2026). Ne l'ajoute pas
+  sans demande.
 - **Secrets** : pas de `.env`. Le jeton Telegram est dans `reglages.txt` d'Étrave (dossier commun de MetaTrader, hors dépôt) ou dans
   les entrées de l'EA.
 - **Heure de New York** : l'EA la calcule depuis l'heure du serveur et la règle d'heure d'été américaine (MQL5 n'a pas de base de
   fuseaux horaires).
 - **Période de test séparée** : il n'en reste plus sur le Nasdaq (voir « Discipline ») ; la seule donnée neuve est la démo.
-- **Taille de position maximale** : en lots fixes (`InpFixedLots` > 0), le plafond de 1 % ne s'applique pas. Plafonner aussi les
-  lots fixes est une décision de l'utilisateur.
+- **Taille de position maximale** : en lots fixes (`InpFixedLots` > 0), le plafond de 1 % ne s'applique pas. Pas de plafond sur les
+  lots fixes : décision de l'utilisateur du 27/11/2026.
+- **Commissions du backtest** : le Pine n'a pas de commission par défaut (limite du backtest TradingView, que l'utilisateur lit à la
+  main) ; l'EA et le simulateur comptent le spread réel et le glissement.
 - **Tests des règles de trading** : l'EA n'a que des contrôles du texte du code (`robot/test_robot.py`) et le testeur MetaTrader ;
   pas de test de comportement en MQL5.
