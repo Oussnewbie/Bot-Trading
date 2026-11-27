@@ -15,7 +15,10 @@ La voix off est le clone ElevenLabs de ta voix, **en une seule prise par vidéo*
 coupées dans les silences) : des demandes séparées changeaient un peu le timbre d'une scène à l'autre. Mêmes réglages que la vidéo
 de présentation, une graine fixe (`voix_graine`), puis le rythme : aucun silence de plus de 0,3 s entre deux mots et 10 % plus
 rapide sans changer la hauteur (`voix_tempo`, `voix_pause_max`). Les bruitages
-sont de vrais enregistrements (Mixkit). La musique de fond est un morceau à toi, posé sous la voix. L'image est rendue par
+sont de vrais enregistrements (Mixkit), contrôlés par earshot (`p_reel` de `sons.json` : aucun son jugé synthétique dans les récaps)
+et posés pour que leur pic (mesuré une fois par earshot, `pic` de `sons.json`) tombe une image après le mouvement qu'ils
+accompagnent ; les sons répétés tournent entre plusieurs prises, les petits clics restent 4 dB sous les coups principaux, avec un
+léger panoramique du côté de l'action. La musique de fond est un morceau à toi, posé sous la voix. L'image est rendue par
 [HyperFrames](https://hyperframes.dev), le son est mixé par ffmpeg.
 
 ## Ce que dit un récap
@@ -39,6 +42,10 @@ Exemple de texte lu (tout est écrit à partir des journaux de l'EA, les heures 
   - le jaune surligne la cassure et la bougie où la caméra s'arrête ;
   - le bleu et l'encre disent achat et vente.
 - Chaque arrêt de la caméra tombe sur la phrase qui le raconte, et dure au moins 1,5 s : le temps de lire l'étiquette.
+- **La première image est la vignette du fil TikTok** : la date et la couleur de la journée y sont déjà (audit du 27/11/2026).
+- **Sous-titres** sous le graphique (scènes de marché), calés sur les mots de la voix : quelques mots à la fois, gris puis encre
+  quand la voix les dit, les nombres en chiffres comme sur les étiquettes (« 103 pts », « −0,60 R », « 14:35 »). Le graphique fait
+  850 x 440 px ; la légende est dans la ligne de la date.
 - **Le chemin du prix est raconté en points** (journal d'exécution de l'EA) : jusqu'où il est allé en notre faveur avant un stop
   (trait vert sur le graphique, « Jusqu'à +106 pts »), de combien il s'est retourné, ou s'il est parti aussitôt contre nous ; pour
   les positions gardées jusqu'au soir, le plus loin atteint en notre faveur. La voix dit les points comme l'écran les montre :
@@ -49,7 +56,8 @@ Exemple de texte lu (tout est écrit à partir des journaux de l'EA, les heures 
 - **Ce qui reste secret ne sort jamais** :
   - le type d'entrée (seulement « Achat » ou « Vente ») ;
   - les filtres et les réglages ;
-  - la raison d'un jour sans trade (« les conditions n'étaient pas réunies »).
+  - la raison d'un jour sans trade : la voix et l'écran disent « Le robot n'a pas tradé aujourd'hui », quelle que soit la raison
+    (jour sans signal, férié, heure du serveur pas sûre, marché coupé : audit du 27/11/2026).
 - **La preuve, en fin de vidéo** : la photo de l'onglet Historique de MetaTrader du jour (les positions clôturées et leur profit),
   épinglée comme une photo, avec les résultats en R épinglés dessous (« Dans MetaTrader »), juste avant le bilan. La semaine et le
   mois montrent celles du meilleur et du pire jour. La photo est prise par l'outil le soir même (`historique.py`) : régler une
@@ -114,7 +122,15 @@ python3 video/outil.py recap --jour 2026-11-26     # une séance précise (date 
 python3 video/outil.py recap --testeur --jour 2026-11-18   # une journée du testeur (dossier de travail « recap-…-essai »)
 python3 video/outil.py presentation                # la vidéo de présentation (profil « presentation » de la configuration)
 python3 video/outil.py certificat --essai          # le certificat flouté sur le Bureau, pour régler masques_certificat
+python3 video/outil.py accepter --jour 2026-11-04  # une séance signalée, prise telle que les journaux la donnent
+python3 video/outil.py ignorer --jour 2026-11-04   # une séance signalée laissée de côté (le robot ne tournait pas)
 ```
+
+**Une vidéo du testeur ne se publie jamais** (décision du 27/11/2026) : `recap --testeur` écrit dans `recap-…-essai`, et le mode
+automatique sur les journaux du testeur (`auto --testeur`, ou des lignes `source=testeur`) range ses vidéos dans
+`<sortie>/essais-testeur/ESSAI-…` avec `ESSAI-NE-PAS-PUBLIER.txt` : jamais sur le Bureau, jamais dans le registre des publications,
+jamais de notification « prêt à publier ». Un ancien dossier du Bureau fait à partir du testeur ne compte jamais comme la publication
+d'une vraie séance et n'est jamais écrasé (une notification demande de le ranger à la main).
 
 La vidéo arrive dans le dossier `sortie` de la configuration, `recap-AAAA-MM-JJ/recap-AAAA-MM-JJ.mp4`. Elle est en 1080 x 1920,
 30 images par seconde, son à -15 LUFS. À côté se trouvent :
@@ -124,6 +140,11 @@ La vidéo arrive dans le dossier `sortie` de la configuration, `recap-AAAA-MM-JJ
   pic). Une remarque s'affiche aussi dans le journal ; elle ne bloque pas la vidéo ;
 - `recap.json` : les scènes, les textes lus et les instants des bruitages ;
 - `projet/` : le projet HyperFrames, à ouvrir avec `npx hyperframes preview` pour retoucher une scène à la main.
+
+En mode automatique, `son/`, `projet/` et `image-muette.mp4` sont effacés une fois la vidéo contrôlée et publiée (`controle.txt`
+passe à côté de la vidéo), et les dossiers de rendu du mode automatique de plus de 30 jours sont purgés, comme les morceaux de voix
+recalculables du cache (les prises payées restent). Un récap fait à la main garde tout. Chaque rendu a un délai (15 minutes pour
+HyperFrames, 5 pour un ffmpeg) : au-delà, il est arrêté avec Chrome, et le mode automatique prévient.
 
 Compte 1 à 3 minutes par vidéo. Une réplique déjà dite n'est pas redemandée à ElevenLabs : elles sont gardées en cache dans
 `~/.cache/etrave-video/voix`.
@@ -156,6 +177,16 @@ python3 video/outil.py installer
   Planificateur de tâches.
 - Une séance illisible (journal abîmé, trade que le journal d'exécution ne retrouve pas) n'est pas publiée, et la semaine ou le
   mois qui la contient attend : une notification le dit, pour la corriger.
+- **Chaque jour de séance de New York est comparé aux journaux** (calendrier de l'EA : du lundi au vendredi, sans les fériés ni
+  les demi-séances, `calendrier.py`). Une séance absente (MetaTrader fermé, EA arrêté, « JOUR MANQUÉ ») ou sans sa ligne « fin »
+  (MetaTrader arrêté avant 15:52 New York) prévient, et la semaine et le mois attendent : jamais de récap avec un jour en moins.
+  `outil.py accepter --jour …` prend la séance telle que les journaux la donnent (le journal d'exécution fait foi), `outil.py ignorer
+  --jour …` la laisse de côté (un jour où le robot ne tournait pas, une fermeture exceptionnelle de la Bourse). Une notification par
+  jour au plus pour un même souci. Les fériés et demi-séances ne comptent pas comme séances dans la semaine et le mois.
+- **La mémoire de ce qui est publié est hors du Bureau** (`~/Library/Application Support/Etrave/video/registre.json`, ou
+  `dossier_etat` de la configuration) : ranger ou vider le dossier « Étrave TikTok » ne refait rien. Un seul passage à la fois
+  (verrou), même si `auto` ou `recap` est lancé à la main pendant celui de launchd ou d'Étrave. Pas de récap d'une semaine ou d'un
+  mois commencés avant le premier journal de l'EA. Seuls le Nasdaq 100 et le S&P 500 sont lus.
 - **Jamais de vidéo muette** (seul `recap --sans-voix`, pour un essai, en fait une). Si la voix échoue, la séance n'est pas publiée
   et elle est refaite au lancement suivant. Une coupure du réseau ou une surcharge d'ElevenLabs est réessayée tout de suite (3 essais
   sur 40 s). La notification et `recap-auto.log` disent la cause et quoi faire : crédits épuisés, clé refusée, voix introuvable,
@@ -190,7 +221,8 @@ que lui :
 | `auto_depuis`, `auto_sans_trade` | mode automatique : première séance à faire (AAAA-MM-JJ) ; aussi les jours sans trade |
 | `historique` | le cadre du tableau de l'onglet Historique dans la photo de la fenêtre : `x`, `y`, `largeur`, `entete`, `ligne` (pixels) |
 | `mention_compte`, `hashtags` | la ligne sur le compte dans la description (sinon d'après le journal) ; les hashtags |
-| `presentation` | ton profil pour la vidéo de présentation (voir `presentation.py`) ; `masques_certificat` : les zones floutées du certificat |
+| `presentation` | ton profil pour la vidéo de présentation (voir `presentation.py`) ; `masques_certificat` : les zones floutées du certificat (obligatoires : sans eux, pas de présentation) |
+| `dossier_etat` | la mémoire du mode automatique (registre des publications, notifications, jours acquittés, verrou) ; par défaut `~/Library/Application Support/Etrave/video` |
 
 ## Fichiers
 
@@ -201,7 +233,7 @@ recap.py         écrit les scènes du récap et le minutage calé sur la voix, 
 presentation.py  remplit le modèle de la présentation avec le profil, rend et mixe
 voix.py          ElevenLabs (clone de ta voix) : une prise par vidéo coupée par scène, heure de chaque mot, rythme, cache
 publication.py   le dossier du jour (vidéo, description TikTok, couverture, avant-de-publier.txt) et le mode automatique
-historique.py    la photo de l'onglet Historique de MetaTrader (Windows : PrintWindow ; Mac : screencapture), le cadre du tableau
+historique.py    la photo de l'onglet Historique de MetaTrader (Windows : PrintWindow ; Mac : la fenêtre par son numéro, screencapture -l ; une image presque unie est refusée), le cadre du tableau
 windows/         Deconnecter-sans-fermer.cmd : quitter le Bureau à distance du VPS sans éteindre l'écran
 recap_periode.py les récaps de la semaine et du mois (barres, courbe, bilan)
 installation.py  la copie de l'outil et le lancement chaque soir (launchd sur Mac, tâches planifiées sous Windows)
@@ -209,7 +241,10 @@ mixage.py        ffmpeg : voix, bruitages et musique baissés d'un gain fixe pen
 controle.py      le contrôle du son de chaque vidéo finie (controle.txt)
 police.py        largeur des textes dans la police DIN, pour que les étiquettes restent dans les zones sûres de TikTok
 nombres.py       nombres, heures et dates en toutes lettres pour la voix
-sons.json        le catalogue des bruitages (nom, adresse Mixkit)
+calendrier.py    les jours de séance attendus (fériés et demi-séances de l'EA, copie de ShortDay)
+etat.py          la mémoire du mode automatique hors du Bureau (registre, notifications, jours acquittés) et le verrou
+sous_titres.py   les sous-titres : groupes de mots calés sur la voix, nombres en chiffres
+sons.json        le catalogue des bruitages (nom, adresse Mixkit, pic et attaque mesurés par earshot, p_reel)
 modeles/presentation/   le projet HyperFrames de la présentation, avec des {{…}} à la place de ce qui est personnel
 modeles/couverture-presentation/   la couverture de la présentation (accroche, logo, marchés, certificat)
 test_video.py    les contrôles (dont : rien de personnel ni de fichier sous licence dans ce dossier)

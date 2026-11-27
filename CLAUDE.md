@@ -182,6 +182,13 @@ video/     (branche communication/outil-video) vidéos TikTok : récap de séanc
   crédits ElevenLabs sans rien dépenser. **Mixage** (VID-23) : bruitages et musique baissent d'un gain fixe pendant les phrases
   de la voix (-9 et -2,5 dB, rampes de 0,15 s), jamais par un compresseur commandé par la voix (il hachait les bruitages : « des
   coupures, comme du lag ») ; `controle.py` mesure chaque vidéo finie (`son/controle.txt`, prévient sans bloquer).
+  **Mode automatique (audit du 27/11/2026)** : chaque jour de séance de New York (`video/calendrier.py`, copie de `ShortDay` de l'EA,
+  un test vérifie l'accord) est comparé aux journaux ; une séance absente ou sans ligne « fin » prévient (une notification par jour
+  au plus) et bloque la semaine et le mois ; `outil.py accepter|ignorer --jour` l'acquitte. Mémoire hors du Bureau
+  (`video/etat.py` : registre des publications, notifications, jours acquittés, verrou, dans
+  `~/Library/Application Support/Etrave/video`, `dossier_etat` de la configuration). **Une vidéo du testeur ne se publie jamais**
+  (décision de l'utilisateur du 27/11/2026) : `<sortie>/essais-testeur/ESSAI-…`, ni Bureau, ni registre, ni notification. Sous-titres
+  calés sur les mots de la voix, date et couleur dès l'image 0 ; bruitages calés sur leur pic mesuré par earshot (`video/sons.json`).
 - **Conformité TikTok (25/11/2026, validée par l'utilisateur ; détail dans `video/README.md`)** : rien à vendre (plus d'annonce
   de copy trading : la scène « Bilan public » de la présentation donne rendez-vous dans 3 mois) ; la voix et les écrans disent
   « Abonne-toi », le Telegram n'est que dans la description (« gratuit, rien à vendre ») ; la prop firm n'est jamais nommée (ni
@@ -217,6 +224,23 @@ video/     (branche communication/outil-video) vidéos TikTok : récap de séanc
     « Un autre stop suit, en perte »), VID-28 (le même creux dit une fois), VID-29 (« Même scénario » seulement avec les mêmes
     résultats), VID-30 (contrôle du son), VID-31 (chemin du prix et épingle en bleu), VID-32 (notification d'une séance illisible ou
     d'un récap bloqué). VID-24 : voix de la présentation à vitesse naturelle (hors dépôt). En-têtes de l'EA et du Pine réécrits (ils disaient « Nasdaq uniquement »).
+  - **Audit des vidéos du 27/11/2026** (rapport `audits/2026-11-27-video.md`, hors dépôt), corrigés le 27/11/2026 avec un contrôle
+    chacun dans `video/test_video.py` (`test_v01_…` à `test_v28_…`) : V-01 (jour de séance sans ligne « fin » dans les journaux,
+    « JOUR MANQUÉ » compris : notification), V-02 (toute erreur de lecture attrapée et prévenue, les autres jours continuent ; panne de
+    `auto` prévenue), V-03 (perte sans ligne « fin » : période bloquée, journée refusée sans le marché qui n'a pas fini), V-04 (photo
+    de la FENÊTRE de MetaTrader par son numéro, `screencapture -l`, image presque unie refusée), V-05 (dossier de publication interdit :
+    notification), V-06 (délai sur chaque rendu et chaque ffmpeg, Chrome arrêté avec le rendu), V-07 (registre des publications hors du
+    Bureau), V-08 (fichiers de travail effacés après publication, rendus du mode automatique purgés après 30 jours, morceaux de voix
+    recalculables aussi), V-09 (une notification par jour au plus, `accepter` / `ignorer`), V-10 (« Le robot n'a pas tradé
+    aujourd'hui » ; fériés et demi-séances hors des semaines et des mois), V-11 (seuls le Nasdaq et le S&P 500 lus, versions de journal
+    différentes signalées), V-12 (pas de récap d'une période commencée avant le premier journal), V-13 (date et couleur dès l'image 0),
+    V-14 (graphique 850 x 440, sous-titres, un mouvement au moins toutes les 3 s), V-15 (pic des bruitages sur l'image, mesuré par
+    earshot), V-16 (aucun son synthétique ni sonnerie dans les récaps), V-17 (prises en rotation, coups secondaires 4 dB plus bas),
+    V-18 (panoramique léger), V-19 (bougies en double), V-20 (verrou : un passage à la fois), V-21 (couverture lue dans recap.json),
+    V-22 (registre lu avant de recharger une période), V-23 (`pont.instrument_de`), V-24 (télémétrie d'HyperFrames coupée), V-25
+    (certificat jamais net, masques contrôlés), V-26 (présentation refusée sans toutes ses répliques), V-27 (bout en bout avec ffmpeg,
+    voix simulée, sans Chrome), V-28 (« le prix » pas répété, plus loin sous 2 points pas dit). Décision de l'utilisateur du
+    27/11/2026 : une vidéo du testeur ne se publie jamais (essai, `test_video_du_testeur_jamais_publiee`).
   - **Audit d'exécution V11 du 26/11/2026, corrigés** : EX-1 (stop d'une D contrôlé contre le bid pour un achat et l'ask pour une
     vente, avec la distance minimale et le gel du courtier ; D pas armée à moins d'un spread de l'entrée de A), EX-2 (risque réel
     d'une D plafonné à celui de A, affiché tel quel), EX-3 (journal d'exécution version 2, textes et en-têtes, `InpDeviation`
@@ -251,7 +275,10 @@ video/     (branche communication/outil-video) vidéos TikTok : récap de séanc
       `gFiltTxt` ne sont pas sauvegardés (ligne « fin » fausse après un redémarrage) ; `JournalFlush(true)` dans `OnDeinit` peut dépasser le délai de MetaTrader ;
     - Étrave : l'export ne sépare pas démo et réel (colonne `source` des journaux ; « pas grave » pour l'utilisateur). Réglé le
       26/11/2026 : l'interrupteur est jugé marché par marché (ET-16) ;
-    - Vidéo : sur Mac, la capture de MetaTrader n'est pas contrôlée (écran verrouillé). Réglé le 26/11/2026 : chemin du prix et
+    - Vidéo, à décider avec l'utilisateur : le profit en dollars visible sur la photo de MetaTrader, à côté du R épinglé (le solde se
+      déduit quand le risque est en %, audit du 27/11/2026, §6). Pas encore vérifiés en vrai : la capture de la fenêtre de MetaTrader
+      par son numéro (V-04, le nom du processus Wine), launchd et les notifications. La présentation garde ses bruitages calés à la
+      main, dont click-select-1109 et sweep-small-fast-166 (jugés synthétiques par earshot). Réglé le 26/11/2026 : chemin du prix et
       épingle en bleu (VID-31) ; une séance illisible et la semaine ou le mois qu'elle bloque envoient une notification (VID-32) ;
 - Test des stops (25/11/2026, pré-enregistré, historique déjà vu) : fermer B/D au stop de A ≈ neutre ; B/D à l'entrée dès +0,5R,
   stop à +0,5R au lieu de l'entrée, A à l'entrée quand une jambe part : moins bons. Le 26/11/2026, le stop posé des D seules à
