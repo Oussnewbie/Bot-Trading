@@ -269,9 +269,8 @@ video/     (branche communication/outil-video) vidéos TikTok : récap de séanc
 - Ne mettre sur `main` que le robot, Étrave et ce qui les sert. Pas de dossier de recherche.
 - Logo d'Étrave : hors dépôt, dans `~/Documents/Etrave-communication/logo/`. La branche `communication/roadmap-tiktok` et sa
   roadmap TikTok (périmée : V10, copy trading abandonné) ont été supprimées le 27/11/2026.
-- **Historique public** : les fichiers actuels ne nomment plus la prop firm ni l'adresse Gmail de l'utilisateur, mais d'anciens
-  commits publics les contiennent encore (au 27/11/2026 : le nom dans l'arbre de 12 commits sur 23 de `main`, l'adresse Gmail
-  comme auteur de 4). Réécrire l'historique public demande l'accord explicite de l'utilisateur.
+- **Historique public** : les fichiers actuels sont propres, mais l'historique public n'a jamais été nettoyé : ne jamais affirmer
+  le contraire. Le réécrire demande l'accord explicite de l'utilisateur.
 - `.gitattributes` : fins de ligne Windows pour `.bat`, `.cmd`, `.ini` et `.set` (à l'extraction et dans le zip de GitHub).
 - Le jeton `gh` n'a pas la portée `workflow` : pousser un fichier `.github/workflows` est refusé.
 - Pousser sur `main` ne déploie rien.
